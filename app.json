@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "TrinkDuell",
+    "slug": "TrinkDuell",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "trinkduell",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.seb2n56.TrinkDuell",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "TrinkDuell benötigt Zugriff auf deine Fotos, um dein Profilbild zu setzen.",
+        "NSCameraUsageDescription": "TrinkDuell benötigt Kamerazugriff, um dein Profilbild aufzunehmen."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.seb2n56.TrinkDuell",
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#020617",
+          "android": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 76
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TrinkDuell benötigt Zugriff auf deine Fotos, um dein Profilbild zu setzen.",
+          "cameraPermission": "TrinkDuell benötigt Kamerazugriff, um dein Profilbild aufzunehmen."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "22a8c856-4b2d-4478-915b-1cf226d24511"
+      }
+    }
+  }
+}
+
