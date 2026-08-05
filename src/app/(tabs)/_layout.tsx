@@ -403,6 +403,46 @@ export default function TabsLayout() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!dbUser) return;
+
+    const performDelete = async () => {
+      setDrawerLoading(true);
+      try {
+        await triggerHaptic("medium");
+        await apiService.deleteAccount(dbUser.id);
+        closeDrawer();
+        await authLogout();
+      } catch (error) {
+        await triggerHaptic("error");
+        const msg =
+          "Konto konnte nicht gelöscht werden. Bitte stelle sicher, dass du mit dem Internet verbunden bist, und versuche es erneut.";
+        if (Platform.OS === "web") {
+          window.alert(msg);
+        } else {
+          Alert.alert("Fehler", msg);
+        }
+        console.error("Failed to delete account:", error);
+      } finally {
+        setDrawerLoading(false);
+      }
+    };
+
+    const warningText =
+      "Dein Konto und alle zugehörigen Daten (Statistiken, Freundschaften, Nachrichten) werden unwiderruflich gelöscht. Das kann nicht rückgängig gemacht werden.";
+
+    if (Platform.OS === "web") {
+      if (window.confirm(`Konto wirklich endgültig löschen?\n\n${warningText}`)) {
+        await performDelete();
+      }
+    } else {
+      Alert.alert("Konto endgültig löschen?", warningText, [
+        { text: "Abbrechen", style: "cancel" },
+        { text: "Endgültig löschen", style: "destructive", onPress: performDelete },
+      ]);
+    }
+  };
+
   // Helper colors
   const getCategoryColor = (cat: string) => {
     switch (cat) {
@@ -723,6 +763,28 @@ export default function TabsLayout() {
               {/* Drawer footer */}
               <View className="border-t border-slate-800 pt-4 mt-2 bg-slate-950">
                 <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic("light");
+                    router.push("/legal/privacy");
+                  }}
+                  className="flex-row items-center space-x-2 mb-3.5 py-1"
+                >
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#22d3ee" />
+                  <Text className="text-white/60 text-xs font-bold">Datenschutzerklärung</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic("light");
+                    router.push("/legal/terms");
+                  }}
+                  className="flex-row items-center space-x-2 mb-3.5 py-1"
+                >
+                  <Ionicons name="reader-outline" size={18} color="#22d3ee" />
+                  <Text className="text-white/60 text-xs font-bold">Nutzungsbedingungen</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   onPress={() => setShowLicensesModal(true)}
                   className="flex-row items-center space-x-2 mb-3.5 py-1"
                 >
@@ -732,10 +794,18 @@ export default function TabsLayout() {
 
                 <TouchableOpacity
                   onPress={handleLogout}
-                  className="flex-row items-center space-x-2 py-1"
+                  className="flex-row items-center space-x-2 py-1 mb-3.5"
                 >
                   <Ionicons name="log-out-outline" size={18} color="#f43f5e" />
                   <Text className="text-rose-400 text-xs font-black uppercase tracking-wider">Abmelden</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleDeleteAccount}
+                  className="flex-row items-center space-x-2 py-1"
+                >
+                  <Ionicons name="trash-outline" size={18} color="#7f1d1d" />
+                  <Text className="text-red-900 text-[10px] font-black uppercase tracking-wider">Konto endgültig löschen</Text>
                 </TouchableOpacity>
               </View>
 

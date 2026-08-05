@@ -3,10 +3,102 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { apiService } from "@/services/api";
 import { User } from "@/services/mockData";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, View, Text, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import NetInfo from "@react-native-community/netinfo";
 import { SyncService } from "@/services/sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const AGE_GATE_KEY = "trinkduell_age_18_confirmed";
+
+function AgeGate({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<"checking" | "confirmed" | "pending" | "declined">("checking");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const confirmed = await AsyncStorage.getItem(AGE_GATE_KEY);
+        setStatus(confirmed === "true" ? "confirmed" : "pending");
+      } catch {
+        setStatus("pending");
+      }
+    })();
+  }, []);
+
+  const handleConfirm = async () => {
+    await AsyncStorage.setItem(AGE_GATE_KEY, "true");
+    setStatus("confirmed");
+  };
+
+  if (status === "checking") {
+    return (
+      <View className="flex-1 bg-slate-950 items-center justify-center">
+        <ActivityIndicator size="large" color="#22d3ee" />
+      </View>
+    );
+  }
+
+  if (status === "confirmed") {
+    return <>{children}</>;
+  }
+
+  if (status === "declined") {
+    return (
+      <View className="flex-1 bg-slate-950 items-center justify-center px-8">
+        <View className="bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-6">
+          <Ionicons name="lock-closed" size={40} color="#64748b" />
+        </View>
+        <Text className="text-white text-lg font-black text-center mb-3">Zugang nicht möglich</Text>
+        <Text className="text-slate-400 text-sm text-center leading-relaxed">
+          TrinkDuell dreht sich um alkoholische Getränke und ist ausschließlich für Erwachsene ab 18 Jahren
+          gedacht. Du kannst die App leider nicht nutzen.
+        </Text>
+      </View>
+    );
+  }
+
+  // status === "pending"
+  return (
+    <View className="flex-1 bg-slate-950 items-center justify-center px-6">
+      <View className="w-full max-w-sm bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
+        <View className="items-center mb-5">
+          <View className="bg-gradient-to-tr from-cyan-400 to-fuchsia-500 p-3.5 rounded-3xl mb-4 shadow-lg shadow-cyan-500/20">
+            <Ionicons name="beer" size={32} color="#ffffff" />
+          </View>
+          <Text className="text-white text-xl font-black text-center tracking-wide">Altersbestätigung</Text>
+        </View>
+
+        <Text className="text-slate-300 text-sm text-center leading-relaxed mb-4">
+          TrinkDuell dreht sich um alkoholische Getränke und ist nur für Erwachsene gedacht.
+          Bist du <Text className="text-cyan-400 font-black">18 Jahre oder älter</Text>?
+        </Text>
+
+        <View className="bg-slate-950/60 border border-white/5 rounded-2xl p-4 mb-6">
+          <Text className="text-slate-400 text-[11px] text-center leading-relaxed">
+            Bitte trinke verantwortungsvoll. TrinkDuell soll Spaß mit Freunden fördern — nicht exzessiven
+            Alkoholkonsum. Kenne deine Grenzen und die deiner Freunde.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleConfirm}
+          className="w-full bg-cyan-400 py-4 rounded-2xl items-center shadow-lg shadow-cyan-500/20 active:scale-95 mb-3"
+        >
+          <Text className="text-slate-950 font-black text-sm uppercase tracking-wider">
+            Ja, ich bin 18 Jahre oder älter
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setStatus("declined")}
+          className="w-full py-3 rounded-2xl items-center"
+        >
+          <Text className="text-slate-500 font-bold text-xs uppercase tracking-wider">Nein</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 // Define AuthContext type
 interface AuthContextType {
@@ -49,9 +141,11 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationLayout />
-      </AuthProvider>
+      <AgeGate>
+        <AuthProvider>
+          <NavigationLayout />
+        </AuthProvider>
+      </AgeGate>
     </SafeAreaProvider>
   );
 }
@@ -130,10 +224,13 @@ function NavigationLayout() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    // Privacy policy / terms must stay reachable from the registration screen
+    // even before login, so exempt them from the auth redirect.
+    const isPublicRoute = inAuthGroup || segments[0] === "legal";
 
     // Short timeout to guarantee router mounting completes on all platforms
     const timer = setTimeout(() => {
-      if (!token && !inAuthGroup) {
+      if (!token && !isPublicRoute) {
         router.replace("/(auth)/login");
       } else if (token && inAuthGroup) {
         router.replace("/(tabs)");
@@ -155,13 +252,33 @@ function NavigationLayout() {
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen 
-        name="notifications" 
-        options={{ 
-          presentation: "modal", 
+      <Stack.Screen
+        name="notifications"
+        options={{
+          presentation: "modal",
           title: "Benachrichtigungen",
           headerShown: false
-        }} 
+        }}
+      />
+      <Stack.Screen
+        name="legal/privacy"
+        options={{
+          title: "Datenschutzerklärung",
+          headerShown: true,
+          headerStyle: { backgroundColor: "#020617" },
+          headerTintColor: "#22d3ee",
+          headerTitleStyle: { color: "#ffffff" },
+        }}
+      />
+      <Stack.Screen
+        name="legal/terms"
+        options={{
+          title: "Nutzungsbedingungen",
+          headerShown: true,
+          headerStyle: { backgroundColor: "#020617" },
+          headerTintColor: "#22d3ee",
+          headerTitleStyle: { color: "#ffffff" },
+        }}
       />
     </Stack>
   );

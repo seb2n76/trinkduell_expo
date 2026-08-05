@@ -14,8 +14,15 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleRegister = async () => {
+    if (!acceptedTerms) {
+      await triggerHaptic("error");
+      setError("Bitte akzeptiere die Nutzungsbedingungen und die Datenschutzerklärung.");
+      return;
+    }
+
     if (!username.trim() || !email.trim() || !password || !confirmPassword) {
       await triggerHaptic("error");
       setError("Bitte fülle alle Felder aus!");
@@ -159,12 +166,55 @@ export default function RegisterScreen() {
               </View>
             </View>
 
+            {/* Terms & Privacy Acceptance */}
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic("light");
+                setAcceptedTerms((prev) => !prev);
+              }}
+              disabled={loading}
+              className="flex-row items-start mb-5"
+            >
+              <View
+                className={`w-5 h-5 rounded-md border items-center justify-center mr-2.5 mt-0.5 ${
+                  acceptedTerms ? "bg-fuchsia-500 border-fuchsia-500" : "border-white/20"
+                }`}
+              >
+                {acceptedTerms && <Ionicons name="checkmark" size={14} color="#ffffff" />}
+              </View>
+              <Text className="text-slate-400 text-xs leading-relaxed flex-1">
+                Ich bin 18 Jahre oder älter und akzeptiere die{" "}
+                <Text
+                  className="text-cyan-400 font-bold"
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic("light");
+                    router.push("/legal/terms");
+                  }}
+                >
+                  Nutzungsbedingungen
+                </Text>{" "}
+                und die{" "}
+                <Text
+                  className="text-cyan-400 font-bold"
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic("light");
+                    router.push("/legal/privacy");
+                  }}
+                >
+                  Datenschutzerklärung
+                </Text>
+                .
+              </Text>
+            </TouchableOpacity>
+
             {/* Register Button */}
             <TouchableOpacity
               onPress={handleRegister}
-              disabled={loading}
+              disabled={loading || !acceptedTerms}
               className={`rounded-2xl py-4 items-center justify-center shadow-lg shadow-fuchsia-500/20 active:scale-95 ${
-                loading ? "bg-fuchsia-500/50 opacity-70" : "bg-fuchsia-500"
+                loading || !acceptedTerms ? "bg-fuchsia-500/50 opacity-70" : "bg-fuchsia-500"
               }`}
             >
               {loading ? (

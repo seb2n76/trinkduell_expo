@@ -1,4 +1,4 @@
-/*{
+{
   "cli": {
     "version": ">= 9.0.0"
   },
@@ -17,15 +17,5 @@
   },
   "submit": {
     "production": {}
-  }
-}
-*/
-{
-  "build": {
-    "preview": {
-      "android": {
-        "buildType": "apk"
-      }
-    }
   }
 }

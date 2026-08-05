@@ -276,6 +276,79 @@ module.exports = {
     }
     await saveDb();
   },
+  // Permanently deletes a user and everything only they can see/own.
+  // drink_logs, posts, duels, messages and admin'd groups/events cascade away
+  // via FK ON DELETE CASCADE in Postgres. friendships (plain username text,
+  // no FK) and membership in groups/events the user doesn't own are cleaned
+  // up manually here so both DB modes behave the same way.
+  deleteUser: async (userId) => {
+    await loadDb();
+    if (pool) {
+      const userRes = await pool.query("SELECT name FROM users WHERE id = $1", [userId]);
+      if (userRes.rows.length === 0) return;
+      const username = userRes.rows[0].name;
+
+      await pool.query(
+        "DELETE FROM friendships WHERE LOWER(sender_username) = LOWER($1) OR LOWER(receiver_username) = LOWER($1)",
+        [username]
+      );
+
+      const groups = await module.exports.getGroups();
+      for (const g of groups) {
+        if (g.adminId === userId) continue; // whole group cascades away with its admin
+        const memberIds = g.memberIds.filter((id) => id !== userId);
+        const pendingUserIds = g.pendingUserIds.filter((id) => id !== userId);
+        if (memberIds.length !== g.memberIds.length || pendingUserIds.length !== g.pendingUserIds.length) {
+          await pool.query(
+            "UPDATE groups SET member_ids = $1, pending_user_ids = $2 WHERE id = $3",
+            [JSON.stringify(memberIds), JSON.stringify(pendingUserIds), g.id]
+          );
+        }
+      }
+
+      const events = await module.exports.getEvents();
+      for (const e of events) {
+        if (e.creatorId === userId) continue; // whole event cascades away with its creator
+        const memberIds = e.memberIds.filter((id) => id !== userId);
+        if (memberIds.length !== e.memberIds.length) {
+          await pool.query("UPDATE events SET member_ids = $1 WHERE id = $2", [JSON.stringify(memberIds), e.id]);
+        }
+      }
+
+      await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+      return;
+    }
+
+    const user = db.users.find((u) => u.id === userId);
+    if (!user) return;
+    const username = user.name;
+
+    db.friendships = (db.friendships || []).filter(
+      (f) =>
+        f.sender_username.toLowerCase() !== username.toLowerCase() &&
+        f.receiver_username.toLowerCase() !== username.toLowerCase()
+    );
+
+    db.groups = db.groups.filter((g) => g.adminId !== userId);
+    for (const g of db.groups) {
+      g.memberIds = g.memberIds.filter((id) => id !== userId);
+      g.pendingUserIds = g.pendingUserIds.filter((id) => id !== userId);
+    }
+
+    db.events = (db.events || []).filter((e) => e.creatorId !== userId);
+    for (const e of db.events) {
+      e.memberIds = e.memberIds.filter((id) => id !== userId);
+    }
+
+    db.logs = (db.logs || []).filter((l) => l.userId !== userId);
+    db.posts = (db.posts || []).filter((p) => p.userId !== userId);
+    db.duels = (db.duels || []).filter((d) => d.creatorId !== userId && d.opponentId !== userId);
+    db.messages = (db.messages || []).filter((m) => m.sender_id !== userId && m.receiver_id !== userId);
+
+    db.users = db.users.filter((u) => u.id !== userId);
+
+    await saveDb();
+  },
   getDrinks: async () => {
     await loadDb();
     if (pool) {

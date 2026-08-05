@@ -41,9 +41,10 @@ const PORT = process.env.PORT || 5000;
 
 function enrichUserProgress(user) {
   if (!user) return user;
+  const { password, ...sanitizedUser } = user;
   const progress = db.getUserProgress(user.points, user.level);
   return {
-    ...user,
+    ...sanitizedUser,
     currentLevel: progress.currentLevel,
     xpForNextLevel: progress.xpForNextLevel,
     xpProgressInCurrentLevel: progress.xpProgressInCurrentLevel,
@@ -294,6 +295,20 @@ app.post("/api/users/:id/avatar", authenticate, async (req, res) => {
 
   // Otherwise, if multipart upload is simulated, we just keep the URI passed
   res.json({ avatarUrl: user.avatar });
+});
+
+// Delete own account permanently (Apple/Google in-app account deletion requirement)
+app.delete("/api/users/:id", authenticate, async (req, res) => {
+  if (req.userId !== req.params.id) {
+    return res.status(403).json({ error: "Du kannst nur dein eigenes Konto löschen." });
+  }
+
+  try {
+    await db.deleteUser(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Level Up User

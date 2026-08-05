@@ -232,6 +232,14 @@ export const apiService = {
       () => db.mockLogout()
     ),
 
+  // Deliberately bypasses executeApiCall's offline fallback: deleting an
+  // account only locally while the real server-side account (and its data)
+  // survives would be misleading, so this requires an actual connection and
+  // throws if the server can't be reached instead of silently "succeeding".
+  deleteAccount: async (userId: string): Promise<void> => {
+    await axiosInstance.delete<void>(`/users/${userId}`);
+  },
+
   forgotPassword: (email: string): Promise<{ message: string; code?: string }> =>
     executeApiCall(
       () => axiosInstance.post<{ message: string; code?: string }>("/auth/forgot-password", { email }),
