@@ -30,6 +30,10 @@ services:
       PORT: 5000
       DATABASE_URL: postgres://${POSTGRES_USER:-trinkduell_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-trinkduell}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET muss in server/.env gesetzt sein}
+      # Optional — see docs/EMAIL_SETUP.md. Unset means the beta fallback
+      # (reset code shown in-app) stays active.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
     depends_on:
       - db
 

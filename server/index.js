@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const { sendPushNotification } = require("./push");
+const { sendPasswordResetEmail } = require("./email");
 
 // Multipart avatar upload fallback (used when the client can't produce a
 // Base64 payload). Memory storage since avatars are small and get converted
@@ -185,10 +186,9 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // Forgot Password
-// NOTE: no transactional email provider is configured yet, so the code is
-// returned directly in the response instead of being emailed. That's good
-// enough for a friends-only beta but must be wired up to a real mailer
-// (e.g. Resend/SMTP) before a public launch — see docs/PROXMOX_DEPLOYMENT.md.
+// If RESEND_API_KEY is set (see docs/EMAIL_SETUP.md), the code is emailed
+// and never leaves the server. Without it (friends-only beta default), the
+// code is returned directly in the response so the flow still works.
 app.post("/api/auth/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) {
@@ -206,9 +206,11 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes
   await db.setPasswordResetCode(user.id, code, expiresAt);
 
+  const emailSent = await sendPasswordResetEmail(email, code);
+
   res.json({
     message: `Reset-Code wurde an ${email} gesendet.`,
-    code,
+    code: emailSent ? undefined : code,
   });
 });
 
