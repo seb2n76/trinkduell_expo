@@ -8,6 +8,8 @@ import { Ionicons } from "@expo/vector-icons";
 import NetInfo from "@react-native-community/netinfo";
 import { SyncService } from "@/services/sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { registerForPushNotificationsAsync, getRouteForNotificationData } from "@/services/notifications";
+import * as Notifications from "expo-notifications";
 
 const AGE_GATE_KEY = "trinkduell_age_18_confirmed";
 
@@ -163,6 +165,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session) {
           setToken(session.token);
           setUser(session.user);
+          registerForPushNotificationsAsync();
         }
       } catch (e) {
         console.warn("Failed to load session on start:", e);
@@ -178,6 +181,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem("trinkduell_v2_jwt_token", res.token);
     setToken(res.token);
     setUser(res.user);
+    registerForPushNotificationsAsync();
   };
 
   const register = async (username: string, email: string, password: string) => {
@@ -185,6 +189,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem("trinkduell_v2_jwt_token", res.token);
     setToken(res.token);
     setUser(res.user);
+    registerForPushNotificationsAsync();
   };
 
   const logout = async () => {
@@ -219,6 +224,16 @@ function NavigationLayout() {
   const { token, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+
+  // Route a tapped notification to a relevant screen (e.g. a duel challenge
+  // opens the games tab). No-op on web where this listener never fires.
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      router.push(getRouteForNotificationData(data));
+    });
+    return () => subscription.remove();
+  }, [router]);
 
   useEffect(() => {
     if (isLoading) return;

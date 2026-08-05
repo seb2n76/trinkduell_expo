@@ -51,6 +51,13 @@
           "photosPermission": "TrinkDuell benötigt Zugriff auf deine Fotos, um dein Profilbild zu setzen.",
           "cameraPermission": "TrinkDuell benötigt Kamerazugriff, um dein Profilbild aufzunehmen."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#22d3ee"
+        }
       ]
     ],
     "experiments": {

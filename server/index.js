@@ -4,6 +4,7 @@ const db = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const { sendPushNotification } = require("./push");
 
 // Multipart avatar upload fallback (used when the client can't produce a
 // Base64 payload). Memory storage since avatars are small and get converted
@@ -358,6 +359,20 @@ app.delete("/api/users/:id", authenticate, async (req, res) => {
 
   try {
     await db.deleteUser(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Register/replace this device's Expo push token for the current user
+app.post("/api/users/push-token", authenticate, async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ error: "Push-Token fehlt." });
+  }
+  try {
+    await db.setPushToken(req.userId, token);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -761,6 +776,13 @@ app.post("/api/groups/:id/join", authenticate, async (req, res) => {
   if (!group.pendingUserIds.includes(req.userId) && !group.memberIds.includes(req.userId)) {
     group.pendingUserIds.push(req.userId);
     await db.saveGroup(group);
+
+    sendPushNotification(
+      group.adminId,
+      "Neue Beitrittsanfrage",
+      `${req.user.name} möchte "${group.name}" beitreten.`,
+      { type: "group_join_request", groupId: group.id }
+    ).catch(() => {});
   }
 
   res.json({ success: true });
@@ -960,6 +982,14 @@ app.post("/api/duels", authenticate, async (req, res) => {
     };
 
     await db.saveDuel(newDuel);
+
+    sendPushNotification(
+      opponentId,
+      "Duell-Herausforderung! ⚔️",
+      `${req.user.name} hat dich zu einem Duell herausgefordert.`,
+      { type: "duel_challenge", duelId: newDuel.id }
+    ).catch(() => {});
+
     res.status(201).json(newDuel);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -989,6 +1019,14 @@ app.post("/api/duels/:id/accept", authenticate, async (req, res) => {
     duel.endTime = end.toISOString();
 
     await db.saveDuel(duel);
+
+    sendPushNotification(
+      duel.creatorId,
+      "Duell angenommen! 🍻",
+      `${req.user.name} hat dein Duell angenommen. Los geht's!`,
+      { type: "duel_accepted", duelId: duel.id }
+    ).catch(() => {});
+
     res.json(duel);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1129,6 +1167,14 @@ app.post("/api/friends/request", authenticate, async (req, res) => {
     };
 
     await db.saveFriendship(newRequest);
+
+    sendPushNotification(
+      receiver.id,
+      "Neue Freundschaftsanfrage",
+      `${sender.name} möchte sich mit dir befreunden.`,
+      { type: "friend_request" }
+    ).catch(() => {});
+
     res.status(201).json({ success: true, request: newRequest });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1156,6 +1202,18 @@ app.post("/api/friends/accept", authenticate, async (req, res) => {
 
     request.status = "accepted";
     await db.saveFriendship(request);
+
+    const users = await db.getUsers();
+    const originalSender = users.find((u) => u.name.toLowerCase() === sender_username.toLowerCase());
+    if (originalSender) {
+      sendPushNotification(
+        originalSender.id,
+        "Freundschaftsanfrage angenommen! 🎉",
+        `${receiver_username} hat deine Freundschaftsanfrage angenommen.`,
+        { type: "friend_accepted" }
+      ).catch(() => {});
+    }
+
     res.json({ success: true, request });
   } catch (error) {
     res.status(500).json({ error: error.message });

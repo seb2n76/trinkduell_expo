@@ -483,5 +483,12 @@ export const apiService = {
         timestamp: new Date().toISOString()
       })
     ),
+
+  // No offline fallback: a push token is only meaningful once the server
+  // can reach it, so there's nothing useful to queue while offline — the
+  // caller just retries on the next app start.
+  registerPushToken: async (token: string): Promise<void> => {
+    await axiosInstance.post<void>("/users/push-token", { token });
+  },
 };
 

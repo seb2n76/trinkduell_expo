@@ -188,6 +188,7 @@ async function initPgSchema() {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS active_quest TEXT");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code TEXT");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP WITH TIME ZONE");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT");
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
   } catch (err) {
     console.error("[TrinkDuell DB] Failed to initialize PostgreSQL schema:", err);
@@ -421,6 +422,30 @@ module.exports = {
       user.resetCodeExpiresAt = null;
       await saveDb();
     }
+  },
+  // Push tokens follow the same isolated-field pattern as the reset code:
+  // kept out of getUsers()/saveUser() so they're never returned to other
+  // users and never at risk of being wiped by an unrelated save.
+  setPushToken: async (userId, token) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("UPDATE users SET push_token = $1 WHERE id = $2", [token, userId]);
+      return;
+    }
+    const user = db.users.find((u) => u.id === userId);
+    if (user) {
+      user.pushToken = token;
+      await saveDb();
+    }
+  },
+  getPushToken: async (userId) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query("SELECT push_token FROM users WHERE id = $1", [userId]);
+      return res.rows[0]?.push_token || null;
+    }
+    const user = db.users.find((u) => u.id === userId);
+    return user?.pushToken || null;
   },
   getDrinks: async () => {
     await loadDb();
