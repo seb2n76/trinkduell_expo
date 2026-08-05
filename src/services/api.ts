@@ -223,7 +223,11 @@ export const apiService = {
   register: (username: string, email: string, password: string): Promise<{ user: db.User; token: string }> =>
     executeApiCall(
       () => axiosInstance.post<{ user: db.User; token: string }>("/auth/register", { username, email, password }),
-      () => db.mockRegister(username, email, password)
+      () => db.mockRegister(username, email, password),
+      // Queues the ORIGINAL plaintext password (not db.mockRegister's
+      // salted-offline-hash) so the eventual sync hits the real
+      // /auth/register endpoint exactly like an online signup would.
+      () => SyncService.enqueueSyncJob("CREATE_USER", { username, email, password })
     ),
 
   logout: (): Promise<void> =>

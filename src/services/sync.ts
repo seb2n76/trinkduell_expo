@@ -7,7 +7,15 @@ const QUEUE_KEY = "trinkduell_sync_queue";
 
 export interface SyncJob {
   id: string;
-  action: "LOG_DRINK" | "DELETE_DRINK_LOG" | "CREATE_POST" | "CREATE_DRINK" | "DELETE_DRINK" | "UPDATE_USER" | "JOIN_GROUP";
+  action:
+    | "CREATE_USER"
+    | "LOG_DRINK"
+    | "DELETE_DRINK_LOG"
+    | "CREATE_POST"
+    | "CREATE_DRINK"
+    | "DELETE_DRINK"
+    | "UPDATE_USER"
+    | "JOIN_GROUP";
   payload: any;
   timestamp: string;
 }
@@ -88,6 +96,23 @@ export const SyncService = {
 
         try {
           switch (job.action) {
+            // Must be the very first job processed for a given device: an
+            // offline registration only has a fake "mock-jwt-token-*"
+            // session, which the real server rejects. Every job queued
+            // after it (drink logs, posts, ...) needs the real token this
+            // installs, which FIFO ordering already guarantees since
+            // CREATE_USER can only ever be the oldest job for a fresh account.
+            case "CREATE_USER": {
+              const res = await syncAxios.post("/auth/register", {
+                username: job.payload.username,
+                email: job.payload.email,
+                password: job.payload.password,
+              });
+              await AsyncStorage.setItem("trinkduell_v2_jwt_token", res.data.token);
+              await AsyncStorage.setItem("trinkduell_v2_curr_user_id", res.data.user.id);
+              break;
+            }
+
             case "LOG_DRINK":
               await syncAxios.post("/logs", {
                 drinkId: job.payload.drinkId,
@@ -144,7 +169,19 @@ export const SyncService = {
           }
           
           // Client errors (4xx) -> invalid state, log warning and drop the job to prevent queue blockages
-          console.warn(`[SyncService] Drop job ${job.id} due to permanent 4xx error:`, err.response?.status, err.message);
+          if (job.action === "CREATE_USER") {
+            // Dropping this one is worse than dropping a routine job: the
+            // device is left permanently on a fake mock token, and every
+            // later queued job for this user will keep failing too. Most
+            // likely cause is the email already existing server-side.
+            console.error(
+              `[SyncService] Failed to sync offline registration for ${job.payload?.email} — this device stays on a local-only account.`,
+              err.response?.status,
+              err.message
+            );
+          } else {
+            console.warn(`[SyncService] Drop job ${job.id} due to permanent 4xx error:`, err.response?.status, err.message);
+          }
           success = true;
         }
 
