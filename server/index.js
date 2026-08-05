@@ -175,6 +175,10 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // Forgot Password
+// NOTE: no transactional email provider is configured yet, so the code is
+// returned directly in the response instead of being emailed. That's good
+// enough for a friends-only beta but must be wired up to a real mailer
+// (e.g. Resend/SMTP) before a public launch — see docs/PROXMOX_DEPLOYMENT.md.
 app.post("/api/auth/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) {
@@ -189,10 +193,40 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   }
 
   const code = Math.floor(1000 + Math.random() * 9000).toString();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes
+  await db.setPasswordResetCode(user.id, code, expiresAt);
+
   res.json({
     message: `Reset-Code wurde an ${email} gesendet.`,
     code,
   });
+});
+
+// Reset Password (using the code issued by /forgot-password)
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: "E-Mail, Code und neues Passwort werden benötigt." });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: "Passwort muss mindestens 6 Zeichen lang sein." });
+  }
+
+  const users = await db.getUsers();
+  const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (!user) {
+    return res.status(404).json({ error: "Kein Benutzer mit dieser E-Mail gefunden!" });
+  }
+
+  const isValidCode = await db.verifyPasswordResetCode(user.id, code.trim());
+  if (!isValidCode) {
+    return res.status(400).json({ error: "Ungültiger oder abgelaufener Code." });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+  await db.setPasswordAndClearResetCode(user.id, hashedPassword);
+
+  res.json({ success: true });
 });
 
 // Get Session — verifies real JWT signature

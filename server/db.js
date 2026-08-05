@@ -186,6 +186,8 @@ async function initPgSchema() {
     // Alter table to add level and active_quest dynamically if they don't exist
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS active_quest TEXT");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code TEXT");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP WITH TIME ZONE");
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
   } catch (err) {
     console.error("[TrinkDuell DB] Failed to initialize PostgreSQL schema:", err);
@@ -254,7 +256,24 @@ module.exports = {
         active_quest: row.active_quest || null
       }));
     }
-    return db.users;
+    // Mirror the Postgres branch above: only return the intentional public
+    // shape, never resetCode/resetCodeExpiresAt (those live only behind the
+    // dedicated setPasswordResetCode/verifyPasswordResetCode functions).
+    return db.users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar,
+      title: u.title,
+      rank: u.rank,
+      points: u.points,
+      alcoholGrams: u.alcoholGrams,
+      achievements: u.achievements,
+      email: u.email,
+      password: u.password,
+      selected_title: u.selected_title,
+      level: u.level || 1,
+      active_quest: u.active_quest || null
+    }));
   },
   saveUser: async (user) => {
     await loadDb();
@@ -270,7 +289,12 @@ module.exports = {
     }
     const idx = db.users.findIndex((u) => u.id === user.id);
     if (idx !== -1) {
-      db.users[idx] = user;
+      // Merge rather than replace: getUsers() deliberately omits
+      // resetCode/resetCodeExpiresAt (see setPasswordResetCode etc.), and a
+      // plain replace here would silently wipe a pending reset code on any
+      // unrelated save — mirrors how the Postgres UPDATE above only ever
+      // touches the columns it explicitly lists.
+      db.users[idx] = { ...db.users[idx], ...user };
     } else {
       db.users.push(user);
     }
@@ -348,6 +372,55 @@ module.exports = {
     db.users = db.users.filter((u) => u.id !== userId);
 
     await saveDb();
+  },
+  // Password-reset codes are stored directly on the user record and handled
+  // through their own dedicated functions (not getUsers()/saveUser()) so a
+  // reset code can never accidentally leak through the general user-fetching
+  // pipeline into an API response, the way the password hash once did.
+  setPasswordResetCode: async (userId, code, expiresAt) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("UPDATE users SET reset_code = $1, reset_code_expires_at = $2 WHERE id = $3", [code, expiresAt, userId]);
+      return;
+    }
+    const user = db.users.find((u) => u.id === userId);
+    if (user) {
+      user.resetCode = code;
+      user.resetCodeExpiresAt = expiresAt;
+      await saveDb();
+    }
+  },
+  verifyPasswordResetCode: async (userId, code) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query("SELECT reset_code, reset_code_expires_at FROM users WHERE id = $1", [userId]);
+      if (res.rows.length === 0) return false;
+      const row = res.rows[0];
+      if (!row.reset_code || row.reset_code !== code) return false;
+      if (!row.reset_code_expires_at || new Date(row.reset_code_expires_at).getTime() < Date.now()) return false;
+      return true;
+    }
+    const user = db.users.find((u) => u.id === userId);
+    if (!user || !user.resetCode || user.resetCode !== code) return false;
+    if (!user.resetCodeExpiresAt || new Date(user.resetCodeExpiresAt).getTime() < Date.now()) return false;
+    return true;
+  },
+  setPasswordAndClearResetCode: async (userId, hashedPassword) => {
+    await loadDb();
+    if (pool) {
+      await pool.query(
+        "UPDATE users SET password = $1, reset_code = NULL, reset_code_expires_at = NULL WHERE id = $2",
+        [hashedPassword, userId]
+      );
+      return;
+    }
+    const user = db.users.find((u) => u.id === userId);
+    if (user) {
+      user.password = hashedPassword;
+      user.resetCode = null;
+      user.resetCodeExpiresAt = null;
+      await saveDb();
+    }
   },
   getDrinks: async () => {
     await loadDb();

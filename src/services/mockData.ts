@@ -28,6 +28,8 @@ export interface User {
   xpForNextLevel?: number;
   xpProgressInCurrentLevel?: number;
   isLevelLocked?: boolean;
+  resetCode?: string | null;
+  resetCodeExpiresAt?: string | null;
 }
 
 
@@ -849,18 +851,52 @@ export const mockRegister = async (
 export const mockForgotPassword = async (
   email: string
 ): Promise<{ message: string; code: string }> => {
-  const users = await getUsers();
-  const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-  
-  if (!user) {
+  const users = await getRawData<User>(KEYS.USERS);
+  const idx = users.findIndex((u) => u.email?.toLowerCase() === email.toLowerCase());
+
+  if (idx === -1) {
     throw new Error("Kein Benutzer mit dieser E-Mail gefunden!");
   }
 
   const code = Math.floor(1000 + Math.random() * 9000).toString();
+  users[idx].resetCode = code;
+  users[idx].resetCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  await saveRawData(KEYS.USERS, users);
+
   return {
     message: `Reset-Code wurde an ${email} gesendet.`,
     code,
   };
+};
+
+export const mockResetPassword = async (
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<{ success: boolean }> => {
+  if (newPassword.length < 6) {
+    throw new Error("Passwort muss mindestens 6 Zeichen lang sein.");
+  }
+
+  const users = await getRawData<User>(KEYS.USERS);
+  const idx = users.findIndex((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (idx === -1) {
+    throw new Error("Kein Benutzer mit dieser E-Mail gefunden!");
+  }
+
+  const user = users[idx];
+  const isExpired = !user.resetCodeExpiresAt || new Date(user.resetCodeExpiresAt).getTime() < Date.now();
+  if (!user.resetCode || user.resetCode !== code.trim() || isExpired) {
+    throw new Error("Ungültiger oder abgelaufener Code.");
+  }
+
+  user.password = await hashPasswordOffline(newPassword);
+  user.resetCode = null;
+  user.resetCodeExpiresAt = null;
+  users[idx] = user;
+  await saveRawData(KEYS.USERS, users);
+
+  return { success: true };
 };
 
 export const mockLogout = async (): Promise<void> => {

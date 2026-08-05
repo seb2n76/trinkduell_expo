@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT NOT NULL,
   selected_title TEXT,
   level INTEGER DEFAULT 1,
-  active_quest TEXT
+  active_quest TEXT,
+  reset_code TEXT,
+  reset_code_expires_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE IF NOT EXISTS drinks (

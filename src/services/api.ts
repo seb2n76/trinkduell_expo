@@ -246,6 +246,12 @@ export const apiService = {
       () => db.mockForgotPassword(email)
     ),
 
+  resetPassword: (email: string, code: string, newPassword: string): Promise<{ success: boolean }> =>
+    executeApiCall(
+      () => axiosInstance.post<{ success: boolean }>("/auth/reset-password", { email, code, newPassword }),
+      () => db.mockResetPassword(email, code, newPassword)
+    ),
+
   getSession: (): Promise<{ user: db.User; token: string } | null> =>
     executeApiCall(
       () => axiosInstance.get<{ user: db.User; token: string } | null>("/auth/session"),
