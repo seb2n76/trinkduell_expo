@@ -315,16 +315,22 @@ export default function TabsLayout() {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled) {
         setDrawerLoading(true);
         const pickedUri = result.assets[0].uri;
-        let base64Data = "";
-        try {
-          base64Data = await uriToBase64(pickedUri);
-        } catch (e) {
-          console.warn("Base64 conversion failed, using direct URI:", e);
+        // ImagePicker's own base64 output is more reliable across platforms
+        // than re-reading the picked URI via fetch/blob; only fall back to
+        // that if ImagePicker didn't provide it.
+        let base64Data = result.assets[0].base64 || "";
+        if (!base64Data) {
+          try {
+            base64Data = await uriToBase64(pickedUri);
+          } catch (e) {
+            console.warn("Base64 conversion failed, using direct URI:", e);
+          }
         }
 
         const uploadResult = await apiService.uploadAvatar(dbUser.id, pickedUri, base64Data || undefined);

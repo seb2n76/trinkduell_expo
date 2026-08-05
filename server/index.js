@@ -3,6 +3,15 @@ const cors = require("cors");
 const db = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+
+// Multipart avatar upload fallback (used when the client can't produce a
+// Base64 payload). Memory storage since avatars are small and get converted
+// straight to a Base64 data URL below, same as the JSON upload path.
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 // ─── JWT Secret ───────────────────────────────────────────────────────────────
 // In production this MUST come from an environment variable.
@@ -308,8 +317,10 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
   res.json(enrichUserProgress(user));
 });
 
-// Upload User Avatar (Base64 or Multipart)
-app.post("/api/users/:id/avatar", authenticate, async (req, res) => {
+// Upload User Avatar (Base64 JSON or multipart/form-data)
+// avatarUpload.single() only engages for multipart requests — express.json()
+// already parsed anything else into req.body, so the two never conflict.
+app.post("/api/users/:id/avatar", authenticate, avatarUpload.single("avatar"), async (req, res) => {
   if (req.userId !== req.params.id) {
     return res.status(403).json({ error: "Du kannst nur dein eigenes Bild hochladen." });
   }
@@ -327,8 +338,16 @@ app.post("/api/users/:id/avatar", authenticate, async (req, res) => {
     return res.json({ avatarUrl: req.body.image });
   }
 
-  // Otherwise, if multipart upload is simulated, we just keep the URI passed
-  res.json({ avatarUrl: user.avatar });
+  // Multipart upload: convert the uploaded file into the same Base64 data
+  // URL shape the JSON path stores, so both paths behave identically.
+  if (req.file) {
+    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    user.avatar = dataUrl;
+    await db.saveUser(user);
+    return res.json({ avatarUrl: dataUrl });
+  }
+
+  res.status(400).json({ error: "Kein Bild empfangen." });
 });
 
 // Delete own account permanently (Apple/Google in-app account deletion requirement)
