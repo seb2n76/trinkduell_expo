@@ -174,7 +174,7 @@ if (process.env.DATABASE_URL) {
   console.log("[TrinkDuell DB] PostgreSQL connection URL detected. Initializing database pool...");
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes("localhost") || process.env.DATABASE_URL.includes("127.0.0.1") ? false : { rejectUnauthorized: false }
+    ssl: (process.env.DATABASE_URL.includes("localhost") || process.env.DATABASE_URL.includes("127.0.0.1") || process.env.DATABASE_URL.includes("@db:")) ? false : { rejectUnauthorized: false }
   });
 }
 
