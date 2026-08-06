@@ -21,6 +21,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
 import { User, Drink, DrinkLog, DirectMessage, Group } from "@/services/mockData";
 import * as ImagePicker from "expo-image-picker";
+import {
+  LocationMode,
+  DEFAULT_LOCATION_MODE,
+  getLocationMode,
+  setLocationMode,
+  ensureLocationPermission,
+  isLocationAvailableOnPlatform,
+} from "@/services/location";
 
 const { width: screenWidth } = Dimensions.get("window");
 const drawerWidth = screenWidth < 800 ? Math.min(screenWidth * 0.8, 340) : screenWidth * 0.35;
@@ -66,6 +74,8 @@ export default function TabsLayout() {
   const [editedName, setEditedName] = useState("");
 
   const [showLicensesModal, setShowLicensesModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationMode, setLocationModeState] = useState<LocationMode>(DEFAULT_LOCATION_MODE);
 
   // Friends & Live Search states
   const [showFriendsModal, setShowFriendsModal] = useState(false);
@@ -232,6 +242,30 @@ export default function TabsLayout() {
     const interval = setInterval(loadNotificationCount, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    getLocationMode().then(setLocationModeState);
+  }, []);
+
+  const handleLocationModeChange = async (mode: LocationMode) => {
+    await triggerHaptic("light");
+
+    // Ask for the OS permission at the moment the user opts in, not on some
+    // unrelated earlier screen — otherwise the prompt has no visible reason.
+    if (mode !== "off") {
+      const granted = await ensureLocationPermission();
+      if (!granted) {
+        const msg =
+          "Ohne Standort-Freigabe kann TrinkDuell deine Orte nicht speichern. Du kannst die Berechtigung in den Systemeinstellungen deines Geräts erteilen.";
+        if (Platform.OS === "web") window.alert(msg);
+        else Alert.alert("Standort nicht freigegeben", msg);
+        return;
+      }
+    }
+
+    await setLocationMode(mode);
+    setLocationModeState(mode);
+  };
 
   const openDrawer = async () => {
     setIsDrawerOpen(true);
@@ -771,6 +805,24 @@ export default function TabsLayout() {
                 <TouchableOpacity
                   onPress={() => {
                     triggerHaptic("light");
+                    setShowLocationModal(true);
+                  }}
+                  className="flex-row items-center space-x-2 mb-3.5 py-1"
+                >
+                  <Ionicons name="location-outline" size={18} color="#22d3ee" />
+                  <Text className="text-white/60 text-xs font-bold">
+                    Standort:{" "}
+                    {locationMode === "auto"
+                      ? "Automatisch"
+                      : locationMode === "manual"
+                      ? "Nur Check-in"
+                      : "Aus"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic("light");
                     router.push("/legal/privacy");
                   }}
                   className="flex-row items-center space-x-2 mb-3.5 py-1"
@@ -821,6 +873,92 @@ export default function TabsLayout() {
       )}
 
 
+
+      {/* Standort-Einstellungen */}
+      <Modal
+        visible={showLocationModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowLocationModal(false)}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-cyan-500/30 rounded-t-3xl p-6 pb-8">
+            <View className="flex-row justify-between items-center mb-2">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                Standort 📍
+              </Text>
+              <TouchableOpacity onPress={() => setShowLocationModal(false)} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+              Dein Standort wird nur mit deinen Freunden und Mitgliedern deiner Gruppen geteilt —
+              niemals mit Fremden. Du kannst das jederzeit hier ändern.
+            </Text>
+
+            {!isLocationAvailableOnPlatform() && (
+              <View className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3 mb-4">
+                <Text className="text-amber-400 text-[10px] font-bold leading-relaxed">
+                  Im Browser funktioniert die Standortbestimmung nur über eine gesicherte
+                  HTTPS-Verbindung. In der App funktioniert sie normal.
+                </Text>
+              </View>
+            )}
+
+            {(
+              [
+                {
+                  key: "auto" as const,
+                  icon: "navigate",
+                  title: "Automatisch",
+                  desc: "Jedes geloggte Getränk speichert deinen Ort. So entsteht dein persönlicher Verlauf auf der Karte.",
+                },
+                {
+                  key: "manual" as const,
+                  icon: "hand-left",
+                  title: "Nur bei Check-in",
+                  desc: "Getränke werden ohne Ort gespeichert. Du entscheidest per Check-in, wann dein Standort geteilt wird.",
+                },
+                {
+                  key: "off" as const,
+                  icon: "close-circle",
+                  title: "Aus",
+                  desc: "Es werden keinerlei Standortdaten erfasst.",
+                },
+              ]
+            ).map((option) => {
+              const isActive = locationMode === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  onPress={() => handleLocationModeChange(option.key)}
+                  className={`p-4 rounded-2xl border mb-2.5 flex-row items-start ${
+                    isActive ? "bg-cyan-500/10 border-cyan-500/40" : "bg-slate-900 border-white/5"
+                  }`}
+                >
+                  <Ionicons
+                    name={option.icon as any}
+                    size={18}
+                    color={isActive ? "#22d3ee" : "#64748b"}
+                  />
+                  <View className="flex-1 ml-3">
+                    <Text
+                      className={`text-xs font-black mb-0.5 ${
+                        isActive ? "text-cyan-400" : "text-white"
+                      }`}
+                    >
+                      {option.title}
+                    </Text>
+                    <Text className="text-slate-500 text-[10px] leading-relaxed">{option.desc}</Text>
+                  </View>
+                  {isActive && <Ionicons name="checkmark-circle" size={18} color="#22d3ee" />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
 
       {/* Licenses Open Source Modal */}
       <Modal

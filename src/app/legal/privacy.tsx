@@ -29,26 +29,40 @@ const SECTIONS: Section[] = [
       "Punkte- und Levelstand, freigeschaltete Erfolge, optional ein Profilbild, sowie Inhalte, die du aktiv " +
       "teilst (Status-Posts, Chat-Nachrichten an Freunde oder Gruppen, Gruppenzugehörigkeit, Freundschaften).\n\n" +
       "Technisch: dein JWT-Sitzungstoken zur Anmeldung (lokal auf deinem Gerät gespeichert).\n\n" +
-      "Standort: Das Datenmodell unterstützt optionale GPS-Koordinaten zu einem Getränke-Eintrag für eine " +
-      "künftige Karten-Funktion. Diese Funktion ist aktuell deaktiviert — es werden derzeit keine " +
-      "Standortdaten erhoben. Dieser Abschnitt muss aktualisiert werden, sobald die Karten-Funktion aktiviert wird.",
+      "Standort: TrinkDuell kann zu einem Getränke-Eintrag deinen Standort (GPS-Koordinaten) speichern, " +
+      "damit du deinen persönlichen Verlauf auf der Karte siehst. Das ist standardmäßig AUS und muss von " +
+      "dir aktiv eingeschaltet werden (Menü → Standort). Du hast dort drei Möglichkeiten: \"Automatisch\" " +
+      "(jedes geloggte Getränk speichert den Ort), \"Nur bei Check-in\" (nur wenn du es ausdrücklich " +
+      "auslöst) und \"Aus\" (es werden keine Standortdaten erhoben). Du kannst die Einstellung jederzeit " +
+      "ändern und die Berechtigung zusätzlich in den Systemeinstellungen deines Geräts widerrufen.",
   },
   {
-    title: "3. Wofür wir die Daten nutzen",
+    title: "3. Wer sieht deinen Standort?",
+    body:
+      "Deine gespeicherten Orte sind ausschließlich für Personen sichtbar, mit denen du eine bestätigte " +
+      "Freundschaft hast, sowie für Mitglieder deiner Gruppen. Fremde Nutzer:innen sehen deine Standorte " +
+      "nie — auch dann nicht, wenn sie zufällig in der Nähe sind.\n\n" +
+      "Die Karte selbst wird über OpenStreetMap-Kartenmaterial (Kartenkacheln von CARTO) dargestellt. Beim " +
+      "Laden der Karte werden dabei technisch bedingt Anfragen an diese Dienste gestellt; deine eigenen " +
+      "Positionsdaten werden dabei nicht an OpenStreetMap oder CARTO übertragen.",
+  },
+  {
+    title: "4. Wofür wir die Daten nutzen",
     body:
       "Ausschließlich, um die Funktionen der App bereitzustellen: Anmeldung, Anzeige deiner Statistiken und " +
-      "Rangliste, Trinkspiele/Duelle, Freundes- und Gruppenfunktionen, Chat. Wir verkaufen deine Daten nicht " +
+      "Rangliste, Trinkspiele/Duelle, Freundes- und Gruppenfunktionen, Chat sowie — sofern von dir aktiviert " +
+      "— die Karte mit deinem Verlauf. Wir verkaufen deine Daten nicht " +
       "und nutzen sie nicht für Werbezwecke. Es sind aktuell keine Analyse- oder Tracking-Dienste Dritter " +
       "(z. B. Firebase Analytics) in die App eingebunden.",
   },
   {
-    title: "4. Rechtsgrundlage",
+    title: "5. Rechtsgrundlage",
     body:
       "Die Verarbeitung erfolgt zur Erfüllung des Nutzungsvertrags mit dir (Art. 6 Abs. 1 lit. b DSGVO), " +
       "z. B. um dir dein Konto und die App-Funktionen bereitzustellen.",
   },
   {
-    title: "5. Weitergabe an Dritte",
+    title: "6. Weitergabe an Dritte",
     body:
       "Server-Hosting und Erreichbarkeit der App laufen über [Proxmox-Server-Standort] und werden über " +
       "Cloudflare (Tunnel/DNS) öffentlich erreichbar gemacht. Cloudflare verarbeitet dabei technisch " +
@@ -57,14 +71,14 @@ const SECTIONS: Section[] = [
       "deiner Daten an Dritte findet nicht statt.",
   },
   {
-    title: "6. Speicherdauer & Löschung",
+    title: "7. Speicherdauer & Löschung",
     body:
       "Deine Daten werden gespeichert, solange dein Konto besteht. Du kannst dein Konto jederzeit direkt in " +
       "der App unwiderruflich löschen (Menü → \"Konto endgültig löschen\"). Dabei werden dein Profil, deine " +
       "Getränke-Einträge, Beiträge, Duelle, Nachrichten und Freundschaften entfernt.",
   },
   {
-    title: "7. Deine Rechte",
+    title: "8. Deine Rechte",
     body:
       "Du hast nach der DSGVO das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), " +
       "Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) sowie Widerspruch (Art. 21) " +
@@ -72,7 +86,7 @@ const SECTIONS: Section[] = [
       "Aufsichtsbehörde zu beschweren.",
   },
   {
-    title: "8. Kontakt",
+    title: "9. Kontakt",
     body: "Bei Fragen zum Datenschutz wende dich an: [Kontakt-E-Mail-Adresse].",
   },
   {

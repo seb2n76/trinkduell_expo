@@ -1327,6 +1327,27 @@ export const getRadarLocal = async (username: string): Promise<RadarEntry[]> => 
   });
 };
 
+// Who am I allowed to see on the map: confirmed friends + members of my
+// groups + myself. Mirrors the server-side check in GET /api/map.
+export const resolveMapVisibleUserIds = async (username: string): Promise<Set<string>> => {
+  const visible = await resolveFriendUserIdsLocal(username, true);
+  const myId = await getCurrentUserId();
+  if (myId) visible.add(myId);
+
+  const groups = await getGroups();
+  groups
+    .filter((g) => (g.memberIds || []).includes(myId))
+    .forEach((g) => (g.memberIds || []).forEach((id) => visible.add(id)));
+
+  return visible;
+};
+
+export const getMapCoordinatesLocal = async (username: string): Promise<MapCoordinate[]> => {
+  const visible = await resolveMapVisibleUserIds(username);
+  const all = await getMapCoordinates();
+  return all.filter((entry) => visible.has(entry.userId));
+};
+
 export const getFeedLocal = async (scope: FeedScope, username: string): Promise<FeedItem[]> => {
   const users = await getUsers();
   const logs = await getDrinkLogs();

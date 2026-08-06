@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.seb2n56.TrinkDuell",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "TrinkDuell benötigt Zugriff auf deine Fotos, um dein Profilbild zu setzen.",
-        "NSCameraUsageDescription": "TrinkDuell benötigt Kamerazugriff, um dein Profilbild aufzunehmen."
+        "NSCameraUsageDescription": "TrinkDuell benötigt Kamerazugriff, um dein Profilbild aufzunehmen.",
+        "NSLocationWhenInUseUsageDescription": "TrinkDuell speichert auf Wunsch den Ort deiner Getränke-Einträge, damit du deinen Verlauf auf der Karte siehst und deine Freunde sehen, wo ihr unterwegs seid. Du kannst das jederzeit in den Einstellungen ausschalten."
       }
     },
     "android": {
@@ -26,7 +27,9 @@
       "package": "com.seb2n56.TrinkDuell",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -57,6 +60,12 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#22d3ee"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TrinkDuell speichert auf Wunsch den Ort deiner Getränke-Einträge, damit du deinen Verlauf auf der Karte siehst und deine Freunde sehen, wo ihr unterwegs seid. Du kannst das jederzeit in den Einstellungen ausschalten."
         }
       ]
     ],

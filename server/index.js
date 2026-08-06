@@ -750,10 +750,26 @@ app.get("/api/feed", authenticate, async (req, res) => {
 });
 
 // Get Map Coordinates for last 100 drinks with GPS
+// Map pins. Location data is the most sensitive thing this app stores, so
+// this is strictly limited to people the user actually shares a connection
+// with (confirmed friends + members of their groups) plus themselves.
+// db.getMapCoordinates() deliberately stays unfiltered/low-level — the
+// access decision lives here, next to the authenticated request.
 app.get("/api/map", authenticate, async (req, res) => {
   try {
-    const mappedLogs = await db.getMapCoordinates();
-    res.json(mappedLogs);
+    const [mappedLogs, users, friendships, groups] = await Promise.all([
+      db.getMapCoordinates(),
+      db.getUsers(),
+      db.getFriendships(),
+      db.getGroups(),
+    ]);
+
+    const visibleUserIds = resolveFriendUserIds(req.user, users, friendships);
+    groups
+      .filter((g) => (g.memberIds || []).includes(req.user.id))
+      .forEach((g) => (g.memberIds || []).forEach((id) => visibleUserIds.add(id)));
+
+    res.json(mappedLogs.filter((entry) => visibleUserIds.has(entry.userId)));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

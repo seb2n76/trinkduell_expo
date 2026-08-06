@@ -555,10 +555,10 @@ export const apiService = {
       () => db.getFeedLocal(scope, username)
     ),
 
-  getMap: (): Promise<db.MapCoordinate[]> =>
+  getMap: (username: string): Promise<db.MapCoordinate[]> =>
     executeApiCall(
       () => axiosInstance.get<db.MapCoordinate[]>("/map"),
-      () => db.getMapCoordinates()
+      () => db.getMapCoordinatesLocal(username)
     ),
 
   searchUsers: (query: string): Promise<db.User[]> =>

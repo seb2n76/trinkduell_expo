@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FloatingPointItem, FloatingPointItemType } from "@/components/FloatingPoints";
 import { AchievementModal } from "@/components/AchievementModal";
 import { useAuth } from "../_layout";
+import { getCoordinatesForDrinkLog } from "@/services/location";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -215,17 +216,16 @@ export default function DashboardScreen() {
     return logs.slice(0, 3);
   }, [logs]);
 
-  // Log a drink via direct API POST without location requests
   const handleLogDrink = async (item: { id: string; name: string; volume: number; abv: number; category: Drink["category"] }, pageX?: number, pageY?: number) => {
     const isWater = item.abv === 0;
     const grams = calculateAlcoholGrams(item.volume, item.abv);
 
-    // No GPS location fetched — coordinates sent as null for direct instant backend logging
-    const latitude: number | null = null;
-    const longitude: number | null = null;
-
-
-
+    // Only attaches coordinates when the user picked the "auto" location
+    // mode; returns null in every other case (manual/off, permission
+    // denied, GPS unavailable) so logging never depends on it.
+    const coords = await getCoordinatesForDrinkLog();
+    const latitude: number | null = coords ? coords.latitude : null;
+    const longitude: number | null = coords ? coords.longitude : null;
 
     let resolvedDrinkId = item.id;
 

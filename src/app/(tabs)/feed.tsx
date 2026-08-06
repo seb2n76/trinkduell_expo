@@ -13,8 +13,10 @@ import {
 import { useFocusEffect } from "expo-router";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
-import { User, FeedItem, FeedScope, RadarEntry } from "@/services/mockData";
+import { User, FeedItem, FeedScope, RadarEntry, MapCoordinate } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
+import InteractiveMap from "@/components/InteractiveMap";
+import { getCurrentCoordinates, getLocationMode } from "@/services/location";
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
@@ -35,7 +37,17 @@ const formatLastActivity = (iso: string | null): string => {
   return `vor ${Math.floor(diffH / 24)} Tg.`;
 };
 
-function FriendsRadar({ entries, loading }: { entries: RadarEntry[]; loading: boolean }) {
+function FriendsRadar({
+  entries,
+  loading,
+  mapVisible,
+  onToggleMap,
+}: {
+  entries: RadarEntry[];
+  loading: boolean;
+  mapVisible: boolean;
+  onToggleMap: () => void;
+}) {
   const activeCount = entries.filter((e) => e.status === "active").length;
 
   return (
@@ -112,12 +124,18 @@ function FriendsRadar({ entries, loading }: { entries: RadarEntry[]; loading: bo
         </ScrollView>
       )}
 
-      <View className="flex-row items-center mt-4 pt-3 border-t border-white/5">
-        <Ionicons name="map-outline" size={11} color="#64748b" />
-        <Text className="text-slate-500 text-[9px] font-semibold ml-1.5">
-          GPS-Live-Karte folgt in einem späteren Update
-        </Text>
-      </View>
+      <TouchableOpacity
+        onPress={onToggleMap}
+        className="flex-row items-center justify-between mt-4 pt-3 border-t border-white/5"
+      >
+        <View className="flex-row items-center">
+          <Ionicons name="map-outline" size={13} color="#22d3ee" />
+          <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider ml-1.5">
+            {mapVisible ? "Karte ausblenden" : "Karte anzeigen"}
+          </Text>
+        </View>
+        <Ionicons name={mapVisible ? "chevron-up" : "chevron-down"} size={14} color="#22d3ee" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -130,6 +148,9 @@ export default function LivePulseFeed() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
   const [radarLoading, setRadarLoading] = useState(true);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [mapItems, setMapItems] = useState<MapCoordinate[]>([]);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [scope, setScope] = useState<FeedScope>("friends");
   const [inputText, setInputText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -196,6 +217,32 @@ export default function LivePulseFeed() {
     const interval = setInterval(() => loadFeedData(scope), 15000);
     return () => clearInterval(interval);
   }, [scope]);
+
+  const loadMapData = async () => {
+    try {
+      const me = currentUser || (await apiService.getCurrentUser());
+      if (!me) return;
+      const items = await apiService.getMap(me.name);
+      setMapItems(items);
+
+      // Only center on the live position if the user actually enabled
+      // location — otherwise the map centers on the pins instead.
+      const mode = await getLocationMode();
+      if (mode !== "off") {
+        const coords = await getCurrentCoordinates();
+        if (coords) setUserLocation(coords);
+      }
+    } catch (e) {
+      console.warn("Karte konnte nicht geladen werden:", e);
+    }
+  };
+
+  const handleToggleMap = async () => {
+    await triggerHaptic("light");
+    const next = !mapVisible;
+    setMapVisible(next);
+    if (next) await loadMapData();
+  };
 
   const handleScopeChange = async (nextScope: FeedScope) => {
     if (nextScope === scope) return;
@@ -266,7 +313,24 @@ export default function LivePulseFeed() {
         }
       >
         {/* Freunde-Radar */}
-        <FriendsRadar entries={radarEntries} loading={radarLoading} />
+        <FriendsRadar
+          entries={radarEntries}
+          loading={radarLoading}
+          mapVisible={mapVisible}
+          onToggleMap={handleToggleMap}
+        />
+
+        {/* Karte (OpenStreetMap via Leaflet) */}
+        {mapVisible && (
+          <View className="mb-5 h-[450px]">
+            <InteractiveMap
+              mapItems={mapItems}
+              currentUser={currentUser}
+              userLocation={userLocation}
+              onRefreshMap={loadMapData}
+            />
+          </View>
+        )}
 
         {/* Umschalter: Freunde- vs. Gruppen-Feed */}
         <View className="flex-row bg-slate-900 border border-white/5 rounded-2xl p-1 mb-5">
