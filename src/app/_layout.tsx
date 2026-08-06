@@ -1,7 +1,7 @@
 import "../../global.css";
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { apiService } from "@/services/api";
+import { apiService, cacheUser } from "@/services/api";
 import { User } from "@/services/mockData";
 import { ActivityIndicator, View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -201,6 +201,10 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateUserContext = (updatedUser: User) => {
     setUser(updatedUser);
+    // Keep the session-restore cache current so a reload shortly after any
+    // profile/stat change (drink logged, avatar changed, level up, ...)
+    // shows the latest known state instead of a stale login-time snapshot.
+    cacheUser(updatedUser);
   };
 
   return (

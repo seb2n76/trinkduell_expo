@@ -46,6 +46,35 @@ let isServerOffline = false;
 let lastServerCheckTime = 0;
 const SERVER_CHECK_INTERVAL = 5000; // 5 seconds
 
+const JWT_TOKEN_KEY = "trinkduell_v2_jwt_token";
+const CACHED_USER_KEY = "trinkduell_v2_cached_user";
+
+// Last-known-good user profile, refreshed on every successful login/session
+// check/profile update. Lets getSession() keep a user signed in across a
+// reload even if the server can't be reached right that moment, instead of
+// treating "network hiccup" the same as "your login expired".
+export async function cacheUser(user: db.User): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+  } catch (e) {
+    console.warn("Failed to cache user for session restore:", e);
+  }
+}
+
+async function getCachedUser(): Promise<db.User | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHED_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearStoredSession(): Promise<void> {
+  await AsyncStorage.removeItem(JWT_TOKEN_KEY);
+  await AsyncStorage.removeItem(CACHED_USER_KEY);
+}
+
 /**
  * Executes a network call. If it fails due to connection issues or timeouts,
  * it runs the local database operation instead, enabling offline resilience.
@@ -93,9 +122,18 @@ export const apiService = {
     ),
   
   getCurrentUser: async (): Promise<db.User> => {
+    // "Current user id" is an offline-only concept tracked by the local
+    // mock (see mockLogin/mockRegister) and is never set for a normal
+    // online session — so the online request identifies the caller purely
+    // from their JWT via /users/me instead of a locally-tracked id. Using
+    // GET /users/${currentId} here used to silently request GET /users/
+    // (empty id) for every online session, which Express's non-strict
+    // routing quietly matched to the list-all-users endpoint instead of a
+    // 404 — the whole user list would come back and get treated as if it
+    // were a single user object throughout the app.
     const currentId = await db.getCurrentUserId();
     return executeApiCall(
-      () => axiosInstance.get<db.User>(`/users/${currentId}`),
+      () => axiosInstance.get<db.User>("/users/me"),
       async () => {
         const users = await db.getUsers();
         return users.find((u) => u.id === currentId) || users[0];
@@ -222,27 +260,35 @@ export const apiService = {
     ),
 
   // Auth Operations
-  login: (emailOrUsername: string, password: string): Promise<{ user: db.User; token: string }> =>
-    executeApiCall(
+  login: async (emailOrUsername: string, password: string): Promise<{ user: db.User; token: string }> => {
+    const res = await executeApiCall(
       () => axiosInstance.post<{ user: db.User; token: string }>("/auth/login", { emailOrUsername, password }),
       () => db.mockLogin(emailOrUsername, password)
-    ),
+    );
+    await cacheUser(res.user);
+    return res;
+  },
 
-  register: (username: string, email: string, password: string): Promise<{ user: db.User; token: string }> =>
-    executeApiCall(
+  register: async (username: string, email: string, password: string): Promise<{ user: db.User; token: string }> => {
+    const res = await executeApiCall(
       () => axiosInstance.post<{ user: db.User; token: string }>("/auth/register", { username, email, password }),
       () => db.mockRegister(username, email, password),
       // Queues the ORIGINAL plaintext password (not db.mockRegister's
       // salted-offline-hash) so the eventual sync hits the real
       // /auth/register endpoint exactly like an online signup would.
       () => SyncService.enqueueSyncJob("CREATE_USER", { username, email, password })
-    ),
+    );
+    await cacheUser(res.user);
+    return res;
+  },
 
-  logout: (): Promise<void> =>
-    executeApiCall(
+  logout: async (): Promise<void> => {
+    await executeApiCall(
       () => axiosInstance.post<void>("/auth/logout"),
       () => db.mockLogout()
-    ),
+    );
+    await clearStoredSession();
+  },
 
   // Deliberately bypasses executeApiCall's offline fallback: deleting an
   // account only locally while the real server-side account (and its data)
@@ -264,11 +310,50 @@ export const apiService = {
       () => db.mockResetPassword(email, code, newPassword)
     ),
 
-  getSession: (): Promise<{ user: db.User; token: string } | null> =>
-    executeApiCall(
-      () => axiosInstance.get<{ user: db.User; token: string } | null>("/auth/session"),
-      () => db.mockGetSession()
-    ),
+  // Deliberately doesn't use executeApiCall's generic offline fallback:
+  // db.mockGetSession() only understands locally-issued "mock-jwt-token-*"
+  // strings, so for a real server-issued JWT it would find no match and —
+  // worse — delete the perfectly valid token. A network hiccup during a
+  // page reload must not force a real login out from under the user.
+  getSession: async (): Promise<{ user: db.User; token: string } | null> => {
+    const token = await AsyncStorage.getItem(JWT_TOKEN_KEY);
+    if (!token) return null;
+
+    if (USE_MOCK_ONLY) {
+      return db.mockGetSession();
+    }
+
+    try {
+      const res = await axiosInstance.get<{ user: db.User; token: string }>("/auth/session");
+      await cacheUser(res.data.user);
+      return res.data;
+    } catch (error: any) {
+      if (error?.response?.status === 401) {
+        // Server explicitly rejected the token (expired/deleted account) —
+        // a real logout, not a connectivity issue.
+        await clearStoredSession();
+        return null;
+      }
+
+      console.warn("Could not verify session with server, using cached session:", error);
+      const cachedUser = await getCachedUser();
+      if (cachedUser) {
+        return { user: cachedUser, token };
+      }
+
+      // Locally-issued mock tokens can still be resolved offline. A real
+      // server-issued JWT must NOT be handed to mockGetSession(): it can't
+      // match one against the local mock user list and would delete the
+      // still-valid token as a side effect, logging the user out for good.
+      if (token.startsWith("mock-jwt-token-")) {
+        return db.mockGetSession();
+      }
+
+      // Real token, server unreachable, no cached profile yet: keep the
+      // session and let the caller retry once connectivity returns.
+      return null;
+    }
+  },
 
   uploadAvatar: (userId: string, imageUri: string, base64Data?: string): Promise<{ avatarUrl: string }> =>
     executeApiCall(

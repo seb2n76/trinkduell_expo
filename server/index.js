@@ -284,6 +284,19 @@ app.get("/api/users", authenticate, async (req, res) => {
   }
 });
 
+// Get the authenticated user's own profile, identified purely from the JWT.
+// Registered before /api/users/:id — a client-tracked "current user id" is
+// an offline-only concept and is never set for a normal online session, so
+// callers must never have to already know their own id to ask "who am I".
+app.get("/api/users/me", authenticate, async (req, res) => {
+  const users = await db.getUsers();
+  const user = users.find((u) => u.id === req.userId);
+  if (!user) {
+    return res.status(404).json({ error: "Benutzer nicht gefunden." });
+  }
+  res.json(enrichUserProgress(user));
+});
+
 // Get Specific User
 app.get("/api/users/:id", authenticate, async (req, res) => {
   const users = await db.getUsers();

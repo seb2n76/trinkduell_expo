@@ -235,15 +235,20 @@ export const initDatabase = async (forceReset = false): Promise<void> => {
     try {
       const isInitialized = await AsyncStorage.getItem(KEYS.USERS);
       if (!isInitialized || forceReset) {
-        // Clear old database contents to avoid overlap or partial writes
+        // Clear old mock catalog data to avoid overlap or partial writes.
+        // Deliberately does NOT touch CURRENT_USER_ID/JWT_TOKEN: those
+        // belong to the active session, managed by AuthProvider/apiService,
+        // not to this local mock catalog. A device that only ever
+        // authenticates online never populates KEYS.USERS at all, so this
+        // "fresh install?" check used to look true forever and would wipe
+        // out a perfectly valid online session the moment any unrelated
+        // offline-fallback code path happened to run.
         await AsyncStorage.removeItem(KEYS.USERS);
         await AsyncStorage.removeItem(KEYS.DRINKS);
         await AsyncStorage.removeItem(KEYS.LOGS);
         await AsyncStorage.removeItem(KEYS.GROUPS);
         await AsyncStorage.removeItem(KEYS.EVENTS);
         await AsyncStorage.removeItem(KEYS.POSTS);
-        await AsyncStorage.removeItem(KEYS.CURRENT_USER_ID);
-        await AsyncStorage.removeItem(KEYS.JWT_TOKEN);
         await AsyncStorage.removeItem(KEYS.DUELS);
         await AsyncStorage.removeItem(KEYS.QUESTS);
         await AsyncStorage.removeItem(KEYS.FRIENDS);
@@ -906,11 +911,11 @@ export const mockLogout = async (): Promise<void> => {
 export const mockGetSession = async (): Promise<{ user: User; token: string } | null> => {
   const token = await AsyncStorage.getItem(KEYS.JWT_TOKEN);
   if (!token) return null;
-  
+
   const users = await getUsers();
   const userId = token.replace("mock-jwt-token-", "");
   const user = users.find((u) => u.id === userId);
-  
+
   if (!user) {
     await AsyncStorage.removeItem(KEYS.JWT_TOKEN);
     return null;
