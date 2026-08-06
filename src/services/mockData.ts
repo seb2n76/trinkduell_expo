@@ -1217,3 +1217,177 @@ export const getMapCoordinates = async (): Promise<MapCoordinate[]> => {
 
   return mapped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
+
+// ==========================================
+// 7. Radar & Feed (offline mirrors of the server-side filtering)
+// ==========================================
+
+export type FeedScope = "friends" | "groups";
+
+export interface RadarEntry {
+  id: string;
+  username: string;
+  avatar: string | null;
+  level: number;
+  status: "active" | "recent" | "idle";
+  lastDrinkName: string | null;
+  lastActivity: string | null;
+}
+
+export interface FeedItem {
+  id: string;
+  userId: string;
+  username: string;
+  userAvatar: string | null;
+  drink_name?: string;
+  volume_ml?: number;
+  alcohol_grams?: number;
+  is_water?: boolean;
+  text?: string;
+  latitude: number | null;
+  longitude: number | null;
+  timestamp: string;
+  type: "log" | "post";
+}
+
+// Mirrors server-side resolveFriendUserIds(): friendships are stored by
+// username, so they have to be matched back to user ids.
+const resolveFriendUserIdsLocal = async (
+  username: string,
+  includeSelf: boolean
+): Promise<Set<string>> => {
+  const friendships = await getFriendships();
+  const users = await getUsers();
+  const me = username.toLowerCase();
+
+  const friendUsernames = new Set<string>();
+  friendships.forEach((f) => {
+    if (f.status !== "accepted") return;
+    const sender = (f.sender_username || "").toLowerCase();
+    const receiver = (f.receiver_username || "").toLowerCase();
+    if (sender === me) friendUsernames.add(receiver);
+    else if (receiver === me) friendUsernames.add(sender);
+  });
+
+  const ids = new Set<string>();
+  users.forEach((u) => {
+    if (friendUsernames.has((u.name || "").toLowerCase())) ids.add(u.id);
+    if (includeSelf && (u.name || "").toLowerCase() === me) ids.add(u.id);
+  });
+  return ids;
+};
+
+export const getRadarLocal = async (username: string): Promise<RadarEntry[]> => {
+  const friendIds = await resolveFriendUserIdsLocal(username, false);
+  const users = await getUsers();
+  const logs = await getDrinkLogs();
+  const drinks = await getDrinks();
+
+  const now = Date.now();
+  const ACTIVE_MS = 30 * 60 * 1000;
+  const RECENT_MS = 3 * 60 * 60 * 1000;
+
+  const entries: RadarEntry[] = users
+    .filter((u) => friendIds.has(u.id))
+    .map((u) => {
+      const userLogs = logs.filter((l) => l.userId === u.id);
+      let lastLog: DrinkLog | null = null;
+      for (const log of userLogs) {
+        if (!lastLog || new Date(log.timestamp).getTime() > new Date(lastLog.timestamp).getTime()) {
+          lastLog = log;
+        }
+      }
+
+      const elapsed = lastLog ? now - new Date(lastLog.timestamp).getTime() : null;
+      let status: RadarEntry["status"] = "idle";
+      if (elapsed !== null && elapsed <= ACTIVE_MS) status = "active";
+      else if (elapsed !== null && elapsed <= RECENT_MS) status = "recent";
+
+      const lastDrink = lastLog ? drinks.find((d) => d.id === lastLog!.drinkId) : null;
+
+      return {
+        id: u.id,
+        username: u.name,
+        avatar: u.avatar || null,
+        level: u.level || 1,
+        status,
+        lastDrinkName: lastDrink ? lastDrink.name : null,
+        lastActivity: lastLog ? lastLog.timestamp : null,
+      };
+    });
+
+  const statusRank: Record<RadarEntry["status"], number> = { active: 0, recent: 1, idle: 2 };
+  return entries.sort((a, b) => {
+    if (statusRank[a.status] !== statusRank[b.status]) {
+      return statusRank[a.status] - statusRank[b.status];
+    }
+    const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+    const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+    return bTime - aTime;
+  });
+};
+
+export const getFeedLocal = async (scope: FeedScope, username: string): Promise<FeedItem[]> => {
+  const users = await getUsers();
+  const logs = await getDrinkLogs();
+  const drinks = await getDrinks();
+  const posts = await getPosts();
+  const myId = await getCurrentUserId();
+
+  let visibleUserIds: Set<string>;
+  let postFilter: (p: Post) => boolean;
+
+  if (scope === "groups") {
+    const groups = await getGroups();
+    const myGroups = groups.filter((g) => (g.memberIds || []).includes(myId));
+    const myGroupIds = new Set(myGroups.map((g) => g.id));
+
+    visibleUserIds = new Set<string>();
+    myGroups.forEach((g) => (g.memberIds || []).forEach((id) => visibleUserIds.add(id)));
+    postFilter = (p) => p.contextType === "group" && myGroupIds.has(p.contextId);
+  } else {
+    visibleUserIds = await resolveFriendUserIdsLocal(username, true);
+    if (myId) visibleUserIds.add(myId);
+    postFilter = (p) => visibleUserIds.has(p.userId) || p.userId === "system";
+  }
+
+  const feedLogs: FeedItem[] = logs
+    .filter((l) => visibleUserIds.has(l.userId))
+    .map((log) => {
+      const user = users.find((u) => u.id === log.userId);
+      const drink = drinks.find((d) => d.id === log.drinkId);
+      return {
+        id: log.id,
+        userId: log.userId,
+        username: user ? user.name : "Unbekannt",
+        userAvatar: user ? user.avatar || null : null,
+        drink_name: drink ? drink.name : "Getränk",
+        volume_ml: drink ? drink.volume : 0,
+        alcohol_grams: drink ? Number(calculateAlcoholGrams(drink.volume, drink.abv).toFixed(2)) : 0,
+        is_water: drink ? drink.abv === 0 : false,
+        latitude: null,
+        longitude: null,
+        timestamp: log.timestamp,
+        type: "log" as const,
+      };
+    });
+
+  const feedPosts: FeedItem[] = posts.filter(postFilter).map((post) => {
+    const user = users.find((u) => u.id === post.userId);
+    return {
+      id: post.id,
+      userId: post.userId,
+      username: user ? user.name : post.userId === "system" ? "TrinkDuell" : "System",
+      userAvatar: user ? user.avatar || null : null,
+      text: post.text,
+      latitude: null,
+      longitude: null,
+      timestamp: post.timestamp,
+      type: "post" as const,
+    };
+  });
+
+  return [...feedLogs, ...feedPosts].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+};

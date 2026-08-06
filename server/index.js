@@ -581,7 +581,101 @@ app.get("/api/users/search", authenticate, async (req, res) => {
   }
 });
 
-// Get Live Feed (Friends + Self only)
+// Resolves the confirmed friends of a user to their user ids. Friendships are
+// stored by username (no FK), so they have to be matched back to ids here.
+// Shared by /api/feed and /api/radar so both agree on who counts as a friend.
+function resolveFriendUserIds(currentUser, users, friendships, { includeSelf = true } = {}) {
+  const currentUsername = (currentUser.name || "").toLowerCase();
+  const friendUsernames = new Set();
+
+  friendships.forEach((f) => {
+    if (f.status !== "accepted") return;
+    const sender = (f.sender_username || "").toLowerCase();
+    const receiver = (f.receiver_username || "").toLowerCase();
+    if (sender === currentUsername) friendUsernames.add(receiver);
+    else if (receiver === currentUsername) friendUsernames.add(sender);
+  });
+
+  const friendUserIds = new Set();
+  if (includeSelf) friendUserIds.add(currentUser.id);
+
+  users.forEach((u) => {
+    if (friendUsernames.has((u.name || "").toLowerCase())) {
+      friendUserIds.add(u.id);
+    }
+  });
+
+  return friendUserIds;
+}
+
+// Friends radar: who of my friends is currently active, based on their most
+// recent drink log. Intentionally exposes no coordinates — the GPS map is a
+// separate, later feature with its own privacy considerations.
+app.get("/api/radar", authenticate, async (req, res) => {
+  try {
+    const [logs, users, drinks, friendships] = await Promise.all([
+      db.getLogs(),
+      db.getUsers(),
+      db.getDrinks(),
+      db.getFriendships(),
+    ]);
+
+    const friendIds = resolveFriendUserIds(req.user, users, friendships, { includeSelf: false });
+
+    const now = Date.now();
+    const ACTIVE_MS = 30 * 60 * 1000;
+    const RECENT_MS = 3 * 60 * 60 * 1000;
+
+    const radar = users
+      .filter((u) => friendIds.has(u.id))
+      .map((u) => {
+        const userLogs = logs.filter((l) => l.userId === u.id);
+        let lastLog = null;
+        for (const log of userLogs) {
+          if (!lastLog || new Date(log.timestamp).getTime() > new Date(lastLog.timestamp).getTime()) {
+            lastLog = log;
+          }
+        }
+
+        const lastActivityMs = lastLog ? new Date(lastLog.timestamp).getTime() : null;
+        const elapsed = lastActivityMs === null ? null : now - lastActivityMs;
+
+        let status = "idle";
+        if (elapsed !== null && elapsed <= ACTIVE_MS) status = "active";
+        else if (elapsed !== null && elapsed <= RECENT_MS) status = "recent";
+
+        const lastDrink = lastLog ? drinks.find((d) => d.id === lastLog.drinkId) : null;
+
+        return {
+          id: u.id,
+          username: u.name,
+          avatar: u.avatar || null,
+          level: u.level || 1,
+          status,
+          lastDrinkName: lastDrink ? lastDrink.name : null,
+          lastActivity: lastLog ? lastLog.timestamp : null,
+        };
+      });
+
+    // Most recently active first, friends who never logged anything last.
+    const statusRank = { active: 0, recent: 1, idle: 2 };
+    radar.sort((a, b) => {
+      if (statusRank[a.status] !== statusRank[b.status]) {
+        return statusRank[a.status] - statusRank[b.status];
+      }
+      const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+      const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    res.json(radar);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Live Feed. scope=friends (default) -> confirmed friends + self,
+// scope=groups -> members of the groups I'm in, plus that group's posts.
 app.get("/api/feed", authenticate, async (req, res) => {
   try {
     const logs = await db.getLogs();
@@ -590,29 +684,30 @@ app.get("/api/feed", authenticate, async (req, res) => {
     const posts = await db.getPosts();
     const friendships = await db.getFriendships();
 
-    const currentUsername = (req.user.name || "").toLowerCase();
-    const friendUsernames = new Set();
-    friendships.forEach((f) => {
-      if (f.status === "accepted") {
-        if ((f.sender_username || "").toLowerCase() === currentUsername) {
-          friendUsernames.add((f.receiver_username || "").toLowerCase());
-        } else if ((f.receiver_username || "").toLowerCase() === currentUsername) {
-          friendUsernames.add((f.sender_username || "").toLowerCase());
-        }
-      }
-    });
+    const scope = req.query.scope === "groups" ? "groups" : "friends";
 
-    const friendUserIds = new Set();
-    friendUserIds.add(req.user.id);
+    let visibleUserIds;
+    let visiblePostFilter;
 
-    users.forEach((u) => {
-      if (friendUsernames.has((u.name || "").toLowerCase())) {
-        friendUserIds.add(u.id);
-      }
-    });
+    if (scope === "groups") {
+      const groups = await db.getGroups();
+      const myGroups = groups.filter((g) => (g.memberIds || []).includes(req.user.id));
+      const myGroupIds = new Set(myGroups.map((g) => g.id));
+
+      visibleUserIds = new Set();
+      myGroups.forEach((g) => (g.memberIds || []).forEach((id) => visibleUserIds.add(id)));
+
+      // Only posts actually belonging to one of my groups.
+      visiblePostFilter = (p) => p.contextType === "group" && myGroupIds.has(p.contextId);
+    } else {
+      visibleUserIds = resolveFriendUserIds(req.user, users, friendships);
+      visiblePostFilter = (p) => visibleUserIds.has(p.userId) || p.userId === "system";
+    }
+
+    const friendUserIds = visibleUserIds;
 
     const filteredLogs = logs.filter((l) => friendUserIds.has(l.userId));
-    const filteredPosts = posts.filter((p) => friendUserIds.has(p.userId) || p.userId === "system");
+    const filteredPosts = posts.filter(visiblePostFilter);
 
     const feedLogs = filteredLogs.map((log) => {
       const user = users.find((u) => u.id === log.userId);

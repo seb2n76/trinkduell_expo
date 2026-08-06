@@ -540,6 +540,21 @@ export const apiService = {
       () => db.getFriends(username)
     ),
 
+  // Both fall back to a local mirror of the server's filtering (see
+  // getRadarLocal/getFeedLocal). The feed fallback used to skip filtering
+  // entirely and show every user's activity to everyone.
+  getRadar: (username: string): Promise<db.RadarEntry[]> =>
+    executeApiCall(
+      () => axiosInstance.get<db.RadarEntry[]>("/radar"),
+      () => db.getRadarLocal(username)
+    ),
+
+  getFeed: (scope: db.FeedScope, username: string): Promise<db.FeedItem[]> =>
+    executeApiCall(
+      () => axiosInstance.get<db.FeedItem[]>(`/feed?scope=${scope}`),
+      () => db.getFeedLocal(scope, username)
+    ),
+
   getMap: (): Promise<db.MapCoordinate[]> =>
     executeApiCall(
       () => axiosInstance.get<db.MapCoordinate[]>("/map"),
