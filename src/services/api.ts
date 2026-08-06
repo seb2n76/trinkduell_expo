@@ -8,7 +8,11 @@ import { Platform } from "react-native";
 // Define standard Axios instance
 const axiosInstance = axios.create({
   baseURL: `${API_URL}/api`,
-  timeout: 1500, // Fail-fast on festivals or low bandwidth
+  // Generous enough for a real deployed path (Netlify/native client -> Cloudflare
+  // Tunnel -> home Proxmox server), which routinely sees 200-600ms round trips
+  // plus occasional cold-connect spikes. The old 1500ms was tuned for a
+  // same-venue festival LAN and was tripping on completely healthy requests.
+  timeout: 8000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -33,10 +37,14 @@ axiosInstance.interceptors.request.use(
 );
 
 
-// Circuit Breaker state to prevent network timeout lags when server is offline
+// Circuit Breaker state to prevent network timeout lags when server is offline.
+// Kept short on purpose: this used to be 30s, which meant a single slow
+// request would silently push the ENTIRE app (every screen, every device)
+// into local-only mode for half a minute — the direct cause of devices
+// drifting out of sync with each other and with the server.
 let isServerOffline = false;
 let lastServerCheckTime = 0;
-const SERVER_CHECK_INTERVAL = 30000; // 30 seconds
+const SERVER_CHECK_INTERVAL = 5000; // 5 seconds
 
 /**
  * Executes a network call. If it fails due to connection issues or timeouts,

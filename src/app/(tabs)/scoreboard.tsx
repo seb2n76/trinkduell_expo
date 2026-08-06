@@ -142,6 +142,13 @@ export default function ScoreboardScreen() {
     }, [])
   );
 
+  // Ranks change as other people log drinks — poll while mounted so this
+  // doesn't need a manual pull-to-refresh to feel current.
+  useEffect(() => {
+    const interval = setInterval(() => loadData(), 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handlePeriodChange = async (newPeriod: PeriodType) => {
     if (period !== newPeriod) {
       await triggerHaptic("medium");

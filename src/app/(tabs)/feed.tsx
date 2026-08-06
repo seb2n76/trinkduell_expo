@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Text,
   View,
@@ -225,6 +225,13 @@ export default function LivePulseFeed() {
       loadFeedData();
     }, [])
   );
+
+  // Other people's activity doesn't otherwise show up until you leave and
+  // re-enter this tab — poll while it's mounted so it feels live.
+  useEffect(() => {
+    const interval = setInterval(loadFeedData, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
