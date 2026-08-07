@@ -163,7 +163,10 @@ app.post("/api/auth/register", async (req, res) => {
     name: username,
     email: email,
     password: hashedPassword,
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
+    // No default photo: the client renders initials when this is empty.
+    // Previously every new account got the same stock photo of a stranger,
+    // which read as a real profile picture and was confusing.
+    avatar: null,
     title: "Neuling",
     selected_title: "Neuling",
     rank: "Unranked",
@@ -297,6 +300,19 @@ app.get("/api/users/me", authenticate, async (req, res) => {
   res.json(enrichUserProgress(user));
 });
 
+// Search Users. MUST stay above /api/users/:id — Express matches routes in
+// registration order, so otherwise "search" is parsed as a user id and the
+// request 404s instead of searching (same trap as /api/users/me).
+app.get("/api/users/search", authenticate, async (req, res) => {
+  try {
+    const q = req.query.q || "";
+    const users = await db.searchUsers(q);
+    res.json(users.map(enrichUserProgress));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get Specific User
 app.get("/api/users/:id", authenticate, async (req, res) => {
   const users = await db.getUsers();
@@ -323,7 +339,12 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
   // Update properties
   const { name, avatar, title, selected_title } = req.body;
   if (name !== undefined) user.name = name;
-  if (avatar !== undefined) user.avatar = avatar;
+  // Only overwrite the avatar with an actual value. Clients send the whole
+  // user object on updates (e.g. a rename), and any object that happened to
+  // carry an empty/null avatar used to wipe the stored profile picture —
+  // users had to re-upload it. There is no "remove avatar" feature, so an
+  // empty value here always means "unchanged", never "delete".
+  if (avatar) user.avatar = avatar;
   if (title !== undefined) user.title = title;
   if (selected_title !== undefined) user.selected_title = selected_title;
 
@@ -563,19 +584,19 @@ app.post("/api/logs", authenticate, async (req, res) => {
 // Delete a Log
 app.delete("/api/logs/:id", authenticate, async (req, res) => {
   try {
+    // Without this check any authenticated user could delete anyone else's
+    // drink logs just by guessing an id — and thereby change their score.
+    const logs = await db.getLogs();
+    const log = logs.find((l) => l.id === req.params.id);
+    if (!log) {
+      return res.status(404).json({ error: "Eintrag nicht gefunden." });
+    }
+    if (log.userId !== req.userId) {
+      return res.status(403).json({ error: "Du kannst nur deine eigenen Einträge löschen." });
+    }
+
     await db.deleteLog(req.params.id);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Search Users
-app.get("/api/users/search", authenticate, async (req, res) => {
-  try {
-    const q = req.query.q || "";
-    const users = await db.searchUsers(q);
-    res.json(users.map(enrichUserProgress));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -20,6 +20,7 @@ import { User, Duel, Group } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "@/services/config";
+import { Avatar } from "@/components/Avatar";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -1169,13 +1170,11 @@ export default function GamesScreen() {
                   <View key={d.id} className="bg-white/5 border border-white/10 p-5 rounded-3xl mb-4">
                     <View className="flex-row justify-between items-center mb-3">
                       <View className="flex-row items-center space-x-2.5">
-                        <Image
-                          source={{
-                            uri:
-                              opponentUser?.avatar ||
-                              "https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=150&q=80",
-                          }}
-                          className="w-9 h-9 rounded-full border border-white/10"
+                        <Avatar
+                          uri={opponentUser?.avatar}
+                          name={opponentUser?.name}
+                          size={36}
+                          className="border border-white/10"
                         />
                         <View className="ml-2.5">
                           <Text className="text-white text-xs font-black">{opponentUser?.name}</Text>

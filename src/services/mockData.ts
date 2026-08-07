@@ -834,7 +834,7 @@ export const mockRegister = async (
     name: username,
     email: email,
     password: await hashPasswordOffline(password),
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", // Default avatar
+    avatar: undefined, // No default photo — the UI renders initials instead
     title: "Trink-Anfänger",
     selected_title: "Der Neuling", // Initial start title assignment!
     rank: "Unranked",

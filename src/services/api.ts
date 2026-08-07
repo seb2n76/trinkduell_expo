@@ -413,20 +413,27 @@ export const apiService = {
           }
         }
 
-        if (user) {
+        // On web a blob: URL is only valid for the current page load, so
+        // persisting it would show a broken image after the next reload —
+        // which looked like the profile picture had vanished.
+        const isEphemeralUri = savedUrl.startsWith("blob:");
+        if (user && !isEphemeralUri) {
           user.avatar = savedUrl;
           await db.updateUser(user);
         }
-        return { avatarUrl: savedUrl };
+        return { avatarUrl: isEphemeralUri ? user?.avatar || "" : savedUrl };
       },
       () => {
-        // Enqueue user update for the avatar image data
+        // Only queue a self-contained data URL. A blob:/file: URI is local to
+        // this device (and on web dies on the next reload), so syncing one
+        // would store a permanently broken image reference server-side.
+        if (!base64Data) return;
         SyncService.enqueueSyncJob("UPDATE_USER", {
           userId,
           user: {
             id: userId,
-            avatar: base64Data ? `data:image/jpeg;base64,${base64Data}` : imageUri
-          }
+            avatar: `data:image/jpeg;base64,${base64Data}`,
+          },
         });
       }
     ),

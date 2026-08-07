@@ -9,6 +9,7 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 
@@ -72,6 +73,16 @@ export default function DashboardScreen() {
   const formAbvNum = parseFloat(formAbv.replace(",", "."));
   const isValuesTooHigh = (!isNaN(formVolNum) && formVolNum > 3000) || (!isNaN(formAbvNum) && formAbvNum > 80);
 
+  // Alert.alert is a no-op on react-native-web — without this, errors and
+  // confirmations were completely invisible in the browser.
+  const notify = (title: string, message: string) => {
+    if (Platform.OS === "web") {
+      window.alert(message);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
   const handleLevelUp = async () => {
     setIsLevelingUp(true);
     try {
@@ -84,7 +95,7 @@ export default function DashboardScreen() {
     } catch (error) {
       await triggerHaptic("error");
       console.error("Failed to level up user:", error);
-      Alert.alert("Fehler", "Level-Up konnte nicht bestätigt werden.");
+      notify("Fehler", "Level-Up konnte nicht bestätigt werden.");
     } finally {
       setIsLevelingUp(false);
     }
@@ -299,10 +310,7 @@ export default function DashboardScreen() {
     } catch (error) {
       await triggerHaptic("error");
       console.error("Failed to log drink:", error);
-      Alert.alert(
-        "Fehler beim Loggen",
-        "Das Getränk konnte weder online noch offline geloggt werden. Bitte versuche es erneut."
-      );
+      notify("Fehler beim Loggen", "Das Getränk konnte weder online noch offline geloggt werden. Bitte versuche es erneut.");
     }
   };
 
@@ -338,10 +346,7 @@ export default function DashboardScreen() {
     } catch (error) {
       await triggerHaptic("error");
       console.error("Failed to delete drink log:", error);
-      Alert.alert(
-        "Fehler beim Löschen",
-        "Der Eintrag konnte weder online noch offline gelöscht werden. Bitte versuche es erneut."
-      );
+      notify("Fehler beim Löschen", "Der Eintrag konnte weder online noch offline gelöscht werden. Bitte versuche es erneut.");
     }
   };
 
@@ -349,7 +354,7 @@ export default function DashboardScreen() {
   const handleCreateCustomDrink = async () => {
     if (!formName || !formVolume || !formAbv) {
       await triggerHaptic("error");
-      Alert.alert("Eingabe ungültig", "Bitte fülle Name, Volumen und Alkoholgehalt aus!");
+      notify("Eingabe ungültig", "Bitte fülle Name, Volumen und Alkoholgehalt aus!");
       return;
     }
 
@@ -380,7 +385,7 @@ export default function DashboardScreen() {
       setActiveCategory(formCategory as "Bier" | "Wein" | "Mischgetränk" | "Alkoholfrei");
     } catch (err) {
       console.error("Failed to create custom drink:", err);
-      Alert.alert("Fehler", "Getränk konnte nicht gespeichert werden.");
+      notify("Fehler", "Getränk konnte nicht gespeichert werden.");
     }
   };
 
@@ -403,16 +408,21 @@ export default function DashboardScreen() {
     }
   };
 
-  // Ask before deleting a drink log
+  // Ask before deleting a drink log.
+  // Alert.alert is a no-op on react-native-web, so the dialog never showed
+  // and deleting a drink silently did nothing in the browser.
   const handleToggleDeletePrompt = (logId: string, drinkName: string) => {
-    Alert.alert(
-      "Drink löschen",
-      `Möchtest du "${drinkName}" wirklich aus deiner Tagesliste stornieren?`,
-      [
-        { text: "Abbrechen", style: "cancel" },
-        { text: "Löschen", style: "destructive", onPress: () => handleDeleteLog(logId) }
-      ]
-    );
+    const message = `Möchtest du "${drinkName}" wirklich aus deiner Tagesliste stornieren?`;
+
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) handleDeleteLog(logId);
+      return;
+    }
+
+    Alert.alert("Drink löschen", message, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Löschen", style: "destructive", onPress: () => handleDeleteLog(logId) }
+    ]);
   };
 
   // Dynamic layout calculations for responsive columns (3 or 4 columns)

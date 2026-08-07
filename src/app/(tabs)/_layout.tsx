@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
 import { User, Drink, DrinkLog, DirectMessage, Group } from "@/services/mockData";
 import * as ImagePicker from "expo-image-picker";
+import { Avatar } from "@/components/Avatar";
 import {
   LocationMode,
   DEFAULT_LOCATION_MODE,
@@ -135,25 +136,36 @@ export default function TabsLayout() {
     }
   };
 
+  // Alert.alert does nothing on react-native-web, so every confirmation and
+  // error message here was invisible in the browser — actions appeared to do
+  // nothing at all.
+  const notify = (title: string, message: string) => {
+    if (Platform.OS === "web") {
+      window.alert(message);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
   const handleSendFriendRequest = async (targetUsername?: string) => {
     const receiver = targetUsername || friendSearchQuery.trim();
     if (!dbUser || !receiver) return;
     if (receiver.toLowerCase() === dbUser.name.toLowerCase()) {
-      Alert.alert("Fehler", "Du kannst dir nicht selbst eine Anfrage schicken!");
+      notify("Fehler", "Du kannst dir nicht selbst eine Anfrage schicken!");
       return;
     }
 
     try {
       await triggerHaptic("success");
       await apiService.sendFriendRequest(dbUser.name, receiver);
-      Alert.alert("Erfolg", `Freundschaftsanfrage an ${receiver} gesendet!`);
+      notify("Erfolg", `Freundschaftsanfrage an ${receiver} gesendet!`);
       setFriendSearchQuery("");
       setSearchResults([]);
       await loadFriendsData();
     } catch (e) {
       await triggerHaptic("error");
       const msg = e instanceof Error ? e.message : "Anfrage konnte nicht gesendet werden.";
-      Alert.alert("Fehler", msg);
+      notify("Fehler", msg);
     }
   };
 
@@ -162,12 +174,12 @@ export default function TabsLayout() {
     try {
       await triggerHaptic("success");
       await apiService.acceptFriendRequest(senderName, dbUser.name);
-      Alert.alert("Erfolg", `Freundschaftsanfrage von ${senderName} angenommen!`);
+      notify("Erfolg", `Freundschaftsanfrage von ${senderName} angenommen!`);
       await loadFriendsData();
     } catch (e) {
       await triggerHaptic("error");
       const msg = e instanceof Error ? e.message : "Anfrage konnte nicht angenommen werden.";
-      Alert.alert("Fehler", msg);
+      notify("Fehler", msg);
     }
   };
 
@@ -200,25 +212,25 @@ export default function TabsLayout() {
       });
       setChatMessages((prev) => [...prev, newMsg]);
     } catch (e) {
-      Alert.alert("Fehler", "Nachricht konnte nicht gesendet werden.");
+      notify("Fehler", "Nachricht konnte nicht gesendet werden.");
     }
   };
 
   // Group Creation
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) {
-      Alert.alert("Fehler", "Bitte gib einen Gruppen-Namen ein!");
+      notify("Fehler", "Bitte gib einen Gruppen-Namen ein!");
       return;
     }
     try {
       await triggerHaptic("success");
       await apiService.createGroup(newGroupName.trim(), selectedMemberIds);
-      Alert.alert("Erfolg", `Gruppe "${newGroupName.trim()}" wurde erstellt!`);
+      notify("Erfolg", `Gruppe "${newGroupName.trim()}" wurde erstellt!`);
       setShowCreateGroupModal(false);
       setNewGroupName("");
       setSelectedMemberIds([]);
     } catch (e) {
-      Alert.alert("Fehler", "Gruppe konnte nicht erstellt werden.");
+      notify("Fehler", "Gruppe konnte nicht erstellt werden.");
     }
   };
 
@@ -669,9 +681,11 @@ export default function TabsLayout() {
                     {/* User profile details box */}
                     <View className="items-center bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-6 relative">
                       <TouchableOpacity onPress={handlePickAvatar} className="relative active:scale-95 mb-3">
-                        <Image
-                          source={{ uri: dbUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80" }}
-                          className="w-16 h-16 rounded-full border border-slate-700"
+                        <Avatar
+                          uri={dbUser.avatar}
+                          name={dbUser.name}
+                          size={64}
+                          className="border border-slate-700"
                         />
                         <View className="absolute bottom-0 right-0 bg-cyan-400 p-1 rounded-full border border-slate-900">
                           <Ionicons name="camera" size={12} color="#020617" />
@@ -1042,68 +1056,109 @@ export default function TabsLayout() {
 
             {/* Friend Request & Live User Search Input */}
             <View className="bg-slate-950/80 border border-white/5 rounded-2xl p-4 mb-4">
-              <Text className="text-slate-400 text-[9px] font-black uppercase mb-2">Nutzer oder @username suchen</Text>
-              <View className="flex-row space-x-2">
+              <Text className="text-slate-400 text-[9px] font-black uppercase mb-2">Nutzer suchen</Text>
+              <View className="flex-row items-center bg-slate-900 border border-white/5 rounded-xl px-3">
+                <Ionicons name="search" size={14} color="#64748b" />
                 <TextInput
-                  placeholder="Name oder @username eingeben..."
+                  placeholder="Name eingeben..."
                   placeholderTextColor="#475569"
                   value={friendSearchQuery}
                   onChangeText={setFriendSearchQuery}
-                  className="flex-1 bg-slate-900 border border-white/5 rounded-xl px-3 py-2.5 text-white text-xs font-bold"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  className="flex-1 py-2.5 px-2 text-white text-xs font-bold"
                 />
-                {isSearching ? (
-                  <View className="px-3 items-center justify-center">
-                    <ActivityIndicator size="small" color="#c084fc" />
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => handleSendFriendRequest()}
-                    className="bg-purple-500 px-4 rounded-xl items-center justify-center active:scale-95"
-                  >
-                    <Ionicons name="person-add" size={14} color="#020617" />
+                {isSearching && <ActivityIndicator size="small" color="#c084fc" />}
+                {!isSearching && friendSearchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setFriendSearchQuery("")} className="p-1">
+                    <Ionicons name="close-circle" size={16} color="#475569" />
                   </TouchableOpacity>
                 )}
               </View>
+              <Text className="text-slate-500 text-[9px] mt-2">
+                Tippe einen Namen — passende Nutzer erscheinen automatisch.
+              </Text>
             </View>
 
             <ScrollView className="flex-1 mb-2" showsVerticalScrollIndicator={false}>
               {/* Live Search Results Section */}
-              {searchResults.length > 0 && (
+              {/* Suchvorschläge (erscheinen live beim Tippen) */}
+              {friendSearchQuery.trim().length > 0 && (
                 <View className="mb-6">
                   <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider mb-3">
-                    Suchergebnisse ({searchResults.length})
+                    {isSearching
+                      ? "Suche..."
+                      : searchResults.length > 0
+                      ? `Vorschläge (${searchResults.length})`
+                      : "Keine Treffer"}
                   </Text>
-                  {searchResults.map((resUser) => (
-                    <View
-                      key={resUser.id}
-                      className="bg-slate-950/80 border border-cyan-500/20 rounded-2xl p-3 flex-row justify-between items-center mb-2"
-                    >
-                      <View className="flex-row items-center space-x-3 flex-1 mr-2">
-                        {resUser.avatar ? (
-                          <Image source={{ uri: resUser.avatar }} className="w-9 h-9 rounded-full border border-white/10" />
-                        ) : (
-                          <View className="w-9 h-9 rounded-full bg-slate-900 border border-white/10 items-center justify-center">
-                            <Text className="text-cyan-400 font-black text-xs">
-                              {resUser.name.substring(0, 2).toUpperCase()}
+
+                  {!isSearching && searchResults.length === 0 && (
+                    <View className="bg-slate-950/60 border border-white/5 rounded-2xl p-4">
+                      <Text className="text-slate-400 text-[11px] text-center leading-relaxed">
+                        Niemand mit diesem Namen gefunden. Achte auf die genaue Schreibweise — der Name
+                        muss so eingegeben werden, wie er bei der Registrierung gewählt wurde.
+                      </Text>
+                    </View>
+                  )}
+
+                  {searchResults.map((resUser) => {
+                    const alreadyFriend = friendsList.some((f) => f.id === resUser.id);
+                    const incomingRequest = pendingRequests.some((p) => p.id === resUser.id);
+
+                    return (
+                      <View
+                        key={resUser.id}
+                        className="bg-slate-950/80 border border-cyan-500/20 rounded-2xl p-3 flex-row justify-between items-center mb-2"
+                      >
+                        <View className="flex-row items-center flex-1 mr-2">
+                          <Avatar
+                            uri={resUser.avatar}
+                            name={resUser.name}
+                            size={36}
+                            className="border border-white/10"
+                          />
+                          <View className="flex-1 ml-3">
+                            <Text className="text-white text-xs font-black" numberOfLines={1}>
+                              {resUser.name}
+                            </Text>
+                            <Text className="text-cyan-400/90 text-[10px] font-bold">
+                              Lv. {resUser.currentLevel || resUser.level || 1} · {resUser.title || "Neuling"}
                             </Text>
                           </View>
-                        )}
-                        <View className="flex-1">
-                          <Text className="text-white text-xs font-black" numberOfLines={1}>{resUser.name}</Text>
-                          <Text className="text-cyan-400/90 text-[10px] font-bold">
-                            @{resUser.name.toLowerCase().replace(/\s+/g, "_")}
-                          </Text>
                         </View>
+
+                        {alreadyFriend ? (
+                          <View className="flex-row items-center px-3 py-1.5">
+                            <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+                            <Text className="text-emerald-400 font-black text-[10px] uppercase ml-1">
+                              Befreundet
+                            </Text>
+                          </View>
+                        ) : incomingRequest ? (
+                          <TouchableOpacity
+                            onPress={() => handleAcceptFriendRequest(resUser.name)}
+                            className="bg-purple-500 px-3 py-1.5 rounded-xl flex-row items-center"
+                          >
+                            <Ionicons name="checkmark" size={12} color="#020617" />
+                            <Text className="text-slate-950 font-black text-[10px] uppercase ml-1">
+                              Annehmen
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => handleSendFriendRequest(resUser.name)}
+                            className="bg-cyan-400 px-3 py-1.5 rounded-xl flex-row items-center"
+                          >
+                            <Ionicons name="person-add" size={12} color="#020617" />
+                            <Text className="text-slate-950 font-black text-[10px] uppercase ml-1">
+                              Anfragen
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                      <TouchableOpacity
-                        onPress={() => handleSendFriendRequest(resUser.name)}
-                        className="bg-cyan-400 px-3 py-1.5 rounded-xl flex-row items-center space-x-1"
-                      >
-                        <Ionicons name="person-add" size={12} color="#020617" />
-                        <Text className="text-slate-950 font-black text-[10px] uppercase">Anfragen</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
 
@@ -1123,15 +1178,7 @@ export default function TabsLayout() {
                           className="bg-slate-950/60 border border-purple-500/10 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
                         >
                           <View className="flex-row items-center space-x-3 flex-1 mr-2">
-                            {req.avatar ? (
-                              <Image source={{ uri: req.avatar }} className="w-8 h-8 rounded-full border border-white/10" />
-                            ) : (
-                              <View className="w-8 h-8 rounded-full bg-slate-900 border border-white/5 items-center justify-center">
-                                <Text className="text-white text-xs font-black">
-                                  {req.name.substring(0, 2).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
+                            <Avatar uri={req.avatar} name={req.name} size={32} className="border border-white/10" />
                             <View className="flex-1">
                               <Text className="text-white text-xs font-black">{req.name}</Text>
                               <Text className="text-purple-400 text-[9px] font-bold">@{req.name.toLowerCase().replace(/\s+/g, "_")}</Text>
@@ -1163,15 +1210,7 @@ export default function TabsLayout() {
                         className="bg-slate-950/60 border border-white/5 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
                       >
                         <View className="flex-row items-center space-x-3 flex-1 mr-2">
-                          {friend.avatar ? (
-                            <Image source={{ uri: friend.avatar }} className="w-9 h-9 rounded-full border border-white/10" />
-                          ) : (
-                            <View className="w-9 h-9 rounded-full bg-slate-900 border border-white/5 items-center justify-center">
-                              <Text className="text-white text-xs font-black">
-                                {friend.name.substring(0, 2).toUpperCase()}
-                              </Text>
-                            </View>
-                          )}
+                          <Avatar uri={friend.avatar} name={friend.name} size={36} className="border border-white/10" />
                           <View className="flex-1">
                             <Text className="text-white text-xs font-black" numberOfLines={1}>{friend.name}</Text>
                             <Text className="text-cyan-400 text-[9px] font-bold mt-0.5">@{friend.name.toLowerCase().replace(/\s+/g, "_")}</Text>
@@ -1210,15 +1249,12 @@ export default function TabsLayout() {
             {/* Header */}
             <View className="flex-row justify-between items-center pb-4 border-b border-white/10 mb-4">
               <View className="flex-row items-center space-x-3">
-                {chatTargetUser?.avatar ? (
-                  <Image source={{ uri: chatTargetUser.avatar }} className="w-9 h-9 rounded-full border border-cyan-400" />
-                ) : (
-                  <View className="w-9 h-9 rounded-full bg-slate-900 border border-cyan-400 items-center justify-center">
-                    <Text className="text-cyan-400 font-black text-xs">
-                      {(chatTargetUser?.name || chatTargetGroup?.name || "C").substring(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
+                <Avatar
+                  uri={chatTargetUser?.avatar}
+                  name={chatTargetUser?.name || chatTargetGroup?.name}
+                  size={36}
+                  className="border border-cyan-400"
+                />
                 <View>
                   <Text className="text-white font-black text-sm">
                     {chatTargetUser ? chatTargetUser.name : chatTargetGroup?.name}

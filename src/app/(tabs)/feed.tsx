@@ -16,6 +16,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { User, FeedItem, FeedScope, RadarEntry, MapCoordinate } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import InteractiveMap from "@/components/InteractiveMap";
+import { Avatar } from "@/components/Avatar";
 import { getCurrentCoordinates, getLocationMode } from "@/services/location";
 
 // ─────────────────────────────────────────────
@@ -92,20 +93,12 @@ function FriendsRadar({
             return (
               <View key={entry.id} className="items-center mx-1.5 w-20">
                 <View className="relative">
-                  {entry.avatar ? (
-                    <Image
-                      source={{ uri: entry.avatar }}
-                      className={`w-14 h-14 rounded-full border-2 ${style.ring}`}
-                    />
-                  ) : (
-                    <View
-                      className={`w-14 h-14 rounded-full border-2 bg-slate-900 items-center justify-center ${style.ring}`}
-                    >
-                      <Text className="text-white text-sm font-black">
-                        {entry.username.substring(0, 2).toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
+                  <Avatar
+                    uri={entry.avatar}
+                    name={entry.username}
+                    size={56}
+                    className={`border-2 ${style.ring}`}
+                  />
                   <View
                     style={{ backgroundColor: style.dot }}
                     className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-slate-900"
@@ -371,13 +364,11 @@ export default function LivePulseFeed() {
               Status teilen
             </Text>
             <View className="flex-row items-center space-x-3">
-              <Image
-                source={{
-                  uri:
-                    currentUser.avatar ||
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-                }}
-                className="w-9 h-9 rounded-full border border-white/10"
+              <Avatar
+                uri={currentUser.avatar}
+                name={currentUser.name}
+                size={36}
+                className="border border-white/10"
               />
               <TextInput
                 placeholder="Was geht ab bei dir?..."
@@ -445,13 +436,11 @@ export default function LivePulseFeed() {
                       <Ionicons name="sparkles" size={18} color="#fbbf24" />
                     </View>
                   ) : (
-                    <Image
-                      source={{
-                        uri:
-                          item.userAvatar ||
-                          "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-                      }}
-                      className="w-10 h-10 rounded-full border border-white/10"
+                    <Avatar
+                      uri={item.userAvatar}
+                      name={item.username}
+                      size={40}
+                      className="border border-white/10"
                     />
                   )}
                   <View className="flex-1">
@@ -505,13 +494,11 @@ export default function LivePulseFeed() {
                 key={item.id}
                 className="bg-white/5 border border-white/10 p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
               >
-                <Image
-                  source={{
-                    uri:
-                      item.userAvatar ||
-                      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-                  }}
-                  className="w-10 h-10 rounded-full border border-white/10"
+                <Avatar
+                  uri={item.userAvatar}
+                  name={item.username}
+                  size={40}
+                  className="border border-white/10"
                 />
                 <View className="flex-1">
                   <View className="flex-row items-center justify-between flex-wrap mb-1">
