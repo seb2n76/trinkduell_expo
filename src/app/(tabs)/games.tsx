@@ -20,6 +20,10 @@ import { User, Duel, Group } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "@/services/config";
+import { NeverHaveIEver } from "@/components/games/NeverHaveIEver";
+import { WhoWouldRather } from "@/components/games/WhoWouldRather";
+import { WordBomb } from "@/components/games/WordBomb";
+import { Busfahrer } from "@/components/games/Busfahrer";
 import { Avatar } from "@/components/Avatar";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -144,6 +148,109 @@ const SKULL_RULES_SPICY: Record<string, SkullRule> = {
   "A": { value: "A", name: "Strip-Wasserfall", desc: "Wasserfall, bei dem der Erste, der aufhört zu trinken, ein Kleidungsstück abgeben muss." },
 };
 
+// Katalog aller Spiele — steuert die Übersicht. Neue Spiele nur hier
+// eintragen und die zugehörige Komponente unten einhängen.
+interface GameCatalogEntry {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  badge?: string;
+}
+
+const GAME_CATALOG: { category: string; games: GameCatalogEntry[] }[] = [
+  {
+    category: "Reden & Lachen",
+    games: [
+      {
+        id: "neverhave",
+        title: "Ich hab noch nie",
+        description: "Der Klassiker. Wer es schon gemacht hat, nimmt einen Schluck.",
+        icon: "chatbubbles-outline",
+        color: "#38bdf8",
+        badge: "Neu",
+      },
+      {
+        id: "whowould",
+        title: "Wer würde eher",
+        description: "Abstimmen, wer am ehesten — die Mehrheit trinkt.",
+        icon: "people-outline",
+        color: "#c084fc",
+        badge: "Neu",
+      },
+      {
+        id: "truth",
+        title: "Wahrheit / Pflicht",
+        description: "Flaschendrehen mit Fragen und Aufgaben.",
+        icon: "wine-outline",
+        color: "#a855f7",
+      },
+    ],
+  },
+  {
+    category: "Karten & Glück",
+    games: [
+      {
+        id: "busfahrer",
+        title: "Busfahrer",
+        description: "Vier Stufen richtig raten — oder von vorne.",
+        icon: "bus-outline",
+        color: "#34d399",
+        badge: "Neu",
+      },
+      {
+        id: "higherlower",
+        title: "Höher / Tiefer",
+        description: "Errate Kartenwerte oder trinke bei Fehlern.",
+        icon: "trending-up-outline",
+        color: "#fb923c",
+      },
+      {
+        id: "cards",
+        title: "Skull",
+        description: "Kartenspiel mit Aufgaben von Normal bis 18+.",
+        icon: "albums-outline",
+        color: "#22d3ee",
+      },
+    ],
+  },
+  {
+    category: "Tempo & Wettkampf",
+    games: [
+      {
+        id: "wordbomb",
+        title: "Wortbombe",
+        description: "Begriff nennen, weitergeben — wer die Bombe hält, trinkt.",
+        icon: "flame-outline",
+        color: "#f43f5e",
+        badge: "Neu",
+      },
+      {
+        id: "duels",
+        title: "1v1 Duell",
+        description: "Fordere einen Freund zum Echtzeit-Punkterennen.",
+        icon: "trophy-outline",
+        color: "#fbbf24",
+      },
+    ],
+  },
+];
+
+// Spiele, die über die Party-Lobby gestartet werden (brauchen Mitspieler).
+export type LobbyGameId =
+  | "cards"
+  | "higherlower"
+  | "truth"
+  | "neverhave"
+  | "whowould"
+  | "wordbomb"
+  | "busfahrer"
+  | null;
+
+// Zusätzlich das 1v1-Duell, das ohne Lobby direkt geöffnet wird.
+export type FullscreenGameId = LobbyGameId | "duels";
+
 export interface GamePlayer {
   id: string;
   name: string;
@@ -152,9 +259,9 @@ export interface GamePlayer {
 }
 
 export interface SavedGameState {
-  activeFullscreenGame: "duels" | "cards" | "higherlower" | "truth" | null;
-  lobbyGameSelected: "cards" | "higherlower" | "truth" | null;
-  runningGame: "cards" | "higherlower" | "truth" | null;
+  activeFullscreenGame: FullscreenGameId;
+  lobbyGameSelected: LobbyGameId;
+  runningGame: LobbyGameId;
   players: GamePlayer[];
   todGameStarted: boolean;
   todSelectedPlayerId: string | null;
@@ -175,9 +282,9 @@ export interface SavedGameState {
 }
 
 export default function GamesScreen() {
-  const [activeFullscreenGame, setActiveFullscreenGame] = useState<"duels" | "cards" | "higherlower" | "truth" | null>(null);
-  const [lobbyGameSelected, setLobbyGameSelected] = useState<"cards" | "higherlower" | "truth" | null>(null);
-  const [runningGame, setRunningGame] = useState<"cards" | "higherlower" | "truth" | null>(null);
+  const [activeFullscreenGame, setActiveFullscreenGame] = useState<FullscreenGameId>(null);
+  const [lobbyGameSelected, setLobbyGameSelected] = useState<LobbyGameId>(null);
+  const [runningGame, setRunningGame] = useState<LobbyGameId>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [friendsList, setFriendsList] = useState<User[]>([]);
@@ -605,6 +712,11 @@ export default function GamesScreen() {
       setTodGameStarted(true);
       setRunningGame("truth");
       setActiveFullscreenGame("truth");
+    } else if (lobbyGameSelected) {
+      // Die neueren Spiele halten ihren Zustand selbst und brauchen hier
+      // keine Vorbereitung — Lobby-Auswahl direkt übernehmen.
+      setRunningGame(lobbyGameSelected);
+      setActiveFullscreenGame(lobbyGameSelected);
     }
   };
 
@@ -805,9 +917,11 @@ export default function GamesScreen() {
   }
 
   const activeSavedGameText = () => {
-    if (runningGame === "higherlower") return "Höher oder Tiefer";
-    if (runningGame === "cards") return "Skull Kartenspiel";
-    if (runningGame === "truth") return "Wahrheit oder Pflicht";
+    if (!runningGame) return null;
+    for (const category of GAME_CATALOG) {
+      const match = category.games.find((g) => g.id === runningGame);
+      if (match) return match.title;
+    }
     return null;
   };
 
@@ -853,83 +967,57 @@ export default function GamesScreen() {
             </View>
           )}
 
-          <View className="flex-row flex-wrap justify-between">
-            {/* Tile 1: 1v1 point duels */}
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic("medium");
-                setActiveFullscreenGame("duels");
-              }}
-              className="w-[47%] bg-white/5 border border-cyan-500/20 rounded-3xl p-5 mb-5 shadow-lg items-start justify-between min-h-[160px]"
-            >
-              <View className="bg-cyan-500/10 p-3 rounded-2xl border border-cyan-500/20 mb-4">
-                <Ionicons name="trophy-outline" size={24} color="#22d3ee" />
+          {GAME_CATALOG.map((category) => (
+            <View key={category.category} className="mb-2">
+              <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+                {category.category}
+              </Text>
+              <View className="flex-row flex-wrap justify-between">
+                {category.games.map((game) => (
+                  <TouchableOpacity
+                    key={game.id}
+                    onPress={() => {
+                      triggerHaptic("medium");
+                      if (game.id === "duels") setActiveFullscreenGame("duels");
+                      else setLobbyGameSelected(game.id as LobbyGameId);
+                    }}
+                    style={{ borderColor: game.color + "33" }}
+                    className="w-[47%] bg-white/5 border rounded-3xl p-4 mb-4 shadow-lg items-start justify-between min-h-[150px]"
+                  >
+                    <View
+                      style={{ backgroundColor: game.color + "1a", borderColor: game.color + "33" }}
+                      className="p-3 rounded-2xl border mb-3"
+                    >
+                      <Ionicons name={game.icon as any} size={22} color={game.color} />
+                    </View>
+                    <View>
+                      <View className="flex-row items-center flex-wrap mb-1">
+                        <Text className="text-white text-xs font-black uppercase tracking-wider mr-1.5">
+                          {game.title}
+                        </Text>
+                        {game.badge && (
+                          <View
+                            style={{ backgroundColor: game.color + "22" }}
+                            className="px-1.5 py-0.5 rounded"
+                          >
+                            <Text style={{ color: game.color }} className="text-[7px] font-black uppercase">
+                              {game.badge}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
+                        {game.description}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View>
-                <Text className="text-white text-xs font-black uppercase tracking-wider mb-1">1v1 Duell</Text>
-                <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
-                  Fordere einen Freund zu einem Echtzeit-Punkterennen heraus.
-                </Text>
-              </View>
-            </TouchableOpacity>
+            </View>
+          ))}
 
-            {/* Tile 2: Higher Lower */}
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic("medium");
-                setLobbyGameSelected("higherlower");
-              }}
-              className="w-[47%] bg-white/5 border border-orange-500/20 rounded-3xl p-5 mb-5 shadow-lg items-start justify-between min-h-[160px]"
-            >
-              <View className="bg-orange-500/10 p-3 rounded-2xl border border-orange-500/20 mb-4">
-                <Ionicons name="trending-up-outline" size={24} color="#fb923c" />
-              </View>
-              <View>
-                <Text className="text-white text-xs font-black uppercase tracking-wider mb-1">Höher / Tiefer</Text>
-                <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
-                  Errate Kartenwerte oder trinke bei Fehlern.
-                </Text>
-              </View>
-            </TouchableOpacity>
+          <View className="h-6" />
 
-            {/* Tile 3: Skull */}
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic("medium");
-                setLobbyGameSelected("cards");
-              }}
-              className="w-[47%] bg-white/5 border border-emerald-500/20 rounded-3xl p-5 mb-5 shadow-lg items-start justify-between min-h-[160px]"
-            >
-              <View className="bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 mb-4">
-                <Ionicons name="albums-outline" size={24} color="#34d399" />
-              </View>
-              <View>
-                <Text className="text-white text-xs font-black uppercase tracking-wider mb-1">Skull (Cards)</Text>
-                <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
-                  Der Klassiker! Kartenspiel mit Aufgaben von Normal bis 18+.
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Tile 4: Truth or Dare */}
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic("medium");
-                setLobbyGameSelected("truth");
-              }}
-              className="w-[47%] bg-white/5 border border-purple-500/20 rounded-3xl p-5 mb-5 shadow-lg items-start justify-between min-h-[160px]"
-            >
-              <View className="bg-purple-500/10 p-3 rounded-2xl border border-purple-500/20 mb-4">
-                <Ionicons name="wine-outline" size={24} color="#a855f7" />
-              </View>
-              <View>
-                <Text className="text-white text-xs font-black uppercase tracking-wider mb-1">Wahrheit / Pflicht</Text>
-                <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
-                  Flaschendrehen mit schlüpfrigen Fragen und witzigen Aufgaben.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
         </ScrollView>
       ) : activeFullscreenGame === null ? (
         /* ========================================================================= */
@@ -1822,6 +1910,58 @@ export default function GamesScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* NEUE PARTY-SPIELE (eigene Komponenten unter components/games/)           */}
+      {/* ========================================================================= */}
+      <Modal visible={activeFullscreenGame === "neverhave"} animationType="slide" transparent={false}>
+        <NeverHaveIEver
+          onCancel={() => setShowCancelConfirm(true)}
+          onMinimize={() => {
+            triggerHaptic("light");
+            setActiveFullscreenGame(null);
+            setLobbyGameSelected(null);
+          }}
+        />
+        {renderCancelConfirmOverlay()}
+      </Modal>
+
+      <Modal visible={activeFullscreenGame === "whowould"} animationType="slide" transparent={false}>
+        <WhoWouldRather
+          players={players}
+          onCancel={() => setShowCancelConfirm(true)}
+          onMinimize={() => {
+            triggerHaptic("light");
+            setActiveFullscreenGame(null);
+            setLobbyGameSelected(null);
+          }}
+        />
+        {renderCancelConfirmOverlay()}
+      </Modal>
+
+      <Modal visible={activeFullscreenGame === "wordbomb"} animationType="slide" transparent={false}>
+        <WordBomb
+          onCancel={() => setShowCancelConfirm(true)}
+          onMinimize={() => {
+            triggerHaptic("light");
+            setActiveFullscreenGame(null);
+            setLobbyGameSelected(null);
+          }}
+        />
+        {renderCancelConfirmOverlay()}
+      </Modal>
+
+      <Modal visible={activeFullscreenGame === "busfahrer"} animationType="slide" transparent={false}>
+        <Busfahrer
+          onCancel={() => setShowCancelConfirm(true)}
+          onMinimize={() => {
+            triggerHaptic("light");
+            setActiveFullscreenGame(null);
+            setLobbyGameSelected(null);
+          }}
+        />
+        {renderCancelConfirmOverlay()}
       </Modal>
 
       {renderCancelConfirmOverlay()}
