@@ -19,7 +19,16 @@ import { apiService } from "@/services/api";
 import { useAuth } from "../_layout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
-import { User, Drink, DrinkLog, DirectMessage, Group } from "@/services/mockData";
+import {
+  User,
+  Drink,
+  DrinkLog,
+  DirectMessage,
+  Group,
+  BlockedUser,
+  ReportReason,
+  REPORT_REASON_LABELS,
+} from "@/services/mockData";
 import * as ImagePicker from "expo-image-picker";
 import { Avatar } from "@/components/Avatar";
 import {
@@ -100,6 +109,17 @@ export default function TabsLayout() {
   const [newGroupName, setNewGroupName] = useState("");
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
 
+  // Moderation states: acting on another user (remove / block / report) and
+  // managing the list of people already blocked.
+  const [actionTargetUser, setActionTargetUser] = useState<User | null>(null);
+  const [reportTargetUser, setReportTargetUser] = useState<User | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason | null>(null);
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+
   // Live Search Effect
   useEffect(() => {
     const query = friendSearchQuery.trim();
@@ -145,6 +165,99 @@ export default function TabsLayout() {
       return;
     }
     Alert.alert(title, message);
+  };
+
+  // Alert.alert does nothing on react-native-web, so a confirmation has to go
+  // through window.confirm there or the dialog never appears and the action
+  // silently doesn't happen.
+  const confirmAction = (title: string, message: string, onConfirm: () => void) => {
+    if (Platform.OS === "web") {
+      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Bestätigen", style: "destructive", onPress: onConfirm },
+    ]);
+  };
+
+  const handleRemoveFriend = (friend: User) => {
+    confirmAction(
+      "Freund entfernen",
+      `${friend.name} aus deiner Freundesliste entfernen? Ihr seht dann gegenseitig eure Aktivitäten und Standorte nicht mehr.`,
+      async () => {
+        try {
+          await apiService.removeFriend(friend.name);
+          setActionTargetUser(null);
+          notify("Entfernt", `${friend.name} ist nicht mehr in deiner Freundesliste.`);
+          await loadFriendsData();
+        } catch (e) {
+          notify("Fehler", e instanceof Error ? e.message : "Konnte nicht entfernt werden.");
+        }
+      }
+    );
+  };
+
+  const handleBlockUser = (target: User) => {
+    confirmAction(
+      "Nutzer blockieren",
+      `${target.name} blockieren? Ihr seht euch gegenseitig nicht mehr — weder im Feed, auf der Karte noch in der Rangliste. Eine bestehende Freundschaft wird aufgelöst.`,
+      async () => {
+        try {
+          await apiService.blockUser(target.id);
+          setActionTargetUser(null);
+          notify("Blockiert", `${target.name} wurde blockiert.`);
+          await loadFriendsData();
+        } catch (e) {
+          notify("Fehler", e instanceof Error ? e.message : "Konnte nicht blockiert werden.");
+        }
+      }
+    );
+  };
+
+  const loadBlockedUsers = async () => {
+    setBlockedLoading(true);
+    try {
+      setBlockedUsers(await apiService.getBlockedUsers());
+    } catch (e) {
+      console.warn("Failed to load blocked users:", e);
+    } finally {
+      setBlockedLoading(false);
+    }
+  };
+
+  const handleUnblockUser = async (blocked: BlockedUser) => {
+    try {
+      await apiService.unblockUser(blocked.userId);
+      notify("Aufgehoben", `${blocked.username} ist nicht mehr blockiert.`);
+      await loadBlockedUsers();
+    } catch (e) {
+      notify("Fehler", e instanceof Error ? e.message : "Konnte nicht aufgehoben werden.");
+    }
+  };
+
+  const handleSubmitReport = async () => {
+    if (!reportTargetUser || !reportReason) return;
+    setReportSubmitting(true);
+    try {
+      await apiService.reportContent({
+        reportedUserId: reportTargetUser.id,
+        contentType: "user",
+        reason: reportReason,
+        details: reportDetails.trim() || undefined,
+      });
+      setReportTargetUser(null);
+      setReportReason(null);
+      setReportDetails("");
+      notify(
+        "Meldung eingegangen",
+        "Danke. Wir sehen uns die Meldung an und melden uns, falls wir Rückfragen haben. Wenn du die Person nicht mehr sehen möchtest, kannst du sie zusätzlich blockieren."
+      );
+    } catch (e) {
+      notify("Fehler", e instanceof Error ? e.message : "Meldung konnte nicht gesendet werden.");
+    } finally {
+      setReportSubmitting(false);
+    }
   };
 
   const handleSendFriendRequest = async (targetUsername?: string) => {
@@ -1222,19 +1335,48 @@ export default function TabsLayout() {
                           </View>
                         </View>
 
-                        <TouchableOpacity
-                          onPress={() => {
-                            setShowFriendsModal(false);
-                            openDirectChat(friend);
-                          }}
-                          className="bg-cyan-400/10 border border-cyan-400/30 px-3 py-1.5 rounded-xl flex-row items-center space-x-1"
-                        >
-                          <Ionicons name="chatbubble-ellipses-outline" size={14} color="#22d3ee" />
-                          <Text className="text-cyan-400 text-[10px] font-black uppercase">Chat</Text>
-                        </TouchableOpacity>
+                        <View className="flex-row items-center">
+                          <TouchableOpacity
+                            onPress={() => {
+                              setShowFriendsModal(false);
+                              openDirectChat(friend);
+                            }}
+                            className="bg-cyan-400/10 border border-cyan-400/30 px-3 py-1.5 rounded-xl flex-row items-center space-x-1"
+                          >
+                            <Ionicons name="chatbubble-ellipses-outline" size={14} color="#22d3ee" />
+                            <Text className="text-cyan-400 text-[10px] font-black uppercase">Chat</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              triggerHaptic("light");
+                              setActionTargetUser(friend);
+                            }}
+                            accessibilityLabel={`Optionen für ${friend.name}`}
+                            className="ml-2 w-8 h-8 items-center justify-center rounded-xl bg-white/5 border border-white/10"
+                          >
+                            <Ionicons name="ellipsis-horizontal" size={14} color="#94a3b8" />
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     ))
                   )}
+
+                  {/* Entry point for undoing a block. Required by the stores:
+                      blocking must be reversible by the user themselves. */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic("light");
+                      setShowBlockedModal(true);
+                      loadBlockedUsers();
+                    }}
+                    className="mt-4 flex-row items-center justify-center py-3 rounded-2xl bg-white/5 border border-white/10"
+                  >
+                    <Ionicons name="ban-outline" size={14} color="#94a3b8" />
+                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider ml-2">
+                      Blockierte Nutzer verwalten
+                    </Text>
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
@@ -1405,6 +1547,171 @@ export default function TabsLayout() {
             >
               <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Gruppe jetzt erstellen</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Actions on another user. Reporting and blocking are a store
+          requirement for apps with user-generated content — and they only
+          count if they're reachable where the content is. */}
+      <Modal visible={!!actionTargetUser} animationType="fade" transparent>
+        <View className="flex-1 bg-black/70 justify-end">
+          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
+            <View className="flex-row items-center mb-6">
+              <Avatar uri={actionTargetUser?.avatar} name={actionTargetUser?.name} size={40} className="border border-white/10" />
+              <Text className="text-white text-sm font-black ml-3 flex-1" numberOfLines={1}>
+                {actionTargetUser?.name}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => actionTargetUser && handleRemoveFriend(actionTargetUser)}
+              className="flex-row items-center py-4 border-b border-white/5"
+            >
+              <Ionicons name="person-remove-outline" size={18} color="#e2e8f0" />
+              <Text className="text-slate-200 text-xs font-bold ml-3">Freund entfernen</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionTargetUser;
+                setActionTargetUser(null);
+                setReportReason(null);
+                setReportDetails("");
+                setReportTargetUser(target);
+              }}
+              className="flex-row items-center py-4 border-b border-white/5"
+            >
+              <Ionicons name="flag-outline" size={18} color="#fbbf24" />
+              <Text className="text-amber-400 text-xs font-bold ml-3">Melden</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => actionTargetUser && handleBlockUser(actionTargetUser)}
+              className="flex-row items-center py-4"
+            >
+              <Ionicons name="ban-outline" size={18} color="#f43f5e" />
+              <Text className="text-rose-400 text-xs font-bold ml-3">Blockieren</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setActionTargetUser(null)}
+              className="mt-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 items-center"
+            >
+              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">Abbrechen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Report dialog */}
+      <Modal visible={!!reportTargetUser} animationType="slide" transparent>
+        <View className="flex-1 bg-black/70 justify-end">
+          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
+            <Text className="text-white text-base font-black mb-1">
+              {reportTargetUser?.name} melden
+            </Text>
+            <Text className="text-slate-400 text-[11px] leading-4 mb-5">
+              Wir sehen uns jede Meldung an. Bei Gefahr für Leib und Leben wende dich bitte
+              zusätzlich an die Polizei.
+            </Text>
+
+            {(Object.keys(REPORT_REASON_LABELS) as ReportReason[]).map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                onPress={() => setReportReason(reason)}
+                className={`flex-row items-center py-3.5 px-4 rounded-2xl mb-2 border ${
+                  reportReason === reason
+                    ? "bg-amber-400/10 border-amber-400/40"
+                    : "bg-slate-950/60 border-white/5"
+                }`}
+              >
+                <Ionicons
+                  name={reportReason === reason ? "radio-button-on" : "radio-button-off"}
+                  size={16}
+                  color={reportReason === reason ? "#fbbf24" : "#64748b"}
+                />
+                <Text className={`text-xs font-bold ml-3 ${reportReason === reason ? "text-amber-400" : "text-slate-300"}`}>
+                  {REPORT_REASON_LABELS[reason]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TextInput
+              placeholder="Was ist passiert? (optional)"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={reportDetails}
+              onChangeText={setReportDetails}
+              multiline
+              maxLength={1000}
+              className="bg-slate-950/60 border border-white/5 rounded-2xl px-4 py-3 text-white text-xs mt-2 mb-4 min-h-[72px]"
+            />
+
+            <TouchableOpacity
+              onPress={handleSubmitReport}
+              disabled={!reportReason || reportSubmitting}
+              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+            >
+              {reportSubmitting ? (
+                <ActivityIndicator color="#020617" />
+              ) : (
+                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Meldung absenden</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setReportTargetUser(null)}
+              className="mt-3 py-3 items-center"
+            >
+              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">Abbrechen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Blocked users — blocking has to be reversible by the user. */}
+      <Modal visible={showBlockedModal} animationType="slide" transparent>
+        <View className="flex-1 bg-black/70 justify-end">
+          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[70%]">
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className="text-white text-base font-black">Blockierte Nutzer</Text>
+              <TouchableOpacity onPress={() => setShowBlockedModal(false)} className="w-8 h-8 items-center justify-center">
+                <Ionicons name="close" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            {blockedLoading ? (
+              <ActivityIndicator color="#22d3ee" />
+            ) : blockedUsers.length === 0 ? (
+              <View className="py-10 items-center">
+                <Ionicons name="checkmark-circle-outline" size={32} color="#475569" />
+                <Text className="text-slate-500 text-xs font-bold mt-2 text-center">
+                  Du hast niemanden blockiert.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView>
+                {blockedUsers.map((blocked) => (
+                  <View
+                    key={blocked.id}
+                    className="bg-slate-950/60 border border-white/5 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                  >
+                    <View className="flex-row items-center flex-1 mr-2">
+                      <Avatar uri={blocked.avatar || undefined} name={blocked.username} size={32} className="border border-white/10" />
+                      <Text className="text-white text-xs font-black ml-3 flex-1" numberOfLines={1}>
+                        {blocked.username}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleUnblockUser(blocked)}
+                      className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl"
+                    >
+                      <Text className="text-slate-300 text-[10px] font-black uppercase">Aufheben</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>

@@ -13,7 +13,16 @@ import {
 import { useFocusEffect } from "expo-router";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
-import { User, FeedItem, FeedScope, RadarEntry, MapCoordinate } from "@/services/mockData";
+import {
+  User,
+  FeedItem,
+  FeedScope,
+  RadarEntry,
+  MapCoordinate,
+  ReportReason,
+  REPORT_REASON_LABELS,
+} from "@/services/mockData";
+import { Modal, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import InteractiveMap from "@/components/InteractiveMap";
 import { Avatar } from "@/components/Avatar";
@@ -138,6 +147,9 @@ function FriendsRadar({
 // ─────────────────────────────────────────────
 export default function LivePulseFeed() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
   const [radarLoading, setRadarLoading] = useState(true);
@@ -251,6 +263,32 @@ export default function LivePulseFeed() {
     await loadFeedData(scope);
     setRefreshing(false);
   }, [scope]);
+
+  const handleSubmitReport = async () => {
+    if (!reportTarget || !reportReason) return;
+    setReportSubmitting(true);
+    try {
+      await apiService.reportContent({
+        reportedUserId: reportTarget.userId,
+        contentType: "post",
+        contentId: reportTarget.id,
+        reason: reportReason,
+      });
+      setReportTarget(null);
+      setReportReason(null);
+      // Alert.alert is a no-op on web, so the confirmation has to go through
+      // window.alert there.
+      const msg = "Danke, die Meldung ist bei uns eingegangen. Wir sehen sie uns an.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Meldung eingegangen", msg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Meldung konnte nicht gesendet werden.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Fehler", msg);
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
 
   const handleCreatePost = async () => {
     if (!inputText.trim() || !currentUser) return;
@@ -469,13 +507,31 @@ export default function LivePulseFeed() {
                           {isSystem ? "LEVEL-UP" : "PIN-STATUS"}
                         </Text>
                       </View>
-                      <Text className="text-slate-500 text-[8px] font-bold">
-                        {new Date(item.timestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}{" "}
-                        Uhr
-                      </Text>
+                      <View className="flex-row items-center">
+                        <Text className="text-slate-500 text-[8px] font-bold">
+                          {new Date(item.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}{" "}
+                          Uhr
+                        </Text>
+                        {/* Reporting has to sit on the content itself — a
+                            report buried in a settings menu doesn't meet the
+                            stores' "reachable where the content is". */}
+                        {!isMe && !isSystem && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              triggerHaptic("light");
+                              setReportTarget(item);
+                              setReportReason(null);
+                            }}
+                            accessibilityLabel={`Beitrag von ${item.username} melden`}
+                            className="ml-2 w-6 h-6 items-center justify-center"
+                          >
+                            <Ionicons name="flag-outline" size={11} color="#64748b" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -541,6 +597,62 @@ export default function LivePulseFeed() {
         )}
         <View className="h-10" />
       </ScrollView>
+
+      {/* Reporting a post. Deliberately reachable straight from the item so
+          the path from "this is offensive" to "reported" is one tap. */}
+      <Modal visible={!!reportTarget} animationType="slide" transparent>
+        <View className="flex-1 bg-black/70 justify-end">
+          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
+            <Text className="text-white text-base font-black mb-1">Beitrag melden</Text>
+            <Text className="text-slate-400 text-[11px] leading-4 mb-5" numberOfLines={3}>
+              Von {reportTarget?.username}: „{reportTarget?.text}“
+            </Text>
+
+            {(Object.keys(REPORT_REASON_LABELS) as ReportReason[]).map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                onPress={() => setReportReason(reason)}
+                className={`flex-row items-center py-3.5 px-4 rounded-2xl mb-2 border ${
+                  reportReason === reason
+                    ? "bg-amber-400/10 border-amber-400/40"
+                    : "bg-slate-950/60 border-white/5"
+                }`}
+              >
+                <Ionicons
+                  name={reportReason === reason ? "radio-button-on" : "radio-button-off"}
+                  size={16}
+                  color={reportReason === reason ? "#fbbf24" : "#64748b"}
+                />
+                <Text
+                  className={`text-xs font-bold ml-3 ${
+                    reportReason === reason ? "text-amber-400" : "text-slate-300"
+                  }`}
+                >
+                  {REPORT_REASON_LABELS[reason]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              onPress={handleSubmitReport}
+              disabled={!reportReason || reportSubmitting}
+              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center mt-3 active:scale-95 disabled:opacity-40"
+            >
+              {reportSubmitting ? (
+                <ActivityIndicator color="#020617" />
+              ) : (
+                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                  Meldung absenden
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setReportTarget(null)} className="mt-3 py-3 items-center">
+              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">Abbrechen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

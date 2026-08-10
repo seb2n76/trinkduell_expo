@@ -202,6 +202,8 @@ async function initPgSchema() {
     // Owner of a user-created drink. NULL means "built-in catalog", which
     // nobody may delete. Existing rows become NULL, which is the safe default.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS created_by TEXT");
+    // blocks/reports are created by schema.sql above on a fresh database; the
+    // CREATE TABLE IF NOT EXISTS there also covers an existing one.
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
   } catch (err) {
     console.error("[TrinkDuell DB] Failed to initialize PostgreSQL schema:", err);
@@ -221,10 +223,15 @@ async function loadDb() {
   try {
     const data = await fs.readFile(DB_FILE, "utf-8");
     db = JSON.parse(data);
-    if (!db.friendships) {
-      db.friendships = [];
-      await saveDb();
+    // Auto-heal collections added after a database file was first written.
+    let healed = false;
+    for (const key of ["friendships", "blocks", "reports"]) {
+      if (!db[key]) {
+        db[key] = [];
+        healed = true;
+      }
     }
+    if (healed) await saveDb();
   } catch (err) {
     // If db.json does not exist yet, start with an empty but valid structure
     db = {
@@ -237,7 +244,9 @@ async function loadDb() {
       duels: [],
       groupQuests: [],
       friendships: [],
-      messages: []
+      messages: [],
+      blocks: [],
+      reports: []
     };
     await saveDb();
   }
@@ -388,6 +397,13 @@ module.exports = {
     db.posts = (db.posts || []).filter((p) => p.userId !== userId);
     db.duels = (db.duels || []).filter((d) => d.creatorId !== userId && d.opponentId !== userId);
     db.messages = (db.messages || []).filter((m) => m.sender_id !== userId && m.receiver_id !== userId);
+    // Mirrors the FK cascade the Postgres branch gets for free.
+    db.blocks = (db.blocks || []).filter((b) => b.blockerId !== userId && b.blockedId !== userId);
+    // Reports survive their subject, but must not keep pointing at a gone id.
+    for (const r of db.reports || []) {
+      if (r.reporterId === userId) r.reporterId = null;
+      if (r.reportedUserId === userId) r.reportedUserId = null;
+    }
 
     db.users = db.users.filter((u) => u.id !== userId);
 
@@ -947,6 +963,125 @@ module.exports = {
     } else {
       db.friendships.push(friendship);
     }
+    await saveDb();
+  },
+  /**
+   * Removes a friendship (or a still-pending request) in either direction.
+   * Used both by "Freund entfernen" and by blocking, which must not leave a
+   * friendship behind — otherwise the blocked user would keep the feed, radar
+   * and map access the friendship granted.
+   */
+  deleteFriendship: async (usernameA, usernameB) => {
+    await loadDb();
+    if (pool) {
+      await pool.query(
+        `DELETE FROM friendships
+          WHERE (LOWER(sender_username) = LOWER($1) AND LOWER(receiver_username) = LOWER($2))
+             OR (LOWER(sender_username) = LOWER($2) AND LOWER(receiver_username) = LOWER($1))`,
+        [usernameA, usernameB]
+      );
+      return;
+    }
+    const a = (usernameA || "").toLowerCase();
+    const b = (usernameB || "").toLowerCase();
+    db.friendships = (db.friendships || []).filter((f) => {
+      const sender = (f.sender_username || "").toLowerCase();
+      const receiver = (f.receiver_username || "").toLowerCase();
+      return !((sender === a && receiver === b) || (sender === b && receiver === a));
+    });
+    await saveDb();
+  },
+  getBlocks: async () => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query(
+        'SELECT id, blocker_id AS "blockerId", blocked_id AS "blockedId", timestamp FROM blocks'
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        blockerId: r.blockerId,
+        blockedId: r.blockedId,
+        timestamp: r.timestamp?.toISOString ? r.timestamp.toISOString() : new Date(r.timestamp).toISOString(),
+      }));
+    }
+    return db.blocks || [];
+  },
+  saveBlock: async (block) => {
+    await loadDb();
+    if (pool) {
+      // Blocking twice is a no-op rather than an error — the client may
+      // retry, and the unique index would otherwise reject it.
+      await pool.query(
+        `INSERT INTO blocks (id, blocker_id, blocked_id, timestamp)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        [block.id, block.blockerId, block.blockedId, block.timestamp]
+      );
+      return;
+    }
+    if (!db.blocks) db.blocks = [];
+    const exists = db.blocks.some(
+      (b) => b.blockerId === block.blockerId && b.blockedId === block.blockedId
+    );
+    if (!exists) db.blocks.push(block);
+    await saveDb();
+  },
+  deleteBlock: async (blockerId, blockedId) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2", [
+        blockerId,
+        blockedId,
+      ]);
+      return;
+    }
+    db.blocks = (db.blocks || []).filter(
+      (b) => !(b.blockerId === blockerId && b.blockedId === blockedId)
+    );
+    await saveDb();
+  },
+  getReports: async () => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query(
+        `SELECT id, reporter_id AS "reporterId", reported_user_id AS "reportedUserId",
+                reported_username AS "reportedUsername", content_type AS "contentType",
+                content_id AS "contentId", content_excerpt AS "contentExcerpt",
+                reason, details, status, timestamp
+           FROM reports ORDER BY timestamp DESC`
+      );
+      return res.rows.map((r) => ({
+        ...r,
+        timestamp: r.timestamp?.toISOString ? r.timestamp.toISOString() : new Date(r.timestamp).toISOString(),
+      }));
+    }
+    return db.reports || [];
+  },
+  saveReport: async (report) => {
+    await loadDb();
+    if (pool) {
+      await pool.query(
+        `INSERT INTO reports (id, reporter_id, reported_user_id, reported_username,
+                              content_type, content_id, content_excerpt, reason, details, status, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          report.id,
+          report.reporterId,
+          report.reportedUserId,
+          report.reportedUsername,
+          report.contentType,
+          report.contentId,
+          report.contentExcerpt,
+          report.reason,
+          report.details,
+          report.status,
+          report.timestamp,
+        ]
+      );
+      return;
+    }
+    if (!db.reports) db.reports = [];
+    db.reports.push(report);
     await saveDb();
   },
   /**

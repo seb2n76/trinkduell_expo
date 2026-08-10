@@ -410,6 +410,24 @@ async function areFriends(usernameA, usernameB) {
   });
 }
 
+/**
+ * Everyone the given user must not see, and who must not see them.
+ *
+ * A block counts in BOTH directions on purpose: if it only hid the blocked
+ * person from the blocker, the blocked person could still watch the feed,
+ * radar and map of someone who explicitly wanted rid of them — which is the
+ * opposite of what blocking is for.
+ */
+async function getBlockedUserIds(userId) {
+  const blocks = await db.getBlocks();
+  const hidden = new Set();
+  for (const b of blocks) {
+    if (b.blockerId === userId) hidden.add(b.blockedId);
+    else if (b.blockedId === userId) hidden.add(b.blockerId);
+  }
+  return hidden;
+}
+
 // Returns the group if the user is a member, otherwise null.
 async function getGroupIfMember(groupId, userId) {
   const groups = await db.getGroups();
@@ -712,8 +730,8 @@ app.get("/api/auth/session", async (req, res) => {
 // to strip only the password.
 app.get("/api/users", authenticate, async (req, res) => {
   try {
-    const users = await db.getUsers();
-    res.json(users.map((u) => enrichUserProgress(u)));
+    const [users, hidden] = await Promise.all([db.getUsers(), getBlockedUserIds(req.userId)]);
+    res.json(users.filter((u) => !hidden.has(u.id)).map((u) => enrichUserProgress(u)));
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
@@ -742,8 +760,8 @@ app.get("/api/users/me", authenticate, async (req, res) => {
 app.get("/api/users/search", authenticate, async (req, res) => {
   try {
     const q = req.query.q || "";
-    const users = await db.searchUsers(q);
-    res.json(users.map((u) => enrichUserProgress(u)));
+    const [users, hidden] = await Promise.all([db.searchUsers(q), getBlockedUserIds(req.userId)]);
+    res.json(users.filter((u) => !hidden.has(u.id)).map((u) => enrichUserProgress(u)));
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
@@ -753,7 +771,10 @@ app.get("/api/users/search", authenticate, async (req, res) => {
 app.get("/api/users/:id", authenticate, async (req, res) => {
   const users = await db.getUsers();
   const user = users.find((u) => u.id === req.params.id);
-  if (!user) {
+  const hidden = await getBlockedUserIds(req.userId);
+  // A blocked user reads as non-existent rather than "forbidden" — a 403
+  // would confirm the account is there and that a block is in place.
+  if (!user || hidden.has(user.id)) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
   // Own id via this route still counts as own profile.
@@ -1222,13 +1243,14 @@ app.get("/api/radar", authenticate, async (req, res) => {
     ]);
 
     const friendIds = resolveFriendUserIds(req.user, users, friendships, { includeSelf: false });
+    const hidden = await getBlockedUserIds(req.userId);
 
     const now = Date.now();
     const ACTIVE_MS = 30 * 60 * 1000;
     const RECENT_MS = 3 * 60 * 60 * 1000;
 
     const radar = users
-      .filter((u) => friendIds.has(u.id))
+      .filter((u) => friendIds.has(u.id) && !hidden.has(u.id))
       .map((u) => {
         const userLogs = logs.filter((l) => l.userId === u.id);
         let lastLog = null;
@@ -1305,10 +1327,16 @@ app.get("/api/feed", authenticate, async (req, res) => {
       visiblePostFilter = (p) => visibleUserIds.has(p.userId) || p.userId === "system";
     }
 
+    // Blocking wins over every other visibility rule. Removing the friendship
+    // alone would not be enough: a shared group would still put the blocked
+    // person back into the group feed.
+    const hidden = await getBlockedUserIds(req.userId);
+    hidden.forEach((id) => visibleUserIds.delete(id));
+
     const friendUserIds = visibleUserIds;
 
     const filteredLogs = logs.filter((l) => friendUserIds.has(l.userId));
-    const filteredPosts = posts.filter(visiblePostFilter);
+    const filteredPosts = posts.filter((p) => !hidden.has(p.userId) && visiblePostFilter(p));
 
     const feedLogs = filteredLogs.map((log) => {
       const user = users.find((u) => u.id === log.userId);
@@ -1370,6 +1398,11 @@ app.get("/api/map", authenticate, async (req, res) => {
       .filter((g) => (g.memberIds || []).includes(req.user.id))
       .forEach((g) => (g.memberIds || []).forEach((id) => visibleUserIds.add(id)));
 
+    // Location is the most sensitive thing here, so a block removes it even
+    // when a shared group would otherwise grant access.
+    const hidden = await getBlockedUserIds(req.userId);
+    hidden.forEach((id) => visibleUserIds.delete(id));
+
     res.json(mappedLogs.filter((entry) => visibleUserIds.has(entry.userId)));
   } catch (error) {
     serverError(res, error, `${req.method} ${req.originalUrl}`);
@@ -1379,7 +1412,10 @@ app.get("/api/map", authenticate, async (req, res) => {
 // Get Scoreboard
 app.get("/api/scoreboard", authenticate, async (req, res) => {
   try {
-    const users = await db.getUsers();
+    const [allUsers, hidden] = await Promise.all([db.getUsers(), getBlockedUserIds(req.userId)]);
+    // Blocked users drop out of the ranking too — "I don't want to see this
+    // person" would ring hollow if they still sat next to you in the list.
+    const users = allUsers.filter((u) => !hidden.has(u.id));
     // Sort users by points descending
     const sortedUsers = [...users].sort((a, b) => b.points - a.points);
     // Map to the requested fields username and points
@@ -1459,8 +1495,11 @@ app.post("/api/messages", authenticate, async (req, res) => {
     } else {
       const allUsers = await db.getUsers();
       const receiver = allUsers.find((u) => u.id === receiverId);
-      if (!receiver) {
-        return res.status(404).json({ error: "Empfänger nicht gefunden." });
+      const hidden = await getBlockedUserIds(req.userId);
+      // Same wording for "blocked" as for "not a friend": telling the sender
+      // they were blocked turns the block into a notification.
+      if (!receiver || hidden.has(receiver.id)) {
+        return res.status(403).json({ error: "Du kannst nur befreundeten Nutzern schreiben." });
       }
       if (!(await areFriends(req.user.name, receiver.name))) {
         return res.status(403).json({ error: "Du kannst nur befreundeten Nutzern schreiben." });
@@ -1666,12 +1705,13 @@ app.post("/api/events/join", authenticate, async (req, res) => {
 // the same records. Previously every group post was readable by everyone.
 app.get("/api/posts", authenticate, async (req, res) => {
   try {
-    const [posts, groups, events, users, friendships] = await Promise.all([
+    const [posts, groups, events, users, friendships, hidden] = await Promise.all([
       db.getPosts(),
       db.getGroups(),
       db.getEvents(),
       db.getUsers(),
       db.getFriendships(),
+      getBlockedUserIds(req.userId),
     ]);
 
     const myGroupIds = new Set(
@@ -1684,6 +1724,7 @@ app.get("/api/posts", authenticate, async (req, res) => {
 
     res.json(
       posts.filter((p) => {
+        if (hidden.has(p.userId)) return false;
         if (p.userId === req.userId) return true;
         // Level-up announcements, same as the friends feed treats them.
         if (p.userId === "system") return true;
@@ -1807,7 +1848,15 @@ app.get("/api/duels", authenticate, async (req, res) => {
     // Only duels I'm actually part of. This also fixes a visible bug: the
     // games screen renders whatever this returns under "Laufende Duelle"
     // without filtering, so strangers' duels showed up in everyone's list.
-    res.json(duels.filter((d) => d.creatorId === req.userId || d.opponentId === req.userId));
+    const hidden = await getBlockedUserIds(req.userId);
+    res.json(
+      duels.filter(
+        (d) =>
+          (d.creatorId === req.userId || d.opponentId === req.userId) &&
+          !hidden.has(d.creatorId) &&
+          !hidden.has(d.opponentId)
+      )
+    );
   } catch (error) {
     serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
@@ -2048,6 +2097,12 @@ app.post("/api/friends/request", authenticate, async (req, res) => {
       return res.status(404).json({ error: "Benutzer existiert nicht." });
     }
 
+    // Reads as "no such user", so a block cannot be probed for.
+    const hidden = await getBlockedUserIds(req.userId);
+    if (hidden.has(receiver.id)) {
+      return res.status(404).json({ error: "Benutzer existiert nicht." });
+    }
+
     const friendships = await db.getFriendships();
     const exists = friendships.some(f =>
       (f.sender_username.toLowerCase() === sender_username.toLowerCase() && f.receiver_username.toLowerCase() === receiver_username.toLowerCase()) ||
@@ -2127,6 +2182,35 @@ app.post("/api/friends/accept", authenticate, async (req, res) => {
   }
 });
 
+// Remove a friend, or withdraw/decline a pending request. Either side may do
+// it — a friendship one person cannot leave is not a friendship.
+app.delete("/api/friends/:username", authenticate, async (req, res) => {
+  try {
+    const other = req.params.username;
+    if (other.toLowerCase() === req.user.name.toLowerCase()) {
+      return res.status(400).json({ error: "Ungültiger Benutzer." });
+    }
+
+    const friendships = await db.getFriendships();
+    const exists = friendships.some((f) => {
+      const sender = (f.sender_username || "").toLowerCase();
+      const receiver = (f.receiver_username || "").toLowerCase();
+      const me = req.user.name.toLowerCase();
+      const them = other.toLowerCase();
+      return (sender === me && receiver === them) || (sender === them && receiver === me);
+    });
+
+    if (!exists) {
+      return res.status(404).json({ error: "Keine Freundschaft oder Anfrage gefunden." });
+    }
+
+    await db.deleteFriendship(req.user.name, other);
+    res.json({ success: true });
+  } catch (error) {
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
+  }
+});
+
 // Get all friends for a user (accepted and pending).
 //
 // Own list only. The username in the path is kept for compatibility with the
@@ -2148,8 +2232,12 @@ app.get("/api/friends/:username", authenticate, async (req, res) => {
       .filter(f => f.status === "accepted" && (f.sender_username.toLowerCase() === username.toLowerCase() || f.receiver_username.toLowerCase() === username.toLowerCase()))
       .map(f => f.sender_username.toLowerCase() === username.toLowerCase() ? f.receiver_username : f.sender_username);
 
+    // A block should have removed the friendship already, but a stale row
+    // must never put a blocked person back into the list.
+    const hidden = await getBlockedUserIds(req.userId);
+
     const friendsList = users
-      .filter(u => acceptedFriendnames.some(fn => fn.toLowerCase() === u.name.toLowerCase()))
+      .filter(u => !hidden.has(u.id) && acceptedFriendnames.some(fn => fn.toLowerCase() === u.name.toLowerCase()))
       .map(u => enrichUserProgress(u));
 
     // Pending requests received (incoming requests that this user can accept)
@@ -2158,7 +2246,7 @@ app.get("/api/friends/:username", authenticate, async (req, res) => {
       .map(f => f.sender_username);
 
     const pendingList = users
-      .filter(u => pendingIncomingNames.some(pn => pn.toLowerCase() === u.name.toLowerCase()))
+      .filter(u => !hidden.has(u.id) && pendingIncomingNames.some(pn => pn.toLowerCase() === u.name.toLowerCase()))
       .map(u => enrichUserProgress(u));
 
     res.json({ friends: friendsList, pending: pendingList });
@@ -2166,6 +2254,162 @@ app.get("/api/friends/:username", authenticate, async (req, res) => {
     serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
+
+// ==========================================
+// Blocking & Reporting
+// ==========================================
+// Required by both stores for apps carrying user-generated content (chat,
+// posts, usernames, avatars). Blocking is the user's own remedy; reporting
+// routes a case to the operator.
+
+// Who I have blocked (not who blocked me — that stays invisible on purpose,
+// otherwise the block itself becomes a message).
+app.get("/api/blocks", authenticate, async (req, res) => {
+  try {
+    const [blocks, users] = await Promise.all([db.getBlocks(), db.getUsers()]);
+    const mine = blocks.filter((b) => b.blockerId === req.userId);
+
+    res.json(
+      mine.map((b) => {
+        const blockedUser = users.find((u) => u.id === b.blockedId);
+        return {
+          id: b.id,
+          userId: b.blockedId,
+          username: blockedUser ? blockedUser.name : "Unbekannt",
+          avatar: blockedUser ? blockedUser.avatar || null : null,
+          timestamp: b.timestamp,
+        };
+      })
+    );
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+app.post("/api/blocks", authenticate, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({ error: "userId fehlt." });
+    }
+    if (userId === req.userId) {
+      return res.status(400).json({ error: "Du kannst dich nicht selbst blockieren." });
+    }
+
+    const users = await db.getUsers();
+    const target = users.find((u) => u.id === userId);
+    if (!target) {
+      return res.status(404).json({ error: "Benutzer nicht gefunden." });
+    }
+
+    await db.saveBlock({
+      id: generateUniqueId("block"),
+      blockerId: req.userId,
+      blockedId: userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // A block that left the friendship intact would be no block at all — the
+    // friendship is what grants feed, radar and map access.
+    await db.deleteFriendship(req.user.name, target.name);
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+app.delete("/api/blocks/:userId", authenticate, async (req, res) => {
+  try {
+    await db.deleteBlock(req.userId, req.params.userId);
+    // Deliberately does NOT restore the friendship — unblocking means "I can
+    // see this person again", not "we are friends again".
+    res.json({ success: true });
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+const REPORT_REASONS = ["belaestigung", "spam", "unangemessen", "fake", "sonstiges"];
+
+app.post(
+  "/api/reports",
+  authenticate,
+  // A report costs the operator attention, so it is worth limiting — but
+  // loosely, because a genuine victim may have several things to report.
+  rateLimit({ scope: "report", ipMax: 60, windowMs: HOUR }),
+  async (req, res) => {
+    try {
+      const { reportedUserId, contentType, contentId, reason, details } = req.body;
+
+      if (!REPORT_REASONS.includes(reason)) {
+        return res.status(400).json({ error: "Bitte wähle einen gültigen Meldegrund." });
+      }
+      if (!["user", "post", "message"].includes(contentType)) {
+        return res.status(400).json({ error: "Unbekannter Inhaltstyp." });
+      }
+
+      let detailsText = null;
+      if (details !== undefined && details !== null && details !== "") {
+        const check = validateText(details, "Beschreibung", { max: 1000 });
+        if (!check.ok) return res.status(400).json({ error: check.error });
+        detailsText = check.value;
+      }
+
+      const users = await db.getUsers();
+      const reported = users.find((u) => u.id === reportedUserId);
+      if (!reported) {
+        return res.status(404).json({ error: "Gemeldeter Benutzer nicht gefunden." });
+      }
+      if (reported.id === req.userId) {
+        return res.status(400).json({ error: "Du kannst dich nicht selbst melden." });
+      }
+
+      // Store a copy of what was reported: the author can delete the original
+      // at any time, and then the report would be about nothing.
+      let excerpt = null;
+      if (contentType === "post" && contentId) {
+        const post = (await db.getPosts()).find((p) => p.id === contentId);
+        if (post) excerpt = String(post.text).slice(0, 500);
+      } else if (contentType === "message" && contentId) {
+        const messages = await db.getDirectMessages(req.userId, reported.id);
+        const message = messages.find((m) => m.id === contentId);
+        if (message) excerpt = String(message.content).slice(0, 500);
+      }
+
+      const report = {
+        id: generateUniqueId("report"),
+        reporterId: req.userId,
+        reportedUserId: reported.id,
+        reportedUsername: reported.name,
+        contentType,
+        contentId: contentId || null,
+        contentExcerpt: excerpt,
+        reason,
+        details: detailsText,
+        status: "open",
+        timestamp: new Date().toISOString(),
+      };
+
+      await db.saveReport(report);
+
+      // Also to the log: the stores expect a report to be acted on within 24
+      // hours, and nobody watches a database table. `docker compose logs
+      // backend | grep MELDUNG` is the operator's inbox until there is a
+      // moderation screen.
+      console.warn(
+        `[TrinkDuell] MELDUNG (${reason}) gegen "${reported.name}" von "${req.user.name}" ` +
+          `— Typ: ${contentType}${contentId ? `, Inhalt: ${contentId}` : ""}` +
+          `${detailsText ? `, Beschreibung: ${detailsText}` : ""}` +
+          `${excerpt ? `, Auszug: "${excerpt.slice(0, 120)}"` : ""}`
+      );
+
+      res.status(201).json({ success: true });
+    } catch (err) {
+      serverError(res, err, `${req.method} ${req.originalUrl}`);
+    }
+  }
+);
 
 // ==========================================
 // Error handling

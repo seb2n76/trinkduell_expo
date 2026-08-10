@@ -112,6 +112,33 @@ CREATE TABLE IF NOT EXISTS messages (
   timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
+-- Blocking. Mutual by effect: once a block exists in either direction, the
+-- two users stop seeing each other everywhere (feed, radar, map, search,
+-- chat). Store requirement for apps with user-generated content.
+CREATE TABLE IF NOT EXISTS blocks (
+  id TEXT PRIMARY KEY,
+  blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Reports of objectionable content or behaviour. reported_user_id survives
+-- the reported account being deleted (SET NULL) so the record of the report
+-- itself doesn't disappear with it.
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  reporter_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  reported_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  reported_username TEXT,
+  content_type TEXT NOT NULL, -- 'user' | 'post' | 'message'
+  content_id TEXT,
+  content_excerpt TEXT,
+  reason TEXT NOT NULL,
+  details TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
 -- Indices for performance
 CREATE INDEX IF NOT EXISTS idx_drink_logs_user_id ON drink_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_context ON posts(context_type, context_id);
@@ -120,4 +147,6 @@ CREATE INDEX IF NOT EXISTS idx_group_quests ON group_quests(group_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_users ON friendships(sender_username, receiver_username);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
 

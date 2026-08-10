@@ -586,6 +586,37 @@ export const apiService = {
       () => db.acceptFriendRequest(sender_username, receiver_username)
     ),
 
+  // Removing a friend and blocking both change who may see the user's feed,
+  // radar and location. That decision only counts if the server made it, so
+  // these deliberately have no offline fallback — a local-only "removed" would
+  // leave the real access in place while the UI claims otherwise.
+  removeFriend: async (username: string): Promise<void> => {
+    await axiosInstance.delete<void>(`/friends/${encodeURIComponent(username)}`);
+  },
+
+  getBlockedUsers: async (): Promise<db.BlockedUser[]> => {
+    const res = await axiosInstance.get<db.BlockedUser[]>("/blocks");
+    return res.data;
+  },
+
+  blockUser: async (userId: string): Promise<void> => {
+    await axiosInstance.post<void>("/blocks", { userId });
+  },
+
+  unblockUser: async (userId: string): Promise<void> => {
+    await axiosInstance.delete<void>(`/blocks/${userId}`);
+  },
+
+  reportContent: async (report: {
+    reportedUserId: string;
+    contentType: "user" | "post" | "message";
+    contentId?: string;
+    reason: db.ReportReason;
+    details?: string;
+  }): Promise<void> => {
+    await axiosInstance.post<void>("/reports", report);
+  },
+
   getFriends: (username: string): Promise<{ friends: db.User[]; pending: db.User[] }> =>
     executeApiCall(
       async () => {

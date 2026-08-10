@@ -83,6 +83,25 @@ export interface Post {
   timestamp: string; // ISO string
 }
 
+export interface BlockedUser {
+  id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
+  timestamp: string;
+}
+
+// Kept in sync with REPORT_REASONS in server/index.js.
+export type ReportReason = "belaestigung" | "spam" | "unangemessen" | "fake" | "sonstiges";
+
+export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  belaestigung: "Belästigung oder Mobbing",
+  spam: "Spam oder Werbung",
+  unangemessen: "Unangemessene Inhalte",
+  fake: "Fake-Profil",
+  sonstiges: "Etwas anderes",
+};
+
 export interface Duel {
   id: string;
   creatorId: string;
