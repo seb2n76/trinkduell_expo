@@ -228,3 +228,100 @@ fremde Getränke-Logs löschen, XSS über Nutzernamen in Karten-Popups.
 
 **Merke:** Bei neuen Endpunkten immer prüfen — *wer darf das sehen* und
 *wer darf das ändern*. Beides wurde mehrfach vergessen.
+
+### Runde 2 (10.08.2026) — behoben
+
+Auffällig ist das Muster: **jeder dieser Punkte saß direkt neben einer schon
+reparierten Stelle.** Die Regel oben wurde also pro Endpunkt angewendet statt
+pro Datenart.
+
+- **Account-Übernahme über den Reset-Flow.** Der Code stand in der HTTP-Antwort,
+  war 4-stellig, kam aus `Math.random` und hatte weder Versuchszähler noch
+  Rate-Limit. Jetzt: 6-stellig aus `crypto.randomInt`, nie in der Antwort
+  (ohne E-Mail-Versand landet er im Server-Log), nach 5 Fehlversuchen gesperrt.
+- **`GET /api/logs` lieferte die GPS-Koordinaten aller Nutzer** — der Fix an
+  `/api/map` war dadurch wirkungslos. Koordinaten werden dort jetzt entfernt;
+  die Logs selbst bleiben (das Scoreboard rechnet damit).
+- **`POST /api/friends/accept` prüfte den Empfänger nicht.** Man konnte sich
+  selbst eine Anfrage schicken und im Namen des Opfers annehmen — und hatte
+  damit Feed, Radar und Karte. Absender und Empfänger kommen jetzt aus dem
+  Token, nie aus dem Body.
+- **Gruppen-Chats waren ohne Mitgliedschaft lesbar.** Lesen und Schreiben
+  prüfen jetzt Mitgliedschaft, Direktnachrichten setzen Freundschaft voraus.
+- **Kein Rate-Limiting.** Jetzt zweidimensional: locker pro IP (eine WG oder
+  Bar teilt sich eine IP — ein strenges IP-Limit hätte die ganze Party
+  ausgesperrt), streng pro Account.
+- **Passwortänderung beendete alte Sessions nicht.** Neu: `session_valid_after`
+  auf dem Nutzer, ältere JWTs werden abgelehnt.
+- **Client-Fallback hebelte Serverregeln aus.** `executeApiCall` fiel bei
+  *jedem* Fehler auf die lokale Mock-DB zurück, auch bei 401/403/429 — ein
+  falsches Passwort wurde so zum stillen Offline-Login. Es wird jetzt nur noch
+  bei echten Netzwerkfehlern zurückgefallen; bei 401 wird die Session
+  verworfen und zum Login geleitet.
+
+### Runde 2b — Autorisierungsschicht
+
+Statt weiter Endpunkt für Endpunkt zu flicken, gehen die Entscheidungen jetzt
+durch gemeinsame Helfer in `server/index.js`: `enrichUserProgress` (die
+**einzige** Stelle, an der ein Nutzerdatensatz zur API-Antwort wird),
+`areFriends` und `getGroupIfMember`. Danach wurden alle Routen einmal
+durchgegangen.
+
+- **`enrichUserProgress` ist secure by default:** `email` kommt nur raus, wenn
+  der Aufrufer sie explizit anfordert, und das darf nur beim eigenen Profil
+  passieren (`enrichOwnProfile`). Vorher lieferte `/api/users` die
+  E-Mail-Adressen der gesamten Beta an jeden Account.
+- Die Nutzersuche matcht nur noch **Usernames**. Über E-Mail zu suchen machte
+  sie zum Auskunftsdienst („hat diese Adresse ein Konto, und wie heißt sie?").
+- **Gefiltert statt global:** `/api/groups` (nur meine), `/api/events` (nur
+  meine — jedes Event enthält seinen Invite-Code), `/api/duels` (nur meine —
+  behebt nebenbei fremde Duelle in der Spieleliste), `/api/posts` und
+  `/api/quests` (nur meine Kontexte), `/api/friends/:username` (nur die eigene
+  Liste).
+- **Schreibrechte:** Posts und Quests nur im eigenen Kontext.
+- **`DELETE /api/drinks/:id`** war die zerstörerischste offene Route: Löschen
+  kaskadiert auf *alle* Logs mit diesem Getränk. Getränke haben jetzt
+  `created_by` (Standard-Katalog = NULL = unlöschbar), nur der Ersteller darf
+  löschen, und bei fremden Logs wird mit 409 abgelehnt.
+
+### Runde 2c — Härtung
+
+- **CORS** ist jetzt eine Allow-List (`ALLOWED_ORIGINS` per Env, sonst
+  `webapp.trinkduell.com` + localhost). Requests **ohne** Origin bleiben
+  erlaubt — die native App sendet keinen, und CORS bindet Nicht-Browser
+  ohnehin nicht.
+- **JWT_SECRET:** Der Server **startet nicht mehr**, wenn `DATABASE_URL`
+  gesetzt ist und der eingebaute Entwicklungs-Schlüssel greifen würde oder das
+  Secret unter 32 Zeichen hat. Der Fallback steht im öffentlichen Repo.
+- **Body-Limits:** 256 kB global statt 10 MB überall. Die 8 MB gelten nur noch
+  für `POST /users/:id/avatar` und `PUT /users/:id` — die einzigen Routen, die
+  ein Bild tragen. Das Rate-Limit läuft **vor** dem Body-Parsing.
+- **Validierung** für Username (3–24, Zeichensatz), E-Mail, Passwort (min. 8,
+  auch im Client), Nachrichten, Beiträge, Gruppen-/Event-/Quest-Namen,
+  Getränkewerte, Quest-Typen und Event-Dauer. Zahlenprüfungen waren vorher
+  nur nach oben begrenzt — negative Werte und `NaN` gingen durch.
+- **Avatare** müssen ein `data:image/...`-Base64-URL sein; Multipart-Uploads
+  werden auf Bild-MIME-Typen gefiltert. Vorher wurde jeder String gespeichert
+  und später als Bildquelle wieder ausgegeben.
+- **Zeitstempel und Koordinaten** beim Loggen werden auf plausible Bereiche
+  geprüft (vorher konnte ein Log auf das Jahr 2099 datiert werden).
+- **Fehlermeldungen:** kein `err.message` mehr nach außen (24 Stellen). Ein
+  zentraler Error-Handler liefert sauberes JSON für kaputtes JSON (400), zu
+  große Bodies (413 — das ist der alte `PayloadTooLargeError`) und abgelehnte
+  Origins (403) statt Express' HTML-Seite mit Stacktrace.
+- **Invite-Codes** kommen aus `crypto` statt `Math.random`.
+
+Dabei aufgefallen und mitbehoben:
+
+- **Umbenennen zerstörte Freundschaften.** Friendships referenzieren Nutzer
+  über den Namen, ohne FK — nach einem Rename passten die Zeilen zu niemandem
+  mehr. Neu: `db.renameUserInFriendships` (beide DB-Modi). Ein fehlgeschlagenes
+  Umbenennen wird jetzt auch angezeigt statt nur in die Konsole geloggt.
+- **Status-Posts** liefen gegen die feste Gruppen-ID `"group-1"`, in der
+  niemand Mitglied ist. Es gibt jetzt `contextType: "friends"` (contextId =
+  eigene User-ID). Sichtbarkeit bleibt exakt wie vorher.
+
+**Noch offen:** Avatare werden nativ ungefähr in Originalgröße hochgeladen
+(`quality: 0.8`, keine Skalierung) und als Base64 in der DB abgelegt — dadurch
+hängen sie in jeder Nutzerliste mit drin. Eine clientseitige Skalierung wie im
+Web-Pfad (dort 120×120) würde Traffic und DB-Größe deutlich senken.

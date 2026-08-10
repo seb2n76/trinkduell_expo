@@ -257,7 +257,10 @@ export default function LivePulseFeed() {
     setIsSubmitting(true);
     try {
       await triggerHaptic("success");
-      await apiService.createPost(inputText.trim(), "group", "group-1");
+      // A status update goes to the author's friends, not to a group. It used
+      // to be posted against the hardcoded group id "group-1", which no user
+      // is a member of.
+      await apiService.createPost(inputText.trim(), "friends", currentUser.id);
       setInputText("");
       await loadFeedData(scope);
     } catch (e) {

@@ -1,9 +1,14 @@
 # E-Mail-Versand einrichten (Resend)
 
 Kurzanleitung, um echten E-Mail-Versand für den Passwort-Reset-Flow zu aktivieren.
-Bis das erledigt ist, funktioniert der Reset-Flow weiter wie bisher (Code wird
-direkt in der App angezeigt) — sobald ein API-Key gesetzt ist, schaltet der
-Server automatisch auf echten E-Mail-Versand um, ganz ohne Code-Änderung.
+Solange kein API-Key gesetzt ist, schreibt der Server den Reset-Code ins
+**Server-Log** (`docker compose logs backend`) statt ihn zu verschicken. Der
+Code wird **nie** an den Client ausgeliefert — früher war das der Fall, und
+weil `sendEmail()` auch bei jedem Resend-Ausfall „nicht gesendet" meldet,
+reichten damit zwei HTTP-Requests für eine Account-Übernahme.
+
+Sobald ein API-Key gesetzt ist, schaltet der Server automatisch auf echten
+E-Mail-Versand um, ganz ohne Code-Änderung.
 
 ## 1. Resend-Account anlegen
 

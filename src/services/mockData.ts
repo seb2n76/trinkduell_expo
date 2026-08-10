@@ -74,7 +74,11 @@ export interface Post {
   userId: string;
   text: string;
   image?: string;
-  contextType: "group" | "event";
+  // "friends" is a status update broadcast to the author's friends — the
+  // contextId is then the author's own user id. It used to be posted as
+  // contextType "group" against the legacy id "group-1", which belonged to
+  // nobody and only worked because the friends feed filters by author anyway.
+  contextType: "group" | "event" | "friends";
   contextId: string;
   timestamp: string; // ISO string
 }
@@ -716,7 +720,7 @@ export const joinEventWithCode = async (code: string): Promise<Event | null> => 
 
 // Posts
 export const getPosts = async (): Promise<Post[]> => getRawData<Post>(KEYS.POSTS);
-export const createPost = async (text: string, contextType: "group" | "event", contextId: string, image?: string, userId?: string): Promise<Post> => {
+export const createPost = async (text: string, contextType: Post["contextType"], contextId: string, image?: string, userId?: string): Promise<Post> => {
   const posts = await getPosts();
   const actualUserId = userId || await getCurrentUserId();
   const newPost: Post = {
@@ -879,8 +883,8 @@ export const mockResetPassword = async (
   code: string,
   newPassword: string
 ): Promise<{ success: boolean }> => {
-  if (newPassword.length < 6) {
-    throw new Error("Passwort muss mindestens 6 Zeichen lang sein.");
+  if (newPassword.length < 8) {
+    throw new Error("Passwort muss mindestens 8 Zeichen lang sein.");
   }
 
   const users = await getRawData<User>(KEYS.USERS);

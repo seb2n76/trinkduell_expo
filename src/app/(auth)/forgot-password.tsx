@@ -12,7 +12,7 @@ export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<Step>("request");
 
   const [email, setEmail] = useState("");
-  const [devCode, setDevCode] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -33,9 +33,10 @@ export default function ForgotPasswordScreen() {
     try {
       await triggerHaptic("success");
       const res = await apiService.forgotPassword(email.trim());
-      // No email provider is wired up yet — the code comes back directly in
-      // the response so the flow works during the friends-only beta.
-      setDevCode(res.code || null);
+      // The server answers the same way whether or not the address exists, and
+      // never sends the code itself — so there is nothing to display here
+      // beyond its message.
+      setInfoMessage(res.message || null);
       setStep("reset");
     } catch (e: any) {
       await triggerHaptic("error");
@@ -56,9 +57,10 @@ export default function ForgotPasswordScreen() {
       setError("Die Passwörter stimmen nicht überein!");
       return;
     }
-    if (newPassword.length < 6) {
+    // Must match the server's minimum (LIMITS.password in server/index.js).
+    if (newPassword.length < 8) {
       await triggerHaptic("error");
-      setError("Das Passwort muss mindestens 6 Zeichen lang sein!");
+      setError("Das Passwort muss mindestens 8 Zeichen lang sein!");
       return;
     }
 
@@ -155,12 +157,9 @@ export default function ForgotPasswordScreen() {
 
             {step === "reset" && (
               <View>
-                {devCode && (
-                  <View className="bg-white/5 border border-emerald-400/30 rounded-2xl p-5 items-center mb-6 w-full">
-                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
-                      Reset-Code (Beta — noch kein E-Mail-Versand)
-                    </Text>
-                    <Text className="text-emerald-400 text-3xl font-black tracking-[8px]">{devCode}</Text>
+                {infoMessage && (
+                  <View className="bg-white/5 border border-cyan-400/30 rounded-2xl p-4 mb-6 w-full">
+                    <Text className="text-slate-300 text-xs font-semibold leading-5">{infoMessage}</Text>
                   </View>
                 )}
 
@@ -168,12 +167,12 @@ export default function ForgotPasswordScreen() {
                 <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-3 mb-4">
                   <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.4)" />
                   <TextInput
-                    placeholder="4-stelliger Code"
+                    placeholder="6-stelliger Code"
                     placeholderTextColor="rgba(255,255,255,0.3)"
                     value={code}
                     onChangeText={setCode}
                     keyboardType="number-pad"
-                    maxLength={4}
+                    maxLength={6}
                     editable={!loading}
                     className="flex-1 text-white font-bold text-sm ml-3"
                   />

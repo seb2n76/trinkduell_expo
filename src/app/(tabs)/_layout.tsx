@@ -394,7 +394,7 @@ export default function TabsLayout() {
   const handleSaveName = async () => {
     if (!editedName.trim() || !dbUser) {
       await triggerHaptic("error");
-      alert("Name darf nicht leer sein!");
+      notify("Fehler", "Name darf nicht leer sein!");
       return;
     }
 
@@ -408,6 +408,11 @@ export default function TabsLayout() {
     } catch (e) {
       await triggerHaptic("error");
       console.error("Failed to update name:", e);
+      // The server rejects a name that is already taken, too short/long, or
+      // contains disallowed characters. Without this the rename just silently
+      // did nothing and the old name stayed on screen.
+      const msg = e instanceof Error ? e.message : "Name konnte nicht geändert werden.";
+      notify("Fehler", msg);
     }
   };
 

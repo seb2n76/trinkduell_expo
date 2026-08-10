@@ -189,6 +189,16 @@ async function initPgSchema() {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code TEXT");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP WITH TIME ZONE");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT");
+    // Number of wrong guesses against the current reset code. Without this a
+    // short numeric code can simply be brute-forced.
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_attempts INTEGER DEFAULT 0");
+    // Cut-off for still-valid JWTs. Tokens issued before this point are
+    // rejected, so a password reset actually ends every other session
+    // instead of leaving a 30-day token alive for whoever stole the account.
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_valid_after TIMESTAMP WITH TIME ZONE");
+    // Owner of a user-created drink. NULL means "built-in catalog", which
+    // nobody may delete. Existing rows become NULL, which is the safe default.
+    await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS created_by TEXT");
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
   } catch (err) {
     console.error("[TrinkDuell DB] Failed to initialize PostgreSQL schema:", err);
@@ -254,7 +264,12 @@ module.exports = {
         password: row.password,
         selected_title: row.selected_title,
         level: row.level !== undefined && row.level !== null ? row.level : 1,
-        active_quest: row.active_quest || null
+        active_quest: row.active_quest || null,
+        // Needed by authenticate() to reject tokens from before a password
+        // reset. Stripped again in enrichUserProgress before any response.
+        sessionValidAfter: row.session_valid_after
+          ? new Date(row.session_valid_after).toISOString()
+          : null
       }));
     }
     // Mirror the Postgres branch above: only return the intentional public
@@ -273,7 +288,8 @@ module.exports = {
       password: u.password,
       selected_title: u.selected_title,
       level: u.level || 1,
-      active_quest: u.active_quest || null
+      active_quest: u.active_quest || null,
+      sessionValidAfter: u.sessionValidAfter || null
     }));
   },
   saveUser: async (user) => {
@@ -381,37 +397,99 @@ module.exports = {
   setPasswordResetCode: async (userId, code, expiresAt) => {
     await loadDb();
     if (pool) {
-      await pool.query("UPDATE users SET reset_code = $1, reset_code_expires_at = $2 WHERE id = $3", [code, expiresAt, userId]);
+      // Requesting a new code always resets the guess counter — otherwise a
+      // user locked out by someone else's guessing could never recover.
+      await pool.query(
+        "UPDATE users SET reset_code = $1, reset_code_expires_at = $2, reset_code_attempts = 0 WHERE id = $3",
+        [code, expiresAt, userId]
+      );
       return;
     }
     const user = db.users.find((u) => u.id === userId);
     if (user) {
       user.resetCode = code;
       user.resetCodeExpiresAt = expiresAt;
+      user.resetCodeAttempts = 0;
       await saveDb();
     }
   },
+  /**
+   * Checks a reset code and CONSUMES one attempt on failure. After
+   * MAX_RESET_ATTEMPTS wrong guesses the code is discarded, so a short
+   * numeric code cannot be enumerated.
+   *
+   * Returns { valid, reason } — never a bare boolean, because the caller has
+   * to distinguish "wrong code" from "code burned" for the log.
+   */
   verifyPasswordResetCode: async (userId, code) => {
     await loadDb();
+    const MAX_RESET_ATTEMPTS = 5;
+
     if (pool) {
-      const res = await pool.query("SELECT reset_code, reset_code_expires_at FROM users WHERE id = $1", [userId]);
-      if (res.rows.length === 0) return false;
+      const res = await pool.query(
+        "SELECT reset_code, reset_code_expires_at, reset_code_attempts FROM users WHERE id = $1",
+        [userId]
+      );
+      if (res.rows.length === 0) return { valid: false, reason: "no_code" };
       const row = res.rows[0];
-      if (!row.reset_code || row.reset_code !== code) return false;
-      if (!row.reset_code_expires_at || new Date(row.reset_code_expires_at).getTime() < Date.now()) return false;
-      return true;
+
+      if (!row.reset_code) return { valid: false, reason: "no_code" };
+      if (!row.reset_code_expires_at || new Date(row.reset_code_expires_at).getTime() < Date.now()) {
+        return { valid: false, reason: "expired" };
+      }
+      if ((row.reset_code_attempts || 0) >= MAX_RESET_ATTEMPTS) {
+        await pool.query(
+          "UPDATE users SET reset_code = NULL, reset_code_expires_at = NULL WHERE id = $1",
+          [userId]
+        );
+        return { valid: false, reason: "too_many_attempts" };
+      }
+      if (row.reset_code !== code) {
+        await pool.query(
+          "UPDATE users SET reset_code_attempts = COALESCE(reset_code_attempts, 0) + 1 WHERE id = $1",
+          [userId]
+        );
+        return { valid: false, reason: "wrong_code" };
+      }
+      return { valid: true };
     }
+
     const user = db.users.find((u) => u.id === userId);
-    if (!user || !user.resetCode || user.resetCode !== code) return false;
-    if (!user.resetCodeExpiresAt || new Date(user.resetCodeExpiresAt).getTime() < Date.now()) return false;
-    return true;
+    if (!user || !user.resetCode) return { valid: false, reason: "no_code" };
+    if (!user.resetCodeExpiresAt || new Date(user.resetCodeExpiresAt).getTime() < Date.now()) {
+      return { valid: false, reason: "expired" };
+    }
+    if ((user.resetCodeAttempts || 0) >= MAX_RESET_ATTEMPTS) {
+      user.resetCode = null;
+      user.resetCodeExpiresAt = null;
+      await saveDb();
+      return { valid: false, reason: "too_many_attempts" };
+    }
+    if (user.resetCode !== code) {
+      user.resetCodeAttempts = (user.resetCodeAttempts || 0) + 1;
+      await saveDb();
+      return { valid: false, reason: "wrong_code" };
+    }
+    return { valid: true };
   },
   setPasswordAndClearResetCode: async (userId, hashedPassword) => {
     await loadDb();
+    // A password reset must also end every session that already exists —
+    // otherwise "I got hacked, I changed my password" leaves the attacker's
+    // 30-day token working. authenticate() compares the token's issue time
+    // against this value.
+    const validAfter = new Date().toISOString();
+
     if (pool) {
       await pool.query(
-        "UPDATE users SET password = $1, reset_code = NULL, reset_code_expires_at = NULL WHERE id = $2",
-        [hashedPassword, userId]
+        `UPDATE users
+            SET password = $1,
+                reset_code = NULL,
+                reset_code_expires_at = NULL,
+                reset_code_attempts = 0,
+                session_valid_after = $2
+          WHERE id = $3`,
+        [hashedPassword, validAfter, userId]
       );
       return;
     }
@@ -420,6 +498,8 @@ module.exports = {
       user.password = hashedPassword;
       user.resetCode = null;
       user.resetCodeExpiresAt = null;
+      user.resetCodeAttempts = 0;
+      user.sessionValidAfter = validAfter;
       await saveDb();
     }
   },
@@ -457,7 +537,9 @@ module.exports = {
         category: row.category,
         volume: row.volume,
         abv: Number(row.abv),
-        calories: row.calories
+        calories: row.calories,
+        // null for the built-in catalog — see the delete route in index.js
+        createdBy: row.created_by || null
       }));
     }
     
@@ -484,12 +566,15 @@ module.exports = {
   saveDrink: async (drink) => {
     await loadDb();
     if (pool) {
+      // created_by is set on insert only and deliberately absent from the
+      // UPDATE list: ownership decides who may delete a drink, so a later
+      // save must not be able to reassign it.
       await pool.query(
-        `INSERT INTO drinks (id, name, category, volume, abv, calories)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO drinks (id, name, category, volume, abv, calories, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET
            name = $2, category = $3, volume = $4, abv = $5, calories = $6`,
-        [drink.id, drink.name, drink.category, drink.volume, drink.abv, drink.calories]
+        [drink.id, drink.name, drink.category, drink.volume, drink.abv, drink.calories, drink.createdBy || null]
       );
       return;
     }
@@ -861,6 +946,44 @@ module.exports = {
     }
     await saveDb();
   },
+  /**
+   * Carries a rename over to the friendship table.
+   *
+   * Friendships have no foreign key — they store usernames (see the friends
+   * routes in index.js). Renaming a user therefore orphaned every friendship
+   * they had: the rows still existed but matched nobody, so friends silently
+   * disappeared from both sides' lists. Called from PUT /api/users/:id.
+   */
+  renameUserInFriendships: async (oldName, newName) => {
+    await loadDb();
+    if (!oldName || !newName || oldName.toLowerCase() === newName.toLowerCase()) return;
+
+    if (pool) {
+      await pool.query(
+        "UPDATE friendships SET sender_username = $1 WHERE LOWER(sender_username) = LOWER($2)",
+        [newName, oldName]
+      );
+      await pool.query(
+        "UPDATE friendships SET receiver_username = $1 WHERE LOWER(receiver_username) = LOWER($2)",
+        [newName, oldName]
+      );
+      return;
+    }
+
+    if (!db.friendships) db.friendships = [];
+    let changed = false;
+    for (const f of db.friendships) {
+      if ((f.sender_username || "").toLowerCase() === oldName.toLowerCase()) {
+        f.sender_username = newName;
+        changed = true;
+      }
+      if ((f.receiver_username || "").toLowerCase() === oldName.toLowerCase()) {
+        f.receiver_username = newName;
+        changed = true;
+      }
+    }
+    if (changed) await saveDb();
+  },
   getMapCoordinates: async () => {
     await loadDb();
     if (pool) {
@@ -910,6 +1033,9 @@ module.exports = {
 
     return mapped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   },
+  // Username search only. Matching on email as well turned the friend search
+  // into a lookup service — enter an address, find out whether that person has
+  // an account and what they are called here.
   searchUsers: async (query) => {
     await loadDb();
     const q = (query || "").trim().toLowerCase();
@@ -917,7 +1043,7 @@ module.exports = {
 
     if (pool) {
       const res = await pool.query(
-        `SELECT * FROM users WHERE LOWER(name) ILIKE $1 OR LOWER(email) ILIKE $1 LIMIT 20`,
+        `SELECT * FROM users WHERE LOWER(name) ILIKE $1 LIMIT 20`,
         [`%${q}%`]
       );
       return res.rows.map(row => ({
@@ -938,10 +1064,7 @@ module.exports = {
     }
 
     const users = db.users || [];
-    return users.filter((u) =>
-      (u.name && u.name.toLowerCase().includes(q)) ||
-      (u.email && u.email.toLowerCase().includes(q))
-    ).slice(0, 20);
+    return users.filter((u) => u.name && u.name.toLowerCase().includes(q)).slice(0, 20);
   },
   getDirectMessages: async (user1Id, user2Id) => {
     await loadDb();

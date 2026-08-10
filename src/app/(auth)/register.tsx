@@ -35,9 +35,11 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (password.length < 6) {
+    // Must match the server's minimum (LIMITS.password in server/index.js) —
+    // otherwise the client waves a password through that the server rejects.
+    if (password.length < 8) {
       await triggerHaptic("error");
-      setError("Das Passwort muss mindestens 6 Zeichen lang sein!");
+      setError("Das Passwort muss mindestens 8 Zeichen lang sein!");
       return;
     }
 

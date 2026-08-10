@@ -36,6 +36,47 @@ axiosInstance.interceptors.request.use(
   }
 );
 
+// Called when the server rejects our token. Registered by AuthProvider so the
+// api layer can drop the app back to the login screen without importing React.
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+// Surface the server's own (German) error text instead of axios' generic
+// "Request failed with status code 403". Every screen renders `e.message`
+// straight into its error banner, so without this the user only ever sees an
+// HTTP status where the backend sent a real explanation.
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const serverMessage = error?.response?.data?.error;
+    if (typeof serverMessage === "string" && serverMessage.trim()) {
+      error.message = serverMessage;
+    }
+
+    // A 401 means the stored token is no longer accepted — expired, account
+    // deleted, or every session ended by a password reset. Keeping it would
+    // leave the app stuck retrying a dead token on every screen, so drop the
+    // session and let the navigation guard send the user to the login screen.
+    // /auth/* is excluded: a failed login attempt is not a dead session.
+    const url = error?.config?.url || "";
+    if (error?.response?.status === 401 && !url.startsWith("/auth/")) {
+      clearStoredSession().catch(() => {});
+      if (onUnauthorized) onUnauthorized();
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// True only for "we never got an answer" — no response object means DNS
+// failure, timeout, or the server being down. A 4xx/5xx IS an answer.
+function isNetworkFailure(error: unknown): boolean {
+  return !(error as { response?: unknown })?.response;
+}
+
 
 // Circuit Breaker state to prevent network timeout lags when server is offline.
 // Kept short on purpose: this used to be 30s, which meant a single slow
@@ -103,6 +144,15 @@ async function executeApiCall<T>(
     isServerOffline = false;
     return response.data;
   } catch (error) {
+    // A server that ANSWERED — 401, 403, 404, 429, 500 — is not offline, and
+    // its answer must reach the user. Falling back here used to swallow every
+    // rejection: a wrong password or a denied request silently became a local
+    // mock result, so the app could show a "successful" login against a
+    // phantom offline account and no server-side rule could be relied on.
+    if (!isNetworkFailure(error)) {
+      throw error;
+    }
+
     // Trip circuit breaker on failure
     isServerOffline = true;
     lastServerCheckTime = now;
@@ -252,7 +302,7 @@ export const apiService = {
       () => db.getPosts()
     ),
 
-  createPost: (text: string, contextType: "group" | "event", contextId: string, image?: string): Promise<db.Post> =>
+  createPost: (text: string, contextType: db.Post["contextType"], contextId: string, image?: string): Promise<db.Post> =>
     executeApiCall(
       () => axiosInstance.post<db.Post>("/posts", { text, contextType, contextId, image }),
       () => db.createPost(text, contextType, contextId, image),
@@ -298,17 +348,23 @@ export const apiService = {
     await axiosInstance.delete<void>(`/users/${userId}`);
   },
 
-  forgotPassword: (email: string): Promise<{ message: string; code?: string }> =>
-    executeApiCall(
-      () => axiosInstance.post<{ message: string; code?: string }>("/auth/forgot-password", { email }),
-      () => db.mockForgotPassword(email)
-    ),
+  // Both password-reset calls deliberately bypass the offline fallback, for
+  // the same reason deleteAccount does: the password that matters lives on
+  // the server. "Resetting" it against the local mock would report success
+  // and then leave the user unable to log in anywhere.
+  forgotPassword: async (email: string): Promise<{ message: string }> => {
+    const res = await axiosInstance.post<{ message: string }>("/auth/forgot-password", { email });
+    return res.data;
+  },
 
-  resetPassword: (email: string, code: string, newPassword: string): Promise<{ success: boolean }> =>
-    executeApiCall(
-      () => axiosInstance.post<{ success: boolean }>("/auth/reset-password", { email, code, newPassword }),
-      () => db.mockResetPassword(email, code, newPassword)
-    ),
+  resetPassword: async (email: string, code: string, newPassword: string): Promise<{ success: boolean }> => {
+    const res = await axiosInstance.post<{ success: boolean }>("/auth/reset-password", {
+      email,
+      code,
+      newPassword,
+    });
+    return res.data;
+  },
 
   // Deliberately doesn't use executeApiCall's generic offline fallback:
   // db.mockGetSession() only understands locally-issued "mock-jwt-token-*"

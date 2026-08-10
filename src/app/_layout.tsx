@@ -1,7 +1,7 @@
 import "../../global.css";
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { apiService, cacheUser } from "@/services/api";
+import { apiService, cacheUser, setUnauthorizedHandler } from "@/services/api";
 import { User } from "@/services/mockData";
 import { ActivityIndicator, View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -156,6 +156,18 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Let the api layer end the session when the server rejects our token
+  // (expired, account deleted, or a password reset ended every session).
+  // Without this the app would keep rendering a logged-in shell whose every
+  // request fails with 401.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setToken(null);
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   // Load session on startup
   useEffect(() => {

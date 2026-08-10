@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const db = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -7,18 +8,59 @@ const multer = require("multer");
 const { sendPushNotification } = require("./push");
 const { sendPasswordResetEmail } = require("./email");
 
+// Largest request body accepted anywhere. Avatars arrive as Base64 from the
+// image picker, which hands over the photo at quality 0.8 without resizing —
+// a few megabytes is normal. Only the two avatar routes get this limit; see
+// AVATAR_JSON / the global express.json below.
+const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+
 // Multipart avatar upload fallback (used when the client can't produce a
 // Base64 payload). Memory storage since avatars are small and get converted
 // straight to a Base64 data URL below, same as the JSON upload path.
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: AVATAR_MAX_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    // Whatever arrives here is turned into a data: URL and stored as the
+    // avatar, so refuse anything that isn't an image outright.
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) {
+      return cb(new Error("UNSUPPORTED_IMAGE_TYPE"));
+    }
+    cb(null, true);
+  },
 });
 
 // ─── JWT Secret ───────────────────────────────────────────────────────────────
-// In production this MUST come from an environment variable.
-// Set JWT_SECRET on your Proxmox LXC, e.g. via systemd EnvironmentFile.
-const JWT_SECRET = process.env.JWT_SECRET || "trinkduell-dev-secret-change-in-prod";
+// The fallback exists so a fresh clone runs without setup. It must never reach
+// a real deployment: the repo is public, so a known signing key means anyone
+// can mint a valid token for any account. DATABASE_URL is the marker for "this
+// is a real deployment" — JSON mode is the local dev path.
+const JWT_SECRET_FALLBACK = "trinkduell-dev-secret-change-in-prod";
+const JWT_SECRET = process.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+const MIN_JWT_SECRET_LENGTH = 32;
+
+if (process.env.DATABASE_URL) {
+  if (JWT_SECRET === JWT_SECRET_FALLBACK) {
+    console.error(
+      "[TrinkDuell] FATAL: JWT_SECRET ist nicht gesetzt, aber eine echte Datenbank ist konfiguriert.\n" +
+        "  Der eingebaute Entwicklungs-Schlüssel steht im öffentlichen Repo — damit könnte jeder\n" +
+        "  gültige Tokens für beliebige Konten ausstellen. Setze JWT_SECRET in server/.env:\n" +
+        "      openssl rand -hex 32"
+    );
+    process.exit(1);
+  }
+  if (JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
+    console.error(
+      `[TrinkDuell] FATAL: JWT_SECRET ist zu kurz (${JWT_SECRET.length} Zeichen, mindestens ${MIN_JWT_SECRET_LENGTH}).`
+    );
+    process.exit(1);
+  }
+} else if (JWT_SECRET === JWT_SECRET_FALLBACK) {
+  console.warn(
+    "[TrinkDuell] WARNUNG: Entwicklungs-JWT-Schlüssel aktiv. Nur für lokales Testen geeignet."
+  );
+}
+
 const JWT_EXPIRES_IN = "30d"; // Long-lived sessions for mobile apps
 
 // Helper: sign a fresh token for a userId
@@ -50,12 +92,26 @@ async function migratePlaintextPasswords() {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-function enrichUserProgress(user) {
+/**
+ * The single place a user record becomes an API response.
+ *
+ * Secure by default: `email` is only included when the caller explicitly asks
+ * for it, which may only happen when the record IS the requester's own
+ * profile. Every other route — the user list, search, a foreign profile, a
+ * friends list — gets a record without it. Handing out the email addresses of
+ * an entire user base to anyone holding any account is exactly the kind of
+ * leak the password hash once was.
+ *
+ * sessionValidAfter is internal auth state (see authenticate) and never goes
+ * out at all.
+ */
+function enrichUserProgress(user, { includeEmail = false } = {}) {
   if (!user) return user;
-  const { password, ...sanitizedUser } = user;
+  const { password, sessionValidAfter, email, ...sanitizedUser } = user;
   const progress = db.getUserProgress(user.points, user.level);
   return {
     ...sanitizedUser,
+    ...(includeEmail ? { email } : {}),
     currentLevel: progress.currentLevel,
     xpForNextLevel: progress.xpForNextLevel,
     xpProgressInCurrentLevel: progress.xpProgressInCurrentLevel,
@@ -63,9 +119,50 @@ function enrichUserProgress(user) {
   };
 }
 
-// Enable CORS and JSON body parser
-app.use(cors());
-app.use(express.json({ limit: "10mb" })); // Raise limit for Base64 avatars
+// Shorthand for "this record is the requester's own profile".
+const enrichOwnProfile = (user) => enrichUserProgress(user, { includeEmail: true });
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// An allow-list instead of the previous wide-open cors(), which let any web
+// page on the internet call this API from a visitor's browser.
+//
+// Requests WITHOUT an Origin header are allowed through: CORS is a browser
+// mechanism, and the native app (and curl, and health checks) simply don't
+// send one. Rejecting those would break the mobile app without protecting
+// anything — a non-browser client isn't bound by CORS in the first place.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://webapp.trinkduell.com",
+  "http://localhost:8081",
+  "http://localhost:19006",
+];
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : DEFAULT_ALLOWED_ORIGINS
+  )
+    .map((o) => o.trim())
+    .filter(Boolean)
+);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+      callback(new Error("CORS_NOT_ALLOWED"));
+    },
+  })
+);
+
+// ─── Body limits ──────────────────────────────────────────────────────────────
+// 10 MB used to apply to every route, which made a memory-exhaustion attempt a
+// single curl away. Normal API payloads are tiny; only avatars are big, so the
+// large limit is scoped to exactly the two routes that carry one:
+//   POST /api/users/:id/avatar  — the upload itself
+//   PUT  /api/users/:id         — the client sends the whole user object back,
+//                                 avatar included, e.g. on a rename
+// Registered further down, AFTER the rate limiter — a flood must be rejected
+// before an 8 MB body gets parsed into memory, not after.
+const avatarJson = express.json({ limit: AVATAR_MAX_BYTES });
 
 // Helper to generate unique IDs
 const generateUniqueId = (prefix) => {
@@ -73,6 +170,190 @@ const generateUniqueId = (prefix) => {
   const random = Math.floor(Math.random() * 1000000);
   return `${prefix}-${timestamp}-${random}`;
 };
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+// Deliberately dependency-free and in-memory: the backend runs as a single
+// container, so an external store would add moving parts without adding
+// safety. Two dimensions are limited on purpose:
+//   - per IP      → stops one machine hammering the API
+//   - per account → stops a *distributed* guess against ONE account, which an
+//                   IP limit alone does not catch
+const rateBuckets = new Map();
+
+function rateLimitHit(key, max, windowMs) {
+  const now = Date.now();
+  const hits = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (hits.length >= max) {
+    rateBuckets.set(key, hits);
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((windowMs - (now - hits[0])) / 1000)) };
+  }
+  hits.push(now);
+  rateBuckets.set(key, hits);
+  return { allowed: true };
+}
+
+function clearRateLimit(key) {
+  rateBuckets.delete(key);
+}
+
+// Drop empty buckets so a long-running server doesn't grow a bucket per IP
+// that ever touched it.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, hits] of rateBuckets) {
+    if (hits.every((t) => now - t > 60 * 60 * 1000)) rateBuckets.delete(key);
+  }
+}, 10 * 60 * 1000).unref();
+
+// Behind the Cloudflare Tunnel the socket address is always the tunnel's, so
+// the forwarded headers are the only way to tell clients apart. They are
+// forgeable by anyone who can reach the container directly — which is exactly
+// why every sensitive limiter below is ALSO keyed by account, and that key
+// cannot be forged.
+function clientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  return (
+    req.headers["cf-connecting-ip"] ||
+    (typeof forwarded === "string" ? forwarded.split(",")[0].trim() : "") ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
+
+/**
+ * ipMax and accountMax are separate on purpose, and ipMax is always the
+ * looser of the two.
+ *
+ * A whole flat, bar or festival shares one public IP — which is the normal
+ * case for this app, not the exception. A strict IP limit would mean one
+ * person mistyping their password locks out everybody at the party. So the
+ * IP limit is only a flood backstop, while the tight limit sits on the
+ * account key, where it hits an attacker and nobody else.
+ */
+function rateLimit({ scope, ipMax, accountMax, windowMs, accountKey }) {
+  return (req, res, next) => {
+    const checks = [{ key: `${scope}:ip:${clientIp(req)}`, max: ipMax }];
+    if (accountKey && accountMax) {
+      const value = accountKey(req);
+      if (value) {
+        checks.push({ key: `${scope}:acct:${String(value).trim().toLowerCase()}`, max: accountMax });
+      }
+    }
+    for (const { key, max } of checks) {
+      const result = rateLimitHit(key, max, windowMs);
+      if (!result.allowed) {
+        res.set("Retry-After", String(result.retryAfterSec));
+        return res.status(429).json({
+          error: "Zu viele Versuche. Bitte warte einen Moment und probiere es dann erneut.",
+        });
+      }
+    }
+    next();
+  };
+}
+
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+
+// Backstop against a client (or a script) flooding the API. Generous enough
+// that normal use — including the app's polling — never comes close.
+app.use("/api", rateLimit({ scope: "global", ipMax: 1200, windowMs: MINUTE }));
+
+// Body parsing happens here, after the limiter above: the big avatar limit is
+// scoped to exactly the two routes that carry an image, everything else gets
+// 256 kB. Previously 10 MB applied to all 47 routes.
+app.use("/api/users/:id/avatar", avatarJson);
+app.put("/api/users/:id", avatarJson);
+app.use(express.json({ limit: "256kb" }));
+
+// ─── Input validation ─────────────────────────────────────────────────────────
+// Small and explicit rather than a schema library: every rule here exists
+// because the field ends up in the database, in a push notification, or on
+// another user's screen, and none of them was bounded before.
+
+const LIMITS = {
+  username: { min: 3, max: 24 },
+  email: { max: 254 },
+  password: { min: 8, max: 200 },
+  messageContent: { max: 2000 },
+  postText: { max: 1000 },
+  groupName: { min: 2, max: 40 },
+  eventName: { min: 2, max: 60 },
+  drinkName: { min: 1, max: 60 },
+  questTitle: { min: 2, max: 80 },
+};
+
+// Letters (incl. umlauts), digits, and a few separators. Deliberately no
+// whitespace and no control characters: usernames are the join key for
+// friendships and appear verbatim in push notifications.
+const USERNAME_PATTERN = /^[A-Za-z0-9ÄÖÜäöüß._-]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * Validates and normalises a free-text field.
+ * Returns { ok: true, value } or { ok: false, error } with a German message.
+ */
+function validateText(raw, label, { min = 1, max, pattern, patternHint } = {}) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: `${label} fehlt oder hat ein ungültiges Format.` };
+  }
+  const value = raw.trim();
+  if (value.length < min) {
+    return {
+      ok: false,
+      error: min === 1
+        ? `${label} darf nicht leer sein.`
+        : `${label} muss mindestens ${min} Zeichen lang sein.`,
+    };
+  }
+  if (max && value.length > max) {
+    return { ok: false, error: `${label} darf höchstens ${max} Zeichen lang sein.` };
+  }
+  // Control characters would break rendering and log output wherever the value
+  // is echoed back.
+  if (/[\x00-\x1f\x7f]/.test(value)) {
+    return { ok: false, error: `${label} enthält ungültige Zeichen.` };
+  }
+  if (pattern && !pattern.test(value)) {
+    return { ok: false, error: patternHint || `${label} enthält ungültige Zeichen.` };
+  }
+  return { ok: true, value };
+}
+
+// Avatars are stored verbatim and later used as an image source, so only a
+// Base64 image data URL is accepted — not an arbitrary string, and not a
+// remote or javascript: URL.
+function validateAvatarDataUrl(raw) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: "Bilddaten fehlen." };
+  }
+  if (!/^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(raw)) {
+    return { ok: false, error: "Ungültiges Bildformat. Erlaubt sind JPEG, PNG, WebP und GIF." };
+  }
+  if (raw.length > AVATAR_MAX_BYTES) {
+    return { ok: false, error: "Das Bild ist zu groß." };
+  }
+  return { ok: true, value: raw };
+}
+
+// ─── Error responses ──────────────────────────────────────────────────────────
+// Routes used to answer with `err.message`, which leaks internals (SQL text,
+// file paths, driver errors) to any caller. The detail belongs in the server
+// log; the client gets a stable German sentence.
+function serverError(res, err, context) {
+  console.error(`[TrinkDuell] ${context}:`, err);
+  res.status(500).json({ error: "Auf dem Server ist ein Fehler aufgetreten. Bitte versuche es später erneut." });
+}
+
+// True when the token was issued before the user's last password reset, i.e.
+// it belongs to a session that reset is supposed to have ended.
+function isTokenRevoked(payload, user) {
+  if (!user.sessionValidAfter) return false;
+  if (!payload.iat) return true; // no issue time -> can't prove it's recent
+  // iat has second precision; allow a second of slack so the token minted by
+  // the reset itself is never rejected by its own cut-off.
+  return payload.iat * 1000 < new Date(user.sessionValidAfter).getTime() - 1000;
+}
 
 // Authentication Middleware — verifies real JWT signature
 async function authenticate(req, res, next) {
@@ -98,10 +379,43 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ error: "Benutzer nicht gefunden." });
   }
 
+  if (isTokenRevoked(payload, user)) {
+    return res.status(401).json({ error: "Sitzung abgelaufen. Bitte melde dich neu an." });
+  }
+
   req.user = user;
   req.userId = userId;
   req.token = token;
   next();
+}
+
+// ─── Authorization helpers ────────────────────────────────────────────────────
+// Every "who may see / change this" decision goes through one of these, so the
+// rule lives in exactly one place instead of being re-implemented (or
+// forgotten) per route.
+
+// Confirmed friendship in either direction. Friendships are stored by
+// username, so the comparison is on names, case-insensitively.
+async function areFriends(usernameA, usernameB) {
+  const a = (usernameA || "").toLowerCase();
+  const b = (usernameB || "").toLowerCase();
+  if (!a || !b) return false;
+
+  const friendships = await db.getFriendships();
+  return friendships.some((f) => {
+    if (f.status !== "accepted") return false;
+    const sender = (f.sender_username || "").toLowerCase();
+    const receiver = (f.receiver_username || "").toLowerCase();
+    return (sender === a && receiver === b) || (sender === b && receiver === a);
+  });
+}
+
+// Returns the group if the user is a member, otherwise null.
+async function getGroupIfMember(groupId, userId) {
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.id === groupId);
+  if (!group) return null;
+  return (group.memberIds || []).includes(userId) ? group : null;
 }
 
 // ==========================================
@@ -109,14 +423,28 @@ async function authenticate(req, res, next) {
 // ==========================================
 
 // Login
-app.post("/api/auth/login", async (req, res) => {
+app.post(
+  "/api/auth/login",
+  rateLimit({
+    scope: "login",
+    ipMax: 100,
+    accountMax: 10,
+    windowMs: 15 * MINUTE,
+    accountKey: (req) => req.body?.emailOrUsername,
+  }),
+  async (req, res) => {
   const { emailOrUsername, password } = req.body;
-  if (!emailOrUsername || !password) {
+  if (typeof emailOrUsername !== "string" || typeof password !== "string" || !emailOrUsername || !password) {
     return res.status(400).json({ error: "E-Mail/Username und Passwort werden benötigt." });
+  }
+  // Bound the inputs before they reach bcrypt.compare — an unbounded password
+  // is CPU the caller gets to spend on the server for free.
+  if (emailOrUsername.length > LIMITS.email.max || password.length > LIMITS.password.max) {
+    return res.status(400).json({ error: "Ungültige Anmeldedaten!" });
   }
 
   const users = await db.getUsers();
-  const lowercaseInput = emailOrUsername.toLowerCase();
+  const lowercaseInput = emailOrUsername.trim().toLowerCase();
   const matchedUser = users.find(
     (u) =>
       u.email?.toLowerCase() === lowercaseInput ||
@@ -133,26 +461,61 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(401).json({ error: "Ungültige Anmeldedaten!" });
   }
 
+  // A successful login clears this account's failure budget, so someone who
+  // simply mistyped a few times isn't locked out for the rest of the window.
+  clearRateLimit(`login:acct:${String(emailOrUsername).trim().toLowerCase()}`);
+
   const token = signToken(matchedUser.id);
-  res.json({ user: enrichUserProgress(matchedUser), token });
-});
+  res.json({ user: enrichOwnProfile(matchedUser), token });
+  }
+);
 
 // Register
-app.post("/api/auth/register", async (req, res) => {
+app.post(
+  "/api/auth/register",
+  // No account key exists yet at registration, so the IP limit is the only
+  // one available — kept high enough that a group signing up together at the
+  // same party isn't blocked.
+  rateLimit({ scope: "register", ipMax: 20, windowMs: HOUR }),
+  async (req, res) => {
   const { username, email, password } = req.body;
   if (!username || !email || !password) {
     return res.status(400).json({ error: "Alle Felder müssen ausgefüllt sein." });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Passwort muss mindestens 6 Zeichen lang sein." });
+  const nameCheck = validateText(username, "Username", {
+    ...LIMITS.username,
+    pattern: USERNAME_PATTERN,
+    patternHint: "Username darf nur Buchstaben, Zahlen, Punkt, Bindestrich und Unterstrich enthalten.",
+  });
+  if (!nameCheck.ok) return res.status(400).json({ error: nameCheck.error });
+
+  const emailCheck = validateText(email, "E-Mail Adresse", {
+    max: LIMITS.email.max,
+    pattern: EMAIL_PATTERN,
+    patternHint: "Bitte gib eine gültige E-Mail Adresse ein.",
+  });
+  if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error });
+
+  if (typeof password !== "string" || password.length < LIMITS.password.min) {
+    return res.status(400).json({
+      error: `Passwort muss mindestens ${LIMITS.password.min} Zeichen lang sein.`,
+    });
+  }
+  // bcrypt only reads the first 72 bytes anyway; the cap keeps an oversized
+  // password from becoming free server CPU.
+  if (password.length > LIMITS.password.max) {
+    return res.status(400).json({ error: "Passwort ist zu lang." });
   }
 
+  const cleanUsername = nameCheck.value;
+  const cleanEmail = emailCheck.value.toLowerCase();
+
   const users = await db.getUsers();
-  if (users.some((u) => u.email?.toLowerCase() === email.toLowerCase())) {
+  if (users.some((u) => u.email?.toLowerCase() === cleanEmail)) {
     return res.status(400).json({ error: "Ein Account mit dieser E-Mail existiert bereits!" });
   }
-  if (users.some((u) => u.name.toLowerCase() === username.toLowerCase())) {
+  if (users.some((u) => u.name.toLowerCase() === cleanUsername.toLowerCase())) {
     return res.status(400).json({ error: "Dieser Username ist bereits vergeben!" });
   }
 
@@ -160,8 +523,8 @@ app.post("/api/auth/register", async (req, res) => {
   const newUserId = generateUniqueId("user");
   const newUser = {
     id: newUserId,
-    name: username,
-    email: email,
+    name: cleanUsername,
+    email: cleanEmail,
     password: hashedPassword,
     // No default photo: the client renders initials when this is empty.
     // Previously every new account got the same stock photo of a stranger,
@@ -180,8 +543,9 @@ app.post("/api/auth/register", async (req, res) => {
   await db.saveUser(newUser);
   const token = signToken(newUser.id);
 
-  res.status(201).json({ user: enrichUserProgress(newUser), token });
-});
+  res.status(201).json({ user: enrichOwnProfile(newUser), token });
+  }
+);
 
 // Logout (Stateless in simple JWT, just response success)
 app.post("/api/auth/logout", (req, res) => {
@@ -189,60 +553,127 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // Forgot Password
-// If RESEND_API_KEY is set (see docs/EMAIL_SETUP.md), the code is emailed
-// and never leaves the server. Without it (friends-only beta default), the
-// code is returned directly in the response so the flow still works.
-app.post("/api/auth/forgot-password", async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: "E-Mail Adresse wird benötigt." });
+//
+// The code is NEVER returned in the response. It used to be, whenever the
+// email couldn't be sent — and since sendEmail() reports failure for any
+// Resend outage or quota error, not just a missing API key, that turned
+// "forgot password" into a two-request account takeover for anybody who knew
+// a beta tester's email address.
+//
+// If email delivery is unavailable the code is written to the server log
+// instead (`docker compose logs backend`), so the friends-only beta still has
+// a working path without exposing anything over HTTP.
+//
+// The response is identical whether or not the address exists — otherwise
+// this endpoint doubles as a "does this person have an account" oracle.
+const GENERIC_RESET_RESPONSE = {
+  message:
+    "Falls ein Konto mit dieser E-Mail existiert, haben wir einen Reset-Code verschickt. Schau auch im Spam-Ordner nach.",
+};
+
+app.post(
+  "/api/auth/forgot-password",
+  rateLimit({
+    scope: "forgot",
+    ipMax: 40,
+    accountMax: 5,
+    windowMs: HOUR,
+    accountKey: (req) => req.body?.email,
+  }),
+  async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "E-Mail Adresse wird benötigt." });
+    }
+
+    const users = await db.getUsers();
+    const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+
+    if (!user) {
+      return res.json(GENERIC_RESET_RESPONSE);
+    }
+
+    // crypto.randomInt, not Math.random: Math.random is predictable from
+    // observed output and must never generate a security token. Six digits
+    // (not four) to widen the space the attempt limit has to protect.
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes
+    await db.setPasswordResetCode(user.id, code, expiresAt);
+
+    const emailSent = await sendPasswordResetEmail(user.email, code);
+    if (!emailSent) {
+      console.warn(
+        `[Auth] E-Mail-Versand nicht verfügbar. Reset-Code für ${user.email}: ${code} ` +
+          `(gültig 15 Minuten — wird bewusst NICHT an den Client ausgeliefert)`
+      );
+    }
+
+    res.json(GENERIC_RESET_RESPONSE);
   }
-
-  const users = await db.getUsers();
-  const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-
-  if (!user) {
-    return res.status(404).json({ error: "Kein Benutzer mit dieser E-Mail gefunden!" });
-  }
-
-  const code = Math.floor(1000 + Math.random() * 9000).toString();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes
-  await db.setPasswordResetCode(user.id, code, expiresAt);
-
-  const emailSent = await sendPasswordResetEmail(email, code);
-
-  res.json({
-    message: `Reset-Code wurde an ${email} gesendet.`,
-    code: emailSent ? undefined : code,
-  });
-});
+);
 
 // Reset Password (using the code issued by /forgot-password)
-app.post("/api/auth/reset-password", async (req, res) => {
-  const { email, code, newPassword } = req.body;
-  if (!email || !code || !newPassword) {
-    return res.status(400).json({ error: "E-Mail, Code und neues Passwort werden benötigt." });
-  }
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: "Passwort muss mindestens 6 Zeichen lang sein." });
-  }
+//
+// Three layers guard the code, because any one of them alone is not enough:
+// the rate limit slows an attacker down, the per-code attempt counter in
+// db.verifyPasswordResetCode burns the code after 5 wrong guesses, and the
+// 15-minute expiry caps how long either matters.
+app.post(
+  "/api/auth/reset-password",
+  rateLimit({
+    scope: "reset",
+    ipMax: 60,
+    accountMax: 10,
+    windowMs: HOUR,
+    accountKey: (req) => req.body?.email,
+  }),
+  async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ error: "E-Mail, Code und neues Passwort werden benötigt." });
+    }
+    if (typeof newPassword !== "string" || newPassword.length < LIMITS.password.min) {
+      return res.status(400).json({
+        error: `Passwort muss mindestens ${LIMITS.password.min} Zeichen lang sein.`,
+      });
+    }
+    if (newPassword.length > LIMITS.password.max) {
+      return res.status(400).json({ error: "Passwort ist zu lang." });
+    }
 
-  const users = await db.getUsers();
-  const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-  if (!user) {
-    return res.status(404).json({ error: "Kein Benutzer mit dieser E-Mail gefunden!" });
+    const users = await db.getUsers();
+    const user = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+
+    // Same wording as a wrong code on purpose — an "unknown email" answer here
+    // would undo the enumeration protection of /forgot-password.
+    const INVALID = { error: "Ungültiger oder abgelaufener Code." };
+    if (!user) {
+      return res.status(400).json(INVALID);
+    }
+
+    const result = await db.verifyPasswordResetCode(user.id, String(code).trim());
+    if (!result.valid) {
+      if (result.reason === "too_many_attempts") {
+        return res.status(400).json({
+          error: "Zu viele Fehlversuche. Der Code wurde gesperrt — fordere einen neuen an.",
+        });
+      }
+      return res.status(400).json(INVALID);
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    // Also invalidates every existing session for this account.
+    await db.setPasswordAndClearResetCode(user.id, hashedPassword);
+
+    // Someone who just proved control of the mailbox must not stay locked out
+    // by a login limit that failed attempts (their own or an attacker's) ran
+    // up. Both keys, because login accepts either identifier.
+    clearRateLimit(`login:acct:${user.email.toLowerCase()}`);
+    clearRateLimit(`login:acct:${user.name.toLowerCase()}`);
+
+    res.json({ success: true });
   }
-
-  const isValidCode = await db.verifyPasswordResetCode(user.id, code.trim());
-  if (!isValidCode) {
-    return res.status(400).json({ error: "Ungültiger oder abgelaufener Code." });
-  }
-
-  const hashedPassword = await bcrypt.hash(newPassword, 12);
-  await db.setPasswordAndClearResetCode(user.id, hashedPassword);
-
-  res.json({ success: true });
-});
+);
 
 // Get Session — verifies real JWT signature
 app.get("/api/auth/session", async (req, res) => {
@@ -264,26 +695,27 @@ app.get("/api/auth/session", async (req, res) => {
   const users = await db.getUsers();
   const user = users.find((u) => u.id === userId);
 
-  if (!user) {
-    return res.json(null);
+  if (!user || isTokenRevoked(payload, user)) {
+    return res.json(null); // Also covers sessions ended by a password reset
   }
 
-  res.json({ user: enrichUserProgress(user), token });
+  res.json({ user: enrichOwnProfile(user), token });
 });
 
 // ==========================================
 // Users Endpoints
 // ==========================================
 
-// Get All Users
+// Get All Users. Stays a full list — the app picks duel opponents and group
+// members from it — but goes through enrichUserProgress like every other
+// route, so it no longer hands out the whole beta's email addresses. It used
+// to strip only the password.
 app.get("/api/users", authenticate, async (req, res) => {
   try {
     const users = await db.getUsers();
-    // Strip passwords before sending
-    const sanitized = users.map(({ password, ...rest }) => rest);
-    res.json(sanitized);
+    res.json(users.map((u) => enrichUserProgress(u)));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -297,19 +729,23 @@ app.get("/api/users/me", authenticate, async (req, res) => {
   if (!user) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
-  res.json(enrichUserProgress(user));
+  res.json(enrichOwnProfile(user));
 });
 
 // Search Users. MUST stay above /api/users/:id — Express matches routes in
 // registration order, so otherwise "search" is parsed as a user id and the
 // request 404s instead of searching (same trap as /api/users/me).
+//
+// Matches usernames only. It used to match email addresses too, which turned
+// the friend search into a lookup service: type someone's email, learn whether
+// they use TrinkDuell and under which name.
 app.get("/api/users/search", authenticate, async (req, res) => {
   try {
     const q = req.query.q || "";
     const users = await db.searchUsers(q);
-    res.json(users.map(enrichUserProgress));
+    res.json(users.map((u) => enrichUserProgress(u)));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -320,8 +756,8 @@ app.get("/api/users/:id", authenticate, async (req, res) => {
   if (!user) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
-  const { password, ...sanitized } = user;
-  res.json(enrichUserProgress(sanitized));
+  // Own id via this route still counts as own profile.
+  res.json(enrichUserProgress(user, { includeEmail: user.id === req.userId }));
 });
 
 // Update User
@@ -336,22 +772,58 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
 
-  // Update properties
+  // Update properties. Only these four are writable — the client PUTs the
+  // whole user object, so anything not picked out here (points, level, rank,
+  // achievements, email) stays server-owned and cannot be self-assigned.
   const { name, avatar, title, selected_title } = req.body;
-  if (name !== undefined) user.name = name;
+
+  if (name !== undefined) {
+    const nameCheck = validateText(name, "Username", {
+      ...LIMITS.username,
+      pattern: USERNAME_PATTERN,
+      patternHint: "Username darf nur Buchstaben, Zahlen, Punkt, Bindestrich und Unterstrich enthalten.",
+    });
+    if (!nameCheck.ok) return res.status(400).json({ error: nameCheck.error });
+
+    if (nameCheck.value.toLowerCase() !== user.name.toLowerCase()) {
+      const taken = users.some(
+        (u) => u.id !== user.id && u.name.toLowerCase() === nameCheck.value.toLowerCase()
+      );
+      if (taken) {
+        return res.status(400).json({ error: "Dieser Username ist bereits vergeben!" });
+      }
+      // Friendships reference users by name, so a rename has to carry over or
+      // the user silently loses every friend.
+      await db.renameUserInFriendships(user.name, nameCheck.value);
+    }
+    user.name = nameCheck.value;
+  }
+
   // Only overwrite the avatar with an actual value. Clients send the whole
   // user object on updates (e.g. a rename), and any object that happened to
   // carry an empty/null avatar used to wipe the stored profile picture —
   // users had to re-upload it. There is no "remove avatar" feature, so an
   // empty value here always means "unchanged", never "delete".
-  if (avatar) user.avatar = avatar;
-  if (title !== undefined) user.title = title;
-  if (selected_title !== undefined) user.selected_title = selected_title;
+  if (avatar) {
+    const avatarCheck = validateAvatarDataUrl(avatar);
+    if (!avatarCheck.ok) return res.status(400).json({ error: avatarCheck.error });
+    user.avatar = avatarCheck.value;
+  }
+
+  // Titles are chosen from a fixed set the server assigns by level, so they
+  // are bounded text rather than free input.
+  for (const [field, value] of [["title", title], ["selected_title", selected_title]]) {
+    if (value === undefined) continue;
+    const check = validateText(value, "Titel", { max: 40 });
+    if (!check.ok) return res.status(400).json({ error: check.error });
+    user[field] = check.value;
+  }
 
   await db.saveUser(user);
   await db.recalculateAllUsers(); // Make sure ranks/achievements recalculate
-  
-  res.json(enrichUserProgress(user));
+
+  // Guarded above: this can only ever be the caller's own profile.
+  res.json(enrichOwnProfile(user));
 });
 
 // Upload User Avatar (Base64 JSON or multipart/form-data)
@@ -368,15 +840,23 @@ app.post("/api/users/:id/avatar", authenticate, avatarUpload.single("avatar"), a
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
 
-  // If it's a Base64 image payload (e.g. from post request)
+  // If it's a Base64 image payload (e.g. from post request). Validated rather
+  // than stored verbatim: this value is handed back out as an image source, so
+  // an arbitrary string here (a remote URL, a javascript: URL, or simply a
+  // megabyte of junk) has no business being accepted.
   if (req.body && req.body.image) {
-    user.avatar = req.body.image;
+    const check = validateAvatarDataUrl(req.body.image);
+    if (!check.ok) {
+      return res.status(400).json({ error: check.error });
+    }
+    user.avatar = check.value;
     await db.saveUser(user);
-    return res.json({ avatarUrl: req.body.image });
+    return res.json({ avatarUrl: check.value });
   }
 
   // Multipart upload: convert the uploaded file into the same Base64 data
   // URL shape the JSON path stores, so both paths behave identically.
+  // The mimetype is already restricted to images by avatarUpload's fileFilter.
   if (req.file) {
     const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
     user.avatar = dataUrl;
@@ -397,7 +877,7 @@ app.delete("/api/users/:id", authenticate, async (req, res) => {
     await db.deleteUser(req.params.id);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -411,7 +891,7 @@ app.post("/api/users/push-token", authenticate, async (req, res) => {
     await db.setPushToken(req.userId, token);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -457,9 +937,9 @@ app.post("/api/users/level-up", authenticate, async (req, res) => {
     };
     await db.savePost(newPost);
 
-    res.json(enrichUserProgress(refreshedUser || user));
+    res.json(enrichOwnProfile(refreshedUser || user));
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -473,40 +953,90 @@ app.get("/api/drinks", authenticate, async (req, res) => {
     const drinks = await db.getDrinks();
     res.json(drinks);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
 // Create Custom Drink
 app.post("/api/drinks", authenticate, async (req, res) => {
-  const { name, category, volume, abv, calories } = req.body;
-  if (!name || !category || !volume || abv === undefined) {
+  const { category, volume, abv, calories } = req.body;
+  if (!category || !volume || abv === undefined) {
     return res.status(400).json({ error: "Name, Kategorie, Volumen und Alkoholgehalt fehlen." });
   }
 
+  const nameCheck = validateText(req.body.name, "Getränkename", LIMITS.drinkName);
+  if (!nameCheck.ok) return res.status(400).json({ error: nameCheck.error });
+
+  const categoryCheck = validateText(category, "Kategorie", { max: 30 });
+  if (!categoryCheck.ok) return res.status(400).json({ error: categoryCheck.error });
+
+  // The old check only rejected values that were too LARGE, so negatives and
+  // NaN went straight through into the score calculation.
   const volNum = parseInt(volume, 10);
   const abvNum = parseFloat(abv);
-  if (volNum > 3000 || abvNum > 100) {
+  const calNum = calories ? parseInt(calories, 10) : 0;
+  if (!Number.isFinite(volNum) || volNum <= 0 || volNum > 3000) {
     return res.status(400).json({ error: "Anti-Cheat: Ungültiges Volumen oder Alkoholgehalt!" });
+  }
+  if (!Number.isFinite(abvNum) || abvNum < 0 || abvNum > 100) {
+    return res.status(400).json({ error: "Anti-Cheat: Ungültiges Volumen oder Alkoholgehalt!" });
+  }
+  if (!Number.isFinite(calNum) || calNum < 0 || calNum > 10000) {
+    return res.status(400).json({ error: "Ungültige Kalorienangabe." });
   }
 
   const newDrink = {
     id: generateUniqueId("drink"),
-    name,
-    category,
-    volume: parseInt(volume, 10),
-    abv: parseFloat(abv),
-    calories: calories ? parseInt(calories, 10) : 0,
+    name: nameCheck.value,
+    category: categoryCheck.value,
+    volume: volNum,
+    abv: abvNum,
+    calories: calNum,
+    // Who may delete this later. The built-in catalog has no creator and is
+    // therefore undeletable by anyone.
+    createdBy: req.userId,
   };
 
   await db.saveDrink(newDrink);
   res.status(201).json(newDrink);
 });
 
-// Delete Custom Drink
+// Delete Custom Drink.
+//
+// Deleting a drink cascades to every drink_log referencing it, so this was the
+// most destructive unguarded route in the API: any logged-in user could delete
+// "Helles Bier" from the shared catalog and wipe that drink out of everyone's
+// history and score. Two guards now:
+//   1. only the creator may delete, and the built-in catalog has no creator
+//   2. refuse while anyone else still has logs for it, so one user's cleanup
+//      can never rewrite another user's stats
 app.delete("/api/drinks/:id", authenticate, async (req, res) => {
-  await db.deleteDrink(req.params.id);
-  res.json({ success: true });
+  try {
+    const drinks = await db.getDrinks();
+    const drink = drinks.find((d) => d.id === req.params.id);
+    if (!drink) {
+      return res.status(404).json({ error: "Getränk nicht gefunden." });
+    }
+
+    if (!drink.createdBy) {
+      return res.status(403).json({ error: "Getränke aus dem Standard-Katalog können nicht gelöscht werden." });
+    }
+    if (drink.createdBy !== req.userId) {
+      return res.status(403).json({ error: "Du kannst nur selbst angelegte Getränke löschen." });
+    }
+
+    const logs = await db.getLogs();
+    if (logs.some((l) => l.drinkId === drink.id && l.userId !== req.userId)) {
+      return res.status(409).json({
+        error: "Dieses Getränk wurde bereits von anderen eingetragen und kann nicht mehr gelöscht werden.",
+      });
+    }
+
+    await db.deleteDrink(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
 });
 
 // ==========================================
@@ -514,9 +1044,20 @@ app.delete("/api/drinks/:id", authenticate, async (req, res) => {
 // ==========================================
 
 // Get All Logs
+//
+// Cross-user by design: the scoreboard's time filters ("diese Woche", "heute")
+// are computed client-side from everyone's logs, and points are public there
+// anyway.
+//
+// Coordinates are NOT. They were being served here in full, which quietly
+// handed out every user's location history and made the access check on
+// /api/map pointless — the same data was one endpoint over. Nothing in the
+// app reads coordinates from this route; the map has its own, filtered one.
 app.get("/api/logs", authenticate, async (req, res) => {
   const logs = await db.getLogs();
-  res.json(logs);
+  res.json(
+    logs.map(({ latitude, longitude, ...log }) => log)
+  );
 });
 
 // Log a Drink
@@ -538,22 +1079,31 @@ app.post("/api/logs", authenticate, async (req, res) => {
     resolvedAbv = volume_ml > 0 ? (alcohol_grams / 0.789 / volume_ml) * 100 : 0;
   }
 
-  if (resolvedVolume > 3000 || resolvedAbv > 100) {
+  // Bounded on BOTH sides: the old check only caught values that were too
+  // large, so a negative volume or a NaN went straight into the score.
+  if (
+    !Number.isFinite(resolvedVolume) || resolvedVolume < 0 || resolvedVolume > 3000 ||
+    !Number.isFinite(resolvedAbv) || resolvedAbv < 0 || resolvedAbv > 100
+  ) {
     return res.status(400).json({ error: "Anti-Cheat: Ungültiges Volumen oder Alkoholgehalt!" });
   }
 
   if (!resolvedDrinkId && drink_name) {
+    const nameCheck = validateText(drink_name, "Getränkename", LIMITS.drinkName);
+    if (!nameCheck.ok) return res.status(400).json({ error: nameCheck.error });
+
     const drinks = await db.getDrinks();
-    let drink = drinks.find(d => d.name.toLowerCase() === drink_name.toLowerCase() && d.volume === Number(volume_ml));
+    let drink = drinks.find(d => d.name.toLowerCase() === nameCheck.value.toLowerCase() && d.volume === Number(volume_ml));
     if (!drink) {
       const abv = volume_ml > 0 ? (alcohol_grams / 0.789 / volume_ml) * 100 : 0;
       drink = {
         id: generateUniqueId("drink"),
-        name: drink_name,
+        name: nameCheck.value,
         category: is_water ? "Alkoholfrei" : "Bier",
         volume: Number(volume_ml) || 330,
         abv: Number(abv.toFixed(2)),
-        calories: 0
+        calories: 0,
+        createdBy: req.userId,
       };
       await db.saveDrink(drink);
     }
@@ -564,17 +1114,47 @@ app.post("/api/logs", authenticate, async (req, res) => {
     return res.status(400).json({ error: "drinkId oder drink_name wird benötigt." });
   }
 
-  const resolvedLatitude = latitude !== undefined && latitude !== null ? latitude : lat;
-  const resolvedLongitude = longitude !== undefined && longitude !== null ? longitude : lng;
+  // The client may set a timestamp so the offline sync queue can replay a log
+  // with the time it actually happened — but it was accepted unchecked, so any
+  // value at all (a date in 2099, or a string that isn't a date) ended up in
+  // the scoreboard's time filters and in duel scoring. Bounded to a plausible
+  // window instead.
+  const now = Date.now();
+  const MAX_BACKDATE_MS = 30 * 24 * 60 * 60 * 1000; // offline sync can lag
+  const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+  let resolvedTimestamp = new Date().toISOString();
+  if (timestamp !== undefined && timestamp !== null) {
+    const parsed = new Date(timestamp).getTime();
+    if (!Number.isFinite(parsed) || parsed > now + MAX_CLOCK_SKEW_MS || parsed < now - MAX_BACKDATE_MS) {
+      return res.status(400).json({ error: "Ungültiger Zeitstempel." });
+    }
+    resolvedTimestamp = new Date(parsed).toISOString();
+  }
+
+  // Coordinates have to be real coordinates — they are rendered on a map.
+  const rawLatitude = latitude !== undefined && latitude !== null ? latitude : lat;
+  const rawLongitude = longitude !== undefined && longitude !== null ? longitude : lng;
+  let resolvedLatitude = null;
+  let resolvedLongitude = null;
+  if (rawLatitude !== undefined && rawLatitude !== null && rawLongitude !== undefined && rawLongitude !== null) {
+    const latNum = Number(rawLatitude);
+    const lngNum = Number(rawLongitude);
+    if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
+        !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+      return res.status(400).json({ error: "Ungültige Koordinaten." });
+    }
+    resolvedLatitude = latNum;
+    resolvedLongitude = lngNum;
+  }
 
   const newLog = {
     id: generateUniqueId("log"),
     drinkId: resolvedDrinkId,
     userId: req.userId,
     eventId,
-    timestamp: timestamp || new Date().toISOString(),
-    latitude: resolvedLatitude !== undefined && resolvedLatitude !== null ? Number(resolvedLatitude) : null,
-    longitude: resolvedLongitude !== undefined && resolvedLongitude !== null ? Number(resolvedLongitude) : null,
+    timestamp: resolvedTimestamp,
+    latitude: resolvedLatitude,
+    longitude: resolvedLongitude,
   };
 
   await db.saveLog(newLog);
@@ -598,7 +1178,7 @@ app.delete("/api/logs/:id", authenticate, async (req, res) => {
     await db.deleteLog(req.params.id);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -691,7 +1271,7 @@ app.get("/api/radar", authenticate, async (req, res) => {
 
     res.json(radar);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -766,7 +1346,7 @@ app.get("/api/feed", authenticate, async (req, res) => {
     combinedFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     res.json(combinedFeed);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -792,7 +1372,7 @@ app.get("/api/map", authenticate, async (req, res) => {
 
     res.json(mappedLogs.filter((entry) => visibleUserIds.has(entry.userId)));
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -820,7 +1400,7 @@ app.get("/api/scoreboard", authenticate, async (req, res) => {
     });
     res.json({ rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -834,29 +1414,57 @@ app.get("/api/messages/direct/:otherUserId", authenticate, async (req, res) => {
     const messages = await db.getDirectMessages(req.userId, req.params.otherUserId);
     res.json(messages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
-// Get Group Messages
+// Get Group Messages — members only.
+// Group ids are guessable (and were listable via /api/groups), so without
+// this check any logged-in user could read any group's entire chat history.
 app.get("/api/messages/group/:groupId", authenticate, async (req, res) => {
   try {
+    const group = await getGroupIfMember(req.params.groupId, req.userId);
+    if (!group) {
+      return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
+    }
+
     const messages = await db.getGroupMessages(req.params.groupId);
     res.json(messages);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
 // Send Message
 app.post("/api/messages", authenticate, async (req, res) => {
   try {
-    const { receiverId, groupId, content } = req.body;
-    if (!content || !content.trim()) {
-      return res.status(400).json({ error: "Nachrichteninhalt darf nicht leer sein." });
+    const { receiverId, groupId } = req.body;
+    const contentCheck = validateText(req.body.content, "Nachricht", { max: LIMITS.messageContent.max });
+    if (!contentCheck.ok) {
+      return res.status(400).json({ error: contentCheck.error });
     }
+    const content = contentCheck.value;
     if (!receiverId && !groupId) {
       return res.status(400).json({ error: "Empfänger oder Gruppe muss angegeben werden." });
+    }
+
+    // Writing follows the same rule as reading: post into a group only as a
+    // member, and DM only confirmed friends (which is also the only way the
+    // app offers to open a direct chat).
+    if (groupId) {
+      const group = await getGroupIfMember(groupId, req.userId);
+      if (!group) {
+        return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
+      }
+    } else {
+      const allUsers = await db.getUsers();
+      const receiver = allUsers.find((u) => u.id === receiverId);
+      if (!receiver) {
+        return res.status(404).json({ error: "Empfänger nicht gefunden." });
+      }
+      if (!(await areFriends(req.user.name, receiver.name))) {
+        return res.status(403).json({ error: "Du kannst nur befreundeten Nutzern schreiben." });
+      }
     }
 
     const newMessage = {
@@ -864,7 +1472,7 @@ app.post("/api/messages", authenticate, async (req, res) => {
       sender_id: req.userId,
       receiver_id: receiverId || null,
       group_id: groupId || null,
-      content: content.trim(),
+      content,
       timestamp: new Date().toISOString(),
     };
 
@@ -879,30 +1487,50 @@ app.post("/api/messages", authenticate, async (req, res) => {
       sender_avatar: sender ? sender.avatar : null,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
 
-// Get Groups
+// Get Groups — only the ones I belong to (or have asked to join).
+// It used to return every group with its full member list, which is both a
+// social-graph leak and the source of the guessable group ids that made the
+// group chats readable.
 app.get("/api/groups", authenticate, async (req, res) => {
   const groups = await db.getGroups();
-  res.json(groups);
+  res.json(
+    groups.filter(
+      (g) =>
+        (g.memberIds || []).includes(req.userId) ||
+        (g.pendingUserIds || []).includes(req.userId)
+    )
+  );
 });
 
 // Create Group
 app.post("/api/groups", authenticate, async (req, res) => {
-  const { name, memberIds } = req.body;
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: "Gruppenname fehlt." });
+  const { memberIds } = req.body;
+  const nameCheck = validateText(req.body.name, "Gruppenname", LIMITS.groupName);
+  if (!nameCheck.ok) {
+    return res.status(400).json({ error: nameCheck.error });
   }
 
-  const initialMembers = Array.isArray(memberIds)
-    ? Array.from(new Set([req.userId, ...memberIds]))
-    : [req.userId];
+  // Bounded and checked against real accounts — an unbounded array of
+  // arbitrary strings would otherwise land in the group record as-is.
+  let initialMembers = [req.userId];
+  if (Array.isArray(memberIds)) {
+    if (memberIds.length > 100) {
+      return res.status(400).json({ error: "Zu viele Mitglieder auf einmal." });
+    }
+    const allUsers = await db.getUsers();
+    const knownIds = new Set(allUsers.map((u) => u.id));
+    initialMembers = Array.from(
+      new Set([req.userId, ...memberIds.filter((id) => typeof id === "string" && knownIds.has(id))])
+    );
+  }
 
   const newGroup = {
     id: generateUniqueId("group"),
-    name: name.trim(),
+    name: nameCheck.value,
     adminId: req.userId,
     memberIds: initialMembers,
     pendingUserIds: [],
@@ -965,27 +1593,39 @@ app.post("/api/groups/:id/requests", authenticate, async (req, res) => {
 // Events Endpoints
 // ==========================================
 
-// Get All Events
+// Get All Events — only my own.
+// Every event carries the invite code that grants membership, so the full
+// list was effectively a master key to every event in the system.
 app.get("/api/events", authenticate, async (req, res) => {
   const events = await db.getEvents();
-  res.json(events);
+  res.json(events.filter((e) => (e.memberIds || []).includes(req.userId)));
 });
 
 // Create Event
 app.post("/api/events", authenticate, async (req, res) => {
-  const { name, durationHours } = req.body;
-  if (!name || !durationHours) {
-    return res.status(400).json({ error: "Name und Eventdauer fehlen." });
+  const { durationHours } = req.body;
+  const nameCheck = validateText(req.body.name, "Eventname", LIMITS.eventName);
+  if (!nameCheck.ok) {
+    return res.status(400).json({ error: nameCheck.error });
   }
 
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Unbounded before: "999999999" produced an event running past year 30000,
+  // and a non-numeric value produced an Invalid Date that was stored as-is.
+  const hours = parseInt(durationHours, 10);
+  if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
+    return res.status(400).json({ error: "Eventdauer muss zwischen 1 und 168 Stunden liegen." });
+  }
+
+  // The invite code grants membership, so it comes from crypto, not
+  // Math.random — whose output is predictable from previously seen values.
+  const inviteCode = crypto.randomBytes(4).toString("hex").toUpperCase();
   const newEvent = {
     id: generateUniqueId("event"),
-    name,
+    name: nameCheck.value,
     creatorId: req.userId,
     inviteCode,
     memberIds: [req.userId],
-    endTimestamp: new Date(Date.now() + parseInt(durationHours, 10) * 60 * 60 * 1000).toISOString(),
+    endTimestamp: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
   };
 
   await db.saveEvent(newEvent);
@@ -995,8 +1635,8 @@ app.post("/api/events", authenticate, async (req, res) => {
 // Join Event
 app.post("/api/events/join", authenticate, async (req, res) => {
   const { code } = req.body;
-  if (!code) {
-    return res.status(400).json({ error: "Einladungscode fehlt." });
+  if (typeof code !== "string" || !code.trim() || code.length > 32) {
+    return res.status(400).json({ error: "Einladungscode fehlt oder ist ungültig." });
   }
 
   const events = await db.getEvents();
@@ -1022,17 +1662,79 @@ app.post("/api/events/join", authenticate, async (req, res) => {
 // Posts Endpoints
 // ==========================================
 
-// Get Posts
+// Get Posts — the same visibility rule the feed applies, since this returns
+// the same records. Previously every group post was readable by everyone.
 app.get("/api/posts", authenticate, async (req, res) => {
-  const posts = await db.getPosts();
-  res.json(posts);
+  try {
+    const [posts, groups, events, users, friendships] = await Promise.all([
+      db.getPosts(),
+      db.getGroups(),
+      db.getEvents(),
+      db.getUsers(),
+      db.getFriendships(),
+    ]);
+
+    const myGroupIds = new Set(
+      groups.filter((g) => (g.memberIds || []).includes(req.userId)).map((g) => g.id)
+    );
+    const myEventIds = new Set(
+      events.filter((e) => (e.memberIds || []).includes(req.userId)).map((e) => e.id)
+    );
+    const friendIds = resolveFriendUserIds(req.user, users, friendships);
+
+    res.json(
+      posts.filter((p) => {
+        if (p.userId === req.userId) return true;
+        // Level-up announcements, same as the friends feed treats them.
+        if (p.userId === "system") return true;
+        if (p.contextType === "friends") return friendIds.has(p.userId);
+        if (p.contextType === "group") return myGroupIds.has(p.contextId);
+        if (p.contextType === "event") return myEventIds.has(p.contextId);
+        return false;
+      })
+    );
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
 });
 
 // Create Post
 app.post("/api/posts", authenticate, async (req, res) => {
-  const { text, contextType, contextId, image } = req.body;
-  if (!text || !contextType || !contextId) {
-    return res.status(400).json({ error: "Text und Kontext fehlen." });
+  const { contextType, contextId, image } = req.body;
+  if (!contextType || !contextId) {
+    return res.status(400).json({ error: "Kontext fehlt." });
+  }
+
+  const textCheck = validateText(req.body.text, "Beitrag", { max: LIMITS.postText.max });
+  if (!textCheck.ok) {
+    return res.status(400).json({ error: textCheck.error });
+  }
+  const text = textCheck.value;
+
+  if (image !== undefined && image !== null && image !== "") {
+    const imageCheck = validateAvatarDataUrl(image);
+    if (!imageCheck.ok) return res.status(400).json({ error: imageCheck.error });
+  }
+
+  // Posting into a context requires belonging to it — otherwise anyone could
+  // drop a post into any group's feed.
+  if (contextType === "friends") {
+    // A status update to my own friends; the context is me.
+    if (contextId !== req.userId) {
+      return res.status(403).json({ error: "Du kannst nur in deinem eigenen Namen posten." });
+    }
+  } else if (contextType === "group") {
+    if (!(await getGroupIfMember(contextId, req.userId))) {
+      return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
+    }
+  } else if (contextType === "event") {
+    const events = await db.getEvents();
+    const event = events.find((e) => e.id === contextId);
+    if (!event || !(event.memberIds || []).includes(req.userId)) {
+      return res.status(403).json({ error: "Du nimmst an diesem Event nicht teil." });
+    }
+  } else {
+    return res.status(400).json({ error: "Unbekannter Kontext-Typ." });
   }
 
   const newPost = {
@@ -1102,9 +1804,12 @@ app.get("/api/duels", authenticate, async (req, res) => {
         await db.saveDuel(d);
       }
     }
-    res.json(duels);
+    // Only duels I'm actually part of. This also fixes a visible bug: the
+    // games screen renders whatever this returns under "Laufende Duelle"
+    // without filtering, so strangers' duels showed up in everyone's list.
+    res.json(duels.filter((d) => d.creatorId === req.userId || d.opponentId === req.userId));
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -1114,6 +1819,14 @@ app.post("/api/duels", authenticate, async (req, res) => {
     const { opponentId, duration } = req.body;
     if (!opponentId || !duration) {
       return res.status(400).json({ error: "opponentId und duration fehlen." });
+    }
+    if (opponentId === req.userId) {
+      return res.status(400).json({ error: "Du kannst dich nicht selbst herausfordern." });
+    }
+
+    const opponents = await db.getUsers();
+    if (!opponents.some((u) => u.id === opponentId)) {
+      return res.status(404).json({ error: "Gegner nicht gefunden." });
     }
 
     const newDuel = {
@@ -1139,7 +1852,7 @@ app.post("/api/duels", authenticate, async (req, res) => {
 
     res.status(201).json(newDuel);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -1176,7 +1889,7 @@ app.post("/api/duels/:id/accept", authenticate, async (req, res) => {
 
     res.json(duel);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -1240,29 +1953,59 @@ app.get("/api/quests", authenticate, async (req, res) => {
         await db.saveGroupQuest(q);
       }
     }
-    res.json(quests);
+    // Progress is recalculated for every quest above (a group's quest must
+    // keep counting whether or not I happen to be looking), but only my own
+    // groups' quests go out.
+    const myGroupIds = new Set(
+      groups.filter((g) => (g.memberIds || []).includes(req.userId)).map((g) => g.id)
+    );
+    res.json(quests.filter((q) => myGroupIds.has(q.groupId)));
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
-// Create Group Quest
+// Create Group Quest — members only. Anyone could previously set a goal for
+// any group they were not part of.
 app.post("/api/quests", authenticate, async (req, res) => {
   try {
-    const { groupId, title, type, targetValue, durationHours } = req.body;
-    if (!groupId || !title || !type || !targetValue || !durationHours) {
+    const { groupId, type, targetValue, durationHours } = req.body;
+    if (!groupId || !type || !targetValue || !durationHours) {
       return res.status(400).json({ error: "Alle Parameter für Gruppen-Quest fehlen." });
     }
 
+    if (!(await getGroupIfMember(groupId, req.userId))) {
+      return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
+    }
+
+    const titleCheck = validateText(req.body.title, "Quest-Titel", LIMITS.questTitle);
+    if (!titleCheck.ok) return res.status(400).json({ error: titleCheck.error });
+
+    // getGroupQuests() branches on these three values; an unknown type would
+    // produce a quest that can never make progress.
+    if (!["drinks", "volume", "water"].includes(type)) {
+      return res.status(400).json({ error: "Unbekannter Quest-Typ." });
+    }
+
+    const target = parseFloat(targetValue);
+    if (!Number.isFinite(target) || target <= 0 || target > 10000) {
+      return res.status(400).json({ error: "Zielwert muss zwischen 1 und 10000 liegen." });
+    }
+
+    const hours = parseInt(durationHours, 10);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
+      return res.status(400).json({ error: "Quest-Dauer muss zwischen 1 und 168 Stunden liegen." });
+    }
+
     const start = new Date();
-    const end = new Date(start.getTime() + parseInt(durationHours, 10) * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
 
     const newQuest = {
       id: generateUniqueId("quest"),
       groupId,
-      title,
+      title: titleCheck.value,
       type,
-      targetValue: parseFloat(targetValue),
+      targetValue: target,
       currentValue: 0.0,
       status: "active",
       startTime: start.toISOString(),
@@ -1272,7 +2015,7 @@ app.post("/api/quests", authenticate, async (req, res) => {
     await db.saveGroupQuest(newQuest);
     res.status(201).json(newQuest);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
@@ -1283,21 +2026,30 @@ app.post("/api/quests", authenticate, async (req, res) => {
 // Send a friend request
 app.post("/api/friends/request", authenticate, async (req, res) => {
   try {
-    const { sender_username, receiver_username } = req.body;
-    if (!sender_username || !receiver_username) {
-      return res.status(400).json({ error: "Absender und Empfänger werden benötigt." });
+    const { receiver_username } = req.body;
+    if (!receiver_username) {
+      return res.status(400).json({ error: "Empfänger wird benötigt." });
+    }
+
+    // The sender is whoever holds the token, never what the body claims —
+    // otherwise anyone could send requests in someone else's name. The client
+    // still sends sender_username; it is ignored on purpose.
+    const sender = req.user;
+    const sender_username = sender.name;
+
+    if (receiver_username.toLowerCase() === sender_username.toLowerCase()) {
+      return res.status(400).json({ error: "Du kannst dir nicht selbst eine Anfrage schicken." });
     }
 
     const users = await db.getUsers();
-    const sender = users.find(u => u.name.toLowerCase() === sender_username.toLowerCase());
     const receiver = users.find(u => u.name.toLowerCase() === receiver_username.toLowerCase());
 
-    if (!sender || !receiver) {
+    if (!receiver) {
       return res.status(404).json({ error: "Benutzer existiert nicht." });
     }
 
     const friendships = await db.getFriendships();
-    const exists = friendships.some(f => 
+    const exists = friendships.some(f =>
       (f.sender_username.toLowerCase() === sender_username.toLowerCase() && f.receiver_username.toLowerCase() === receiver_username.toLowerCase()) ||
       (f.sender_username.toLowerCase() === receiver_username.toLowerCase() && f.receiver_username.toLowerCase() === sender_username.toLowerCase())
     );
@@ -1324,22 +2076,30 @@ app.post("/api/friends/request", authenticate, async (req, res) => {
 
     res.status(201).json({ success: true, request: newRequest });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
 // Accept a friend request
+//
+// Only the RECEIVER may accept, and the receiver is taken from the token.
+// This route used to trust the body completely, so an attacker could send
+// themselves a request and immediately accept it in the victim's name —
+// granting themselves friend status, and with it the victim's feed, radar
+// and map pins, without the victim ever being asked.
 app.post("/api/friends/accept", authenticate, async (req, res) => {
   try {
-    const { sender_username, receiver_username } = req.body;
-    if (!sender_username || !receiver_username) {
-      return res.status(400).json({ error: "Absender und Empfänger werden benötigt." });
+    const { sender_username } = req.body;
+    if (!sender_username) {
+      return res.status(400).json({ error: "Absender wird benötigt." });
     }
 
+    const receiver_username = req.user.name;
+
     const friendships = await db.getFriendships();
-    const request = friendships.find(f => 
-      f.status === "pending" && 
-      f.sender_username.toLowerCase() === sender_username.toLowerCase() && 
+    const request = friendships.find(f =>
+      f.status === "pending" &&
+      f.sender_username.toLowerCase() === sender_username.toLowerCase() &&
       f.receiver_username.toLowerCase() === receiver_username.toLowerCase()
     );
 
@@ -1363,14 +2123,23 @@ app.post("/api/friends/accept", authenticate, async (req, res) => {
 
     res.json({ success: true, request });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
 });
 
-// Get all friends for a user (accepted and pending)
+// Get all friends for a user (accepted and pending).
+//
+// Own list only. The username in the path is kept for compatibility with the
+// existing client (which always passes its own name), but anything else is
+// refused: a friends list is a social graph, and it was readable for every
+// user by simply putting their name in the URL.
 app.get("/api/friends/:username", authenticate, async (req, res) => {
   try {
     const { username } = req.params;
+    if (username.toLowerCase() !== req.user.name.toLowerCase()) {
+      return res.status(403).json({ error: "Du kannst nur deine eigene Freundesliste abrufen." });
+    }
+
     const friendships = await db.getFriendships();
     const users = await db.getUsers();
 
@@ -1394,8 +2163,36 @@ app.get("/api/friends/:username", authenticate, async (req, res) => {
 
     res.json({ friends: friendsList, pending: pendingList });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
+});
+
+// ==========================================
+// Error handling
+// ==========================================
+// Last middleware on purpose. Without it Express answers these cases with its
+// default HTML error page including a stack trace — an API client gets
+// unparseable output, and the response leaks internals.
+// The fourth parameter is what marks this as an error handler for Express.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  if (err && err.message === "CORS_NOT_ALLOWED") {
+    return res.status(403).json({ error: "Zugriff von dieser Herkunft ist nicht erlaubt." });
+  }
+  if (err && err.message === "UNSUPPORTED_IMAGE_TYPE") {
+    return res.status(400).json({ error: "Ungültiges Bildformat. Erlaubt sind JPEG, PNG, WebP und GIF." });
+  }
+  // Oversized body: express.json throws PayloadTooLargeError, multer throws
+  // LIMIT_FILE_SIZE. This is the error that showed up unexplained in the old
+  // server logs.
+  if ((err && err.type === "entity.too.large") || err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "Die gesendeten Daten sind zu groß." });
+  }
+  if (err && err.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Ungültiges JSON im Request-Body." });
+  }
+
+  console.error(`[TrinkDuell] Unbehandelter Fehler bei ${req.method} ${req.originalUrl}:`, err);
+  res.status(500).json({ error: "Auf dem Server ist ein Fehler aufgetreten. Bitte versuche es später erneut." });
 });
 
 // ==========================================

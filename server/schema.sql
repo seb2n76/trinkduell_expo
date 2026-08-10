@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS users (
   active_quest TEXT,
   reset_code TEXT,
   reset_code_expires_at TIMESTAMP WITH TIME ZONE,
+  reset_code_attempts INTEGER DEFAULT 0,
+  -- JWTs issued before this timestamp are rejected (see authenticate() in
+  -- index.js). Set on password reset so a stolen long-lived token dies.
+  session_valid_after TIMESTAMP WITH TIME ZONE,
   push_token TEXT
 );
 
@@ -26,7 +30,11 @@ CREATE TABLE IF NOT EXISTS drinks (
   category TEXT NOT NULL,
   volume INTEGER NOT NULL,
   abv NUMERIC NOT NULL,
-  calories INTEGER DEFAULT 0
+  calories INTEGER DEFAULT 0,
+  -- Owner of a user-created drink; NULL = built-in catalog (undeletable).
+  -- No FK on purpose: a deleted account must not take shared drinks (and
+  -- everybody's logs referencing them) with it.
+  created_by TEXT
 );
 
 CREATE TABLE IF NOT EXISTS drink_logs (
