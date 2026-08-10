@@ -2,7 +2,10 @@ const fs = require("fs").promises;
 const path = require("path");
 const { Pool } = require("pg");
 
-const DB_FILE = path.join(__dirname, "db.json");
+// Overridable so the test suite can point at a throwaway database instead of
+// the real server/db.json, which holds live user data (emails, password
+// hashes) and must never be touched by a test run.
+const DB_FILE = process.env.TRINKDUELL_DB_FILE || path.join(__dirname, "db.json");
 
 // Default Drinks Catalog (used as fallback for JSON mode auto-heal)
 const DEFAULT_DRINKS = [

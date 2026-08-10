@@ -176,10 +176,42 @@ Ich hab noch nie, Wer würde eher, Wortbombe, Busfahrer.
 - **Ursache suchen, nicht Symptom.** „Feed zeigt Fremde" war nicht der
   Feed-Filter, sondern der Offline-Fallback. „Suche geht nicht" war die
   Routen-Reihenfolge.
-- **Nach jeder Änderung:** `npx tsc --noEmit` und `npx eslint src/`.
-  Ziel ist 0 Fehler (Warnungen aus Altbestand sind bekannt und ok).
+- **Nach jeder Änderung:** `npm test`, `npx tsc --noEmit` und
+  `npx eslint src/ server/ tests/`. Ziel ist 0 Fehler (Warnungen aus
+  Altbestand sind bekannt und ok).
 - **Deutsche UI-Texte**, englische Code-Kommentare.
 - **Bei Sicherheits-/Datenschutzentscheidungen nachfragen** statt annehmen.
+
+### Tests
+
+```bash
+npm test          # 75 Tests, ca. 25 Sekunden
+```
+
+`node --test` startet für jede Testdatei den **echten** Server in einem
+eigenen Prozess — gegen eine Wegwerf-Datenbank in `os.tmpdir()`, die danach
+gelöscht wird. `server/db.json` wird dabei nie angefasst (siehe
+`TRINKDUELL_DB_FILE` in `server/db.js`). Keine zusätzliche Abhängigkeit,
+alles über Node's eingebauten Test-Runner.
+
+| Datei | Inhalt |
+|---|---|
+| `tests/auth.test.js` | Passwort-Reset, Rate-Limiting, Session-Invalidierung |
+| `tests/authorization.test.js` | Wer darf was sehen und ändern |
+| `tests/validation.test.js` | Eingabegrenzen, Body-Größe, CORS, Fehlerform |
+
+**Warum die Tests so aussehen, wie sie aussehen:**
+
+- Jeder Test prüft **beide Richtungen**. „Der Fremde wird abgewiesen" allein
+  würde auch dann bestehen, wenn die Funktion für alle kaputt wäre.
+- Der Testhelfer registriert jeden Nutzer von einer **eigenen simulierten IP**
+  (`X-Forwarded-For`). Ohne das blockt das Anmelde-Limit die Suite selbst —
+  der Limit für Tests zu lockern hieße, ein anderes Limit zu testen als das,
+  das produktiv läuft.
+- Die Suite wurde gegen absichtlich wieder eingebaute Lücken geprüft
+  (E-Mail-Leak, `/friends/accept` ohne Empfängerprüfung, GPS in `/api/logs`).
+  Alle drei wurden gefangen. Wer hier etwas ändert, sollte das wiederholen:
+  ein Test, der nicht fehlschlagen kann, schützt nichts.
 
 ### Lokal testen
 
@@ -199,6 +231,7 @@ Dabei `ACTIVE_ENV` in `src/services/config.ts` auf `"local"` stellen — und
 |---|---|
 | `server/index.js` | Alle API-Routen |
 | `server/db.js` | Datenzugriff, **beide** DB-Modi |
+| `tests/helpers/server.js` | Startet den echten Server für die Tests |
 | `src/services/api.ts` | API-Client, Circuit Breaker, Offline-Fallbacks |
 | `src/services/mockData.ts` | Lokale DB + Typen (`User`, `FeedItem`, …) |
 | `src/services/config.ts` | `ACTIVE_ENV`, API-URLs |
