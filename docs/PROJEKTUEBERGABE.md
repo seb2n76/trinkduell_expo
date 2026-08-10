@@ -213,6 +213,49 @@ alles über Node's eingebauten Test-Runner.
   Alle drei wurden gefangen. Wer hier etwas ändert, sollte das wiederholen:
   ein Test, der nicht fehlschlagen kann, schützt nichts.
 
+### EAS-Build und Hardware-Test
+
+```bash
+npx eas-cli build --platform android --profile preview
+```
+
+Das `preview`-Profil erzeugt ein **APK zur Direktinstallation** — kein Play
+Store, kein Apple-Account nötig. Genau das Richtige, um Push und GPS erstmals
+auf echter Hardware zu prüfen.
+
+> **EAS baut den committeten Stand.** Uncommittete Änderungen landen nicht im
+> Build. Ein Build, der „die letzte Änderung nicht enthält", ist fast immer
+> das — der Commit-Hash steht in `eas build:view <id>`.
+
+Vor jedem Build lohnt sich `npx expo-doctor` (Ziel: 19/19). Und
+`npx expo export --platform android` kompiliert lokal dasselbe
+Hermes-Bundle, das EAS baut — schlägt das fehl, schlägt auch der Build fehl,
+nur 15 Minuten früher sichtbar.
+
+**Falle: Versionen dürfen nicht „neuer als das SDK" sein.** `npm install
+babel-preset-expo` holt die neueste Version (57.x), SDK 55 braucht ~55.0.24 —
+mit der falschen bricht Hermes mit „private properties are not supported" ab.
+Immer `npx expo install <paket>` benutzen, nie `npm install`.
+
+#### Was auf dem Gerät zu prüfen ist
+
+Beides ist im Browser prinzipiell nicht testbar und daher noch nie gelaufen:
+
+1. **Push.** Nach dem Login mit einem zweiten Account eine
+   Freundschaftsanfrage schicken. Kommt keine Benachrichtigung an, im
+   Backend-Log nachsehen: `[Push] Delivery error` deutet auf fehlende
+   **FCM-Credentials** im Expo-Projekt hin (Android-Push braucht einen
+   FCM-V1-Service-Account-Key, hochzuladen über `eas credentials`). Der Code
+   fängt den Fehler bewusst ab, damit ein fehlgeschlagener Push nie die
+   auslösende Aktion kaputtmacht — er ist deshalb in der App **unsichtbar**
+   und nur im Log zu sehen.
+2. **GPS.** Standort in den Einstellungen auf „automatisch" stellen, Getränk
+   loggen, Karte öffnen. Der Pin darf nur für Freunde und Gruppenmitglieder
+   sichtbar sein — mit einem zweiten Account gegenprüfen.
+3. **Profilbild.** Nativ wird das Bild unskaliert als Base64 hochgeladen. Bei
+   einem großen Foto ist `413` die erwartete Antwort — das ist der Grund, das
+   Bild clientseitig zu verkleinern (offener Punkt).
+
 ### Lokal testen
 
 ```bash
