@@ -24,7 +24,10 @@ import {
 } from "@/services/mockData";
 import { Modal, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import InteractiveMap from "@/components/InteractiveMap";
+// The map pulls in the whole Leaflet document builder and is only ever shown
+// after the user taps "Karte anzeigen" — so it has no business in the bundle
+// everyone downloads on first load. React.lazy moves it into its own chunk.
+const InteractiveMap = React.lazy(() => import("@/components/InteractiveMap"));
 import { Avatar } from "@/components/Avatar";
 import { getCurrentCoordinates, getLocationMode } from "@/services/location";
 
@@ -357,12 +360,23 @@ export default function LivePulseFeed() {
         {/* Karte (OpenStreetMap via Leaflet) */}
         {mapVisible && (
           <View className="mb-5 h-[450px]">
-            <InteractiveMap
-              mapItems={mapItems}
-              currentUser={currentUser}
-              userLocation={userLocation}
-              onRefreshMap={loadMapData}
-            />
+            <React.Suspense
+              fallback={
+                <View className="flex-1 bg-slate-950 border border-white/10 rounded-3xl items-center justify-center min-h-[450px]">
+                  <ActivityIndicator color="#22d3ee" />
+                  <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-3">
+                    Karte wird geladen
+                  </Text>
+                </View>
+              }
+            >
+              <InteractiveMap
+                mapItems={mapItems}
+                currentUser={currentUser}
+                userLocation={userLocation}
+                onRefreshMap={loadMapData}
+              />
+            </React.Suspense>
           </View>
         )}
 

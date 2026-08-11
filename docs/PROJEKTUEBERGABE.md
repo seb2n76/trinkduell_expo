@@ -213,6 +213,31 @@ alles über Node's eingebauten Test-Runner.
   Alle drei wurden gefangen. Wer hier etwas ändert, sollte das wiederholen:
   ein Test, der nicht fehlschlagen kann, schützt nichts.
 
+### Web-Bundle: gemessene Zahlen
+
+Bevor jemand hier optimiert — die Ausgangslage, gemessen am 10.08.2026:
+
+| | |
+|---|---|
+| Entry-Bundle roh | 2,64 MB (minifiziert, `__DEV__=false`) |
+| **gzip** | **694 KB** |
+| **brotli** | **540 KB** ← das geht tatsächlich über die Leitung, Netlify komprimiert automatisch |
+
+**Das Gewicht liegt im Framework, nicht in den Screens.** Eine Analyse des
+Bundles zeigt `react-native-reanimated`/`worklets` als mit Abstand größten
+Posten (allein 30 KB an Fehlertexten), gefolgt von react-navigation und
+expo-router. Reanimated ist auch nicht entbehrlich — Scoreboard,
+`AchievementModal` und `FloatingPoints` benutzen es direkt.
+
+Konsequenz: **Code-Splitting einzelner Komponenten bringt hier fast nichts.**
+`InteractiveMap` wurde per `React.lazy` in einen eigenen Chunk gelegt (korrekt
+und behalten), das Hauptbundle schrumpfte dadurch um 3,7 KB von 2704 KB.
+`experiments.asyncRoutes` bewirkt im statischen Export gar nichts — getestet,
+Bundle unverändert.
+
+Der wirksame Hebel für „lädt beim zweiten Mal sofort" ist **Caching per
+Service Worker**, nicht Splitting.
+
 ### EAS-Build und Hardware-Test
 
 ```bash
