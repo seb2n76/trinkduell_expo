@@ -236,7 +236,44 @@ und behalten), das Hauptbundle schrumpfte dadurch um 3,7 KB von 2704 KB.
 Bundle unverändert.
 
 Der wirksame Hebel für „lädt beim zweiten Mal sofort" ist **Caching per
-Service Worker**, nicht Splitting.
+Service Worker**, nicht Splitting — und der ist inzwischen umgesetzt (siehe
+unten).
+
+### PWA / Service Worker
+
+`public/` wird von Expo unverändert nach `dist/` kopiert. Dort liegen:
+
+| Datei | Zweck |
+|---|---|
+| `public/sw.js` | Service Worker mit drei Cache-Strategien |
+| `public/manifest.json` | Installierbarkeit, Name, Farben |
+| `public/icon-192.png`, `icon-512.png` | Aus `assets/images/icon.png` erzeugt |
+| `src/services/pwa.ts` | Registrierung + Manifest-Link zur Laufzeit |
+
+Die drei Strategien sind bewusst verschieden, weil die Inhalte
+unterschiedlich altern:
+
+1. **Gehashte Build-Assets** (`/_expo/static/...`) — cache-first, für immer.
+   Der Dateiname enthält den Inhalts-Hash, die Datei kann nie veralten.
+2. **Navigationen (HTML)** — network-first mit Cache-Fallback. Andersherum
+   käme ein Deploy erst nach einem Neustart an, und niemand würde es merken.
+3. **Sonstiges gleicher Herkunft** — stale-while-revalidate.
+
+**Die API wird nie gecacht.** Ein zwischengespeicherter Punktestand wäre
+schlimmer als gar keiner, und die App hat mit `executeApiCall` bereits eine
+eigene Offline-Logik, die nicht durch heimlich alte Antworten unterlaufen
+werden darf.
+
+Nachgemessen mit abgeschaltetem Webserver: die App startet vollständig,
+**0 Bytes übertragen** bei 2737 KB Assets, 0 API-Antworten im Cache.
+
+> **Falle:** Die Registrierung darf sich nicht nur an `window.onload`
+> hängen. `setupPwa()` läuft aus einem `useEffect` und damit fast immer
+> *nach* `load` — das Event feuert dann nie wieder und der Service Worker
+> wäre nie registriert. Deshalb der `document.readyState`-Zweig.
+
+> **Beim Ändern von `sw.js`** die `VERSION`-Konstante hochzählen. Alte Caches
+> werden nur bei einer neuen Version aufgeräumt.
 
 ### EAS-Build und Hardware-Test
 

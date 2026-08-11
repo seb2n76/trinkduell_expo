@@ -9,6 +9,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { SyncService } from "@/services/sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerForPushNotificationsAsync, getRouteForNotificationData } from "@/services/notifications";
+import { setupPwa } from "@/services/pwa";
 import * as Notifications from "expo-notifications";
 
 const AGE_GATE_KEY = "trinkduell_age_18_confirmed";
@@ -127,6 +128,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 export default function RootLayout() {
   useEffect(() => {
+    // Service Worker + Manifest (nur Web, sonst No-op)
+    setupPwa();
+
     // Run initial sync on boot
     SyncService.processQueue();
 
