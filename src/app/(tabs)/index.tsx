@@ -21,6 +21,9 @@ import { FloatingPointItem, FloatingPointItemType } from "@/components/FloatingP
 import { AchievementModal } from "@/components/AchievementModal";
 import { useAuth } from "../_layout";
 import { getCoordinatesForDrinkLog } from "@/services/location";
+// Lazy on purpose: the camera module is only needed once someone taps
+// "Scannen", and it has no business in the bundle everyone loads first.
+const BarcodeScanner = React.lazy(() => import("@/components/BarcodeScanner"));
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -56,6 +59,11 @@ export default function DashboardScreen() {
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  // Set while the "custom drink" dialog is finishing a scan of an unknown
+  // barcode, so the new drink is saved with that code attached.
+  const [pendingEan, setPendingEan] = useState<string | null>(null);
 
   // Achievements & Points Animations
   const [floatingPoints, setFloatingPoints] = useState<FloatingPointItemType[]>([]);
@@ -364,12 +372,16 @@ export default function DashboardScreen() {
 
     try {
       await triggerHaptic("success");
-      await apiService.createDrink({
+      const created = await apiService.createDrink({
         name: formName.trim(),
         category: formCategory,
         volume: vol,
         abv: abv,
-        calories: isWater ? 0 : Math.round(vol * 0.43)
+        calories: isWater ? 0 : Math.round(vol * 0.43),
+        // Set when this dialog was opened by an unknown scan: the drink then
+        // enters the shared catalogue and the next person to scan that bottle
+        // gets it without typing anything.
+        ean: pendingEan,
       });
 
       // Reset form
@@ -383,9 +395,56 @@ export default function DashboardScreen() {
 
       // Update active category
       setActiveCategory(formCategory as "Bier" | "Wein" | "Mischgetränk" | "Alkoholfrei");
+
+      if (pendingEan) {
+        setPendingEan(null);
+        // The scan was meant to log a drink, not just catalogue it — so the
+        // naming detour ends where the user wanted to be in the first place.
+        await handleLogDrink({
+          id: created.id,
+          name: created.name,
+          volume: created.volume,
+          abv: created.abv,
+          category: created.category,
+        });
+      }
     } catch (err) {
       console.error("Failed to create custom drink:", err);
       notify("Fehler", "Getränk konnte nicht gespeichert werden.");
+    }
+  };
+
+  // ── Barcode scanning ──────────────────────────────────────────────────────
+  const handleScanned = async (ean: string) => {
+    setScanBusy(true);
+    try {
+      const drink = await apiService.lookupDrinkByEan(ean);
+
+      if (drink) {
+        setShowScanner(false);
+        await handleLogDrink({
+          id: drink.id,
+          name: drink.name,
+          volume: drink.volume,
+          abv: drink.abv,
+          category: drink.category,
+        });
+        return;
+      }
+
+      // Unknown code: hand over to the existing "custom drink" dialog, which
+      // already knows how to ask for name, volume and strength.
+      setShowScanner(false);
+      setPendingEan(ean);
+      setFormName("");
+      setFormVolume("");
+      setFormAbv("");
+      setShowAddModal(true);
+    } catch (e) {
+      notify("Fehler", e instanceof Error ? e.message : "Barcode konnte nicht geprüft werden.");
+      setShowScanner(false);
+    } finally {
+      setScanBusy(false);
     }
   };
 
@@ -650,17 +709,32 @@ export default function DashboardScreen() {
         {/* ==========================================
             5. CUSTOM DRINK CREATOR BUTTON
             ========================================== */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            triggerHaptic("light");
-            setShowAddModal(true);
-          }}
-          className="mb-8 bg-slate-900 border border-white/5 rounded-2xl py-4 flex-row items-center justify-center space-x-2 active:scale-95 shadow-md"
-        >
-          <Ionicons name="add" size={16} color="#22d3ee" />
-          <Text className="text-cyan-400 text-xs font-black uppercase tracking-wider">+ Eigenes Getränk</Text>
-        </TouchableOpacity>
+        <View className="mb-8 flex-row space-x-3">
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              triggerHaptic("light");
+              setShowScanner(true);
+            }}
+            className="flex-1 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl py-4 flex-row items-center justify-center active:scale-95 shadow-md"
+          >
+            <Ionicons name="barcode-outline" size={16} color="#22d3ee" />
+            <Text className="text-cyan-400 text-xs font-black uppercase tracking-wider ml-2">Scannen</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              triggerHaptic("light");
+              setPendingEan(null);
+              setShowAddModal(true);
+            }}
+            className="flex-1 ml-3 bg-slate-900 border border-white/5 rounded-2xl py-4 flex-row items-center justify-center active:scale-95 shadow-md"
+          >
+            <Ionicons name="add" size={16} color="#94a3b8" />
+            <Text className="text-slate-300 text-xs font-black uppercase tracking-wider ml-2">Eigenes</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ==========================================
             6. RECENT LOGS SECTION (LAST 3 + UNDO)
@@ -712,11 +786,29 @@ export default function DashboardScreen() {
         <View className="flex-1 bg-black/80 justify-end">
           <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-5">
-              <Text className="text-white text-base font-black uppercase tracking-wider">Eigenes Getränk erstellen</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} className="p-1">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                {pendingEan ? "Neues Getränk benennen" : "Eigenes Getränk erstellen"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setPendingEan(null);
+                  setShowAddModal(false);
+                }}
+                className="p-1"
+              >
                 <Ionicons name="close" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
+
+            {pendingEan && (
+              <View className="bg-cyan-400/10 border border-cyan-400/20 rounded-2xl p-3.5 mb-4 flex-row">
+                <Ionicons name="barcode-outline" size={16} color="#22d3ee" />
+                <Text className="text-cyan-300/90 text-[11px] leading-4 ml-2.5 flex-1">
+                  Diesen Barcode kennen wir noch nicht ({pendingEan}). Sag uns, was es ist — dann
+                  findet ihn beim nächsten Mal jeder sofort.
+                </Text>
+              </View>
+            )}
 
             {/* Drink Name */}
             <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1.5">Getränke-Name</Text>
@@ -820,6 +912,17 @@ export default function DashboardScreen() {
           achievementId={activeAchievementId}
           onClose={() => setActiveAchievementId(null)}
         />
+      )}
+
+      {showScanner && (
+        <React.Suspense fallback={null}>
+          <BarcodeScanner
+            visible={showScanner}
+            busy={scanBusy}
+            onClose={() => setShowScanner(false)}
+            onScanned={handleScanned}
+          />
+        </React.Suspense>
       )}
     </View>
   );

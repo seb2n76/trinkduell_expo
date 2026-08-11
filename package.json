@@ -24,6 +24,7 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "expo": "~55.0.25",
+    "expo-camera": "~55.0.21",
     "expo-constants": "~55.0.16",
     "expo-crypto": "~55.0.17",
     "expo-dev-client": "~55.0.37",

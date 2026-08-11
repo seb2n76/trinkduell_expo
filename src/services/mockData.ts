@@ -40,6 +40,10 @@ export interface Drink {
   volume: number; // in ml
   abv: number; // in %
   calories: number;
+  /** Who added it; null for the built-in catalogue, which nobody may delete. */
+  createdBy?: string | null;
+  /** EAN-8/EAN-13 barcode, set when someone names a scanned product. */
+  ean?: string | null;
 }
 
 export interface DrinkLog {

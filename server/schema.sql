@@ -34,7 +34,10 @@ CREATE TABLE IF NOT EXISTS drinks (
   -- Owner of a user-created drink; NULL = built-in catalog (undeletable).
   -- No FK on purpose: a deleted account must not take shared drinks (and
   -- everybody's logs referencing them) with it.
-  created_by TEXT
+  created_by TEXT,
+  -- Barcode (EAN-8/EAN-13). Filled by whoever first scans an unknown code and
+  -- names the product, so the next person to scan it gets the drink directly.
+  ean TEXT
 );
 
 CREATE TABLE IF NOT EXISTS drink_logs (
@@ -148,5 +151,8 @@ CREATE INDEX IF NOT EXISTS idx_friendships_users ON friendships(sender_username,
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
+-- Partial index: many drinks have no barcode, and two products must never
+-- share one. Makes the scan lookup a single index hit.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_drinks_ean ON drinks(ean) WHERE ean IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
 

@@ -205,6 +205,27 @@ export const apiService = {
       () => db.getDrinks()
     ),
 
+  /**
+   * Looks up a scanned barcode. Returns null when the code is unknown — that
+   * is the normal path into the community catalogue, not a failure, so the
+   * 404 is translated instead of thrown.
+   *
+   * No offline fallback: the local mock only knows this device's drinks, so a
+   * "not found" from it would wrongly send the user into the naming dialog for
+   * a product the server already knows.
+   */
+  lookupDrinkByEan: async (ean: string): Promise<db.Drink | null> => {
+    try {
+      const res = await axiosInstance.get<db.Drink>(`/drinks/ean/${encodeURIComponent(ean)}`);
+      return res.data;
+    } catch (error) {
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
   createDrink: (drink: Omit<db.Drink, "id">): Promise<db.Drink> =>
     executeApiCall(
       () => axiosInstance.post<db.Drink>("/drinks", drink),

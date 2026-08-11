@@ -56,6 +56,13 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "TrinkDuell nutzt die Kamera, um den Barcode deines Getränks zu scannen.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",

@@ -202,6 +202,10 @@ async function initPgSchema() {
     // Owner of a user-created drink. NULL means "built-in catalog", which
     // nobody may delete. Existing rows become NULL, which is the safe default.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS created_by TEXT");
+    await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS ean TEXT");
+    await pool.query(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_drinks_ean ON drinks(ean) WHERE ean IS NOT NULL"
+    );
     // blocks/reports are created by schema.sql above on a fresh database; the
     // CREATE TABLE IF NOT EXISTS there also covers an existing one.
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
@@ -558,7 +562,8 @@ module.exports = {
         abv: Number(row.abv),
         calories: row.calories,
         // null for the built-in catalog — see the delete route in index.js
-        createdBy: row.created_by || null
+        createdBy: row.created_by || null,
+        ean: row.ean || null
       }));
     }
     
@@ -585,15 +590,24 @@ module.exports = {
   saveDrink: async (drink) => {
     await loadDb();
     if (pool) {
-      // created_by is set on insert only and deliberately absent from the
-      // UPDATE list: ownership decides who may delete a drink, so a later
-      // save must not be able to reassign it.
+      // created_by and ean are set on insert only and deliberately absent from
+      // the UPDATE list: ownership decides who may delete a drink, and a
+      // barcode must not silently move to another product on a later save.
       await pool.query(
-        `INSERT INTO drinks (id, name, category, volume, abv, calories, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO drinks (id, name, category, volume, abv, calories, created_by, ean)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
            name = $2, category = $3, volume = $4, abv = $5, calories = $6`,
-        [drink.id, drink.name, drink.category, drink.volume, drink.abv, drink.calories, drink.createdBy || null]
+        [
+          drink.id,
+          drink.name,
+          drink.category,
+          drink.volume,
+          drink.abv,
+          drink.calories,
+          drink.createdBy || null,
+          drink.ean || null,
+        ]
       );
       return;
     }

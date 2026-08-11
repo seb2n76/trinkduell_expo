@@ -320,6 +320,38 @@ function validateText(raw, label, { min = 1, max, pattern, patternHint } = {}) {
   return { ok: true, value };
 }
 
+/**
+ * Validates an EAN-8 or EAN-13 barcode, check digit included.
+ *
+ * The check digit matters here: the drinks table is a shared, community-fed
+ * catalogue, and a mistyped or misread code would permanently attach a wrong
+ * product to a barcode everyone else then scans. Verifying it rejects most
+ * transposed digits before they get that far.
+ */
+function validateEan(raw) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: "Barcode fehlt." };
+  }
+  const value = raw.trim();
+  if (!/^\d{8}$|^\d{13}$/.test(value)) {
+    return { ok: false, error: "Barcode muss 8 oder 13 Ziffern haben." };
+  }
+
+  // EAN check digit: weights alternate 3/1 from the right, excluding the
+  // check digit itself; the total must round up to a multiple of ten.
+  const digits = value.split("").map(Number);
+  const check = digits.pop();
+  let sum = 0;
+  for (let i = digits.length - 1, weight = 3; i >= 0; i--, weight = weight === 3 ? 1 : 3) {
+    sum += digits[i] * weight;
+  }
+  if ((10 - (sum % 10)) % 10 !== check) {
+    return { ok: false, error: "Barcode ist ungültig (Prüfziffer stimmt nicht)." };
+  }
+
+  return { ok: true, value };
+}
+
 // Avatars are stored verbatim and later used as an image source, so only a
 // Base64 image data URL is accepted — not an arbitrary string, and not a
 // remote or javascript: URL.
@@ -978,6 +1010,33 @@ app.get("/api/drinks", authenticate, async (req, res) => {
   }
 });
 
+// Look up a scanned barcode.
+//
+// MUST stay above any /api/drinks/:id route — Express matches in registration
+// order, so "ean" would otherwise be read as a drink id. Same trap that once
+// killed /api/users/search (see section 3.1 of the handover).
+app.get("/api/drinks/ean/:ean", authenticate, async (req, res) => {
+  try {
+    const check = validateEan(req.params.ean);
+    if (!check.ok) {
+      return res.status(400).json({ error: check.error });
+    }
+
+    const drinks = await db.getDrinks();
+    const drink = drinks.find((d) => d.ean === check.value);
+
+    if (!drink) {
+      // Not an error condition — this is how a product enters the community
+      // catalogue. The client opens its "name this drink" dialog on 404.
+      return res.status(404).json({ error: "Barcode noch nicht bekannt.", ean: check.value });
+    }
+
+    res.json(drink);
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
 // Create Custom Drink
 app.post("/api/drinks", authenticate, async (req, res) => {
   const { category, volume, abv, calories } = req.body;
@@ -1006,6 +1065,22 @@ app.post("/api/drinks", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Ungültige Kalorienangabe." });
   }
 
+  // Optional barcode: set when the user names a product they just scanned.
+  let ean = null;
+  if (req.body.ean !== undefined && req.body.ean !== null && req.body.ean !== "") {
+    const eanCheck = validateEan(req.body.ean);
+    if (!eanCheck.ok) return res.status(400).json({ error: eanCheck.error });
+    ean = eanCheck.value;
+
+    // Two people can scan the same unknown code at the same time. Whoever
+    // lands second gets the existing entry instead of an error — and instead
+    // of a duplicate, which the unique index would reject anyway.
+    const existing = (await db.getDrinks()).find((d) => d.ean === ean);
+    if (existing) {
+      return res.status(200).json(existing);
+    }
+  }
+
   const newDrink = {
     id: generateUniqueId("drink"),
     name: nameCheck.value,
@@ -1016,6 +1091,7 @@ app.post("/api/drinks", authenticate, async (req, res) => {
     // Who may delete this later. The built-in catalog has no creator and is
     // therefore undeletable by anyone.
     createdBy: req.userId,
+    ean,
   };
 
   await db.saveDrink(newDrink);
