@@ -1,5 +1,9 @@
 # TrinkDuell — Projektübergabe
 
+> **Du willst wissen, was als Nächstes zu tun ist?**
+> → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
+> Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
+
 **Stand:** 08.08.2026 · letzter Commit `8c98931` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
