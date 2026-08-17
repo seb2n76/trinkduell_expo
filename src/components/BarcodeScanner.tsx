@@ -32,6 +32,8 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
   const [torchOn, setTorchOn] = useState(false);
   const [zoom, setZoom] = useState(0);
   const [windowReady, setWindowReady] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [mountError, setMountError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -41,6 +43,8 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
       setManualMode(!cameraSupported);
       setTorchOn(false);
       setZoom(0);
+      setCameraReady(false);
+      setMountError(null);
     } else {
       // Zurücksetzen, damit beim nächsten Öffnen wieder auf onShow gewartet
       // wird — sonst startet die Kamera beim zweiten Mal zu früh.
@@ -100,6 +104,12 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
               // Handy an die Flasche heranbewegt, ist genau das nötig.
               // (iOS-only; auf Android steuert CameraX den Fokus selbst.)
               autofocus="off"
+              // Android: ein gesetztes Seitenverhältnis schaltet die Vorschau
+              // von FILL auf FIT. Ohne das beschneidet CameraX das Bild — der
+              // Sucher zeigt dann einen anderen Ausschnitt als den, der
+              // analysiert wird. Man zielt korrekt und trotzdem passiert
+              // nichts, was sich wie ein Fokusproblem anfühlt.
+              ratio="16:9"
               enableTorch={torchOn}
               zoom={zoom}
               barcodeScannerSettings={{
@@ -107,20 +117,36 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                 // from spending time on QR and industrial formats.
                 barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
               }}
+              onCameraReady={() => setCameraReady(true)}
+              // Ohne das ist ein Startfehler ein schwarzes Bild ohne Erklärung
+              // — und dann sucht man den Fehler beim Fokus statt beim Start.
+              onMountError={(event) => {
+                setMountError(event?.message || "Die Kamera konnte nicht gestartet werden.");
+                setManualMode(true);
+              }}
               onBarcodeScanned={handled || busy ? undefined : ({ data }) => submit(data)}
             />
 
-            {/* Viewfinder frame */}
+            {/* Sucher. Der Rahmen ist bewusst großzügig: expo-camera
+                analysiert das GESAMTE Kamerabild, nicht nur den Ausschnitt.
+                Ein kleiner Rahmen verleitet dazu, das Handy sehr nah
+                heranzuhalten — und unterhalb der Makro-Grenze der meisten
+                Handykameras (etwa 10 cm) wird gar nichts mehr scharf. */}
             <View className="absolute inset-0 items-center justify-center pointer-events-none">
-              <View className="w-64 h-40 border-2 border-cyan-400/80 rounded-2xl" />
+              <View className="w-80 h-56 border-2 border-cyan-400/60 rounded-3xl" />
               <Text className="text-white text-xs font-bold mt-4 px-8 text-center">
-                {busy ? "Getränk wird gesucht…" : "Halte den Barcode in den Rahmen"}
+                {!cameraReady
+                  ? "Kamera startet…"
+                  : busy
+                    ? "Getränk wird gesucht…"
+                    : "Barcode ins Bild halten"}
               </Text>
               <Text className="text-slate-400 text-[10px] font-semibold mt-2 px-10 text-center">
-                Etwa 15–20 cm Abstand. Fokussiert die Kamera nicht, hilft meist
-                mehr Licht oder ein kurzes Wegschwenken und Zurückkommen.
+                {cameraReady
+                  ? "Etwa 15–20 cm Abstand — näher wird nicht mehr scharf. Bei wenig Licht die Lampe zuschalten."
+                  : "Einen Moment, die Kamera wird vorbereitet."}
               </Text>
-              {busy && <ActivityIndicator color="#22d3ee" className="mt-3" />}
+              {(busy || !cameraReady) && <ActivityIndicator color="#22d3ee" className="mt-3" />}
             </View>
 
             {/* Licht und Zoom: die beiden häufigsten Gründe, warum der Fokus
@@ -176,6 +202,20 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                 <Text className="text-amber-300/90 text-[11px] leading-4 ml-2.5 flex-1">
                   {getScanUnavailableReason()}
                 </Text>
+              </View>
+            )}
+
+            {/* Startfehler der Kamera. Ohne diese Anzeige sähe man nur ein
+                schwarzes Bild und würde den Fehler beim Fokus suchen. */}
+            {mountError && (
+              <View className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 mb-5 flex-row">
+                <Ionicons name="alert-circle-outline" size={18} color="#f43f5e" />
+                <View className="ml-2.5 flex-1">
+                  <Text className="text-rose-400 text-[11px] font-bold leading-4">
+                    Die Kamera konnte nicht gestartet werden.
+                  </Text>
+                  <Text className="text-rose-300/70 text-[10px] leading-4 mt-1">{mountError}</Text>
+                </View>
               </View>
             )}
 

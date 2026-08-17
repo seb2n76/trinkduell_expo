@@ -412,19 +412,33 @@ Vor jedem Build lohnt sich `npx expo-doctor` (Ziel: 19/19). Und
 Hermes-Bundle, das EAS baut — schlägt das fehl, schlägt auch der Build fehl,
 nur 15 Minuten früher sichtbar.
 
-**Barcode-Scanner und Autofokus.** Zwei Fallen stecken in `expo-camera`:
+**Barcode-Scanner und Autofokus.** Vier Fallen stecken in `expo-camera`, alle
+aus den Typdefinitionen des installierten Pakets belegt
+(`node_modules/expo-camera/build/Camera.types.d.ts` — verbindlicher als die
+Online-Doku, die mehrere dieser Props gar nicht erwähnt):
 
-- Die Prop `autofocus` ist **iOS-only** und heißt das Gegenteil von dem, was
-  man erwartet: `"on"` fokussiert **einmal und sperrt dann**, `"off"`
-  fokussiert laufend nach. Für einen Scanner braucht man `"off"` — die Prop
-  also bitte nicht „reparieren".
-- Auf Android startet die Kamera erst, wenn das Modal-Fenster steht
-  (`onShow`). Ein RN-Modal ist dort ein eigenes Fenster; startet die
-  CameraX-Vorschau vor dessen Layout, bekommt sie keine brauchbaren Maße und
-  fokussiert nicht mehr richtig.
+- **`autofocus` ist iOS-only** und heißt das Gegenteil von dem, was man
+  erwartet: `"on"` fokussiert **einmal und sperrt dann**, `"off"` fokussiert
+  laufend nach. Für einen Scanner braucht man `"off"` — die Prop also bitte
+  nicht „reparieren". Auf **Android tut sie nichts**, dort steuert CameraX
+  den Fokus selbst.
+- **`ratio` (Android) schaltet die Vorschau von FILL auf FIT.** Ohne
+  gesetztes Seitenverhältnis beschneidet CameraX das Bild: der Sucher zeigt
+  einen anderen Ausschnitt als den, der analysiert wird. Man zielt korrekt,
+  es passiert nichts — und das fühlt sich exakt wie ein Fokusproblem an.
+  Deshalb `ratio="16:9"`.
+- **Die Kamera startet erst nach `onShow` des Modals.** Ein RN-Modal ist auf
+  Android ein eigenes Fenster; startet die CameraX-Vorschau vor dessen
+  Layout, bekommt sie keine brauchbaren Maße.
+- **`onMountError` abfangen.** Sonst ist ein Startfehler ein schwarzes Bild
+  ohne Erklärung, und man sucht den Fehler beim Fokus statt beim Start.
 
-Dazu Licht- und Zoom-Schalter im Sucher: zu dunkel und „Code zu klein im
-Bild" sind die häufigsten Gründe, warum der Fokus nicht greift.
+Dazu drei Dinge im Sucher, die keine Technik sind, aber genauso oft die
+Ursache: Lampe (zu dunkel), Zoom (Code zu klein im Bild) und ein **großer**
+Rahmen. Der Rahmen ist Absicht — expo-camera analysiert das *gesamte*
+Kamerabild, ein kleiner Rahmen verleitet aber dazu, das Handy sehr nah
+heranzuhalten, und unterhalb der Makro-Grenze der meisten Handykameras
+(etwa 10 cm) wird gar nichts mehr scharf.
 
 **Falle: Versionen dürfen nicht „neuer als das SDK" sein.** `npm install
 babel-preset-expo` holt die neueste Version (57.x), SDK 55 braucht ~55.0.24 —

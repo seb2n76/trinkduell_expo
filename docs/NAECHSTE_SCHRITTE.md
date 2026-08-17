@@ -189,19 +189,25 @@ Der Betreiber meldete, dass der Autofokus des Barcode-Scanners nicht
 funktioniert. In `a7f12b6` sind zwei plausible Ursachen behoben, **aber nichts
 davon ist auf Hardware geprüft** — dem Agenten fehlte das Gerät.
 
-Behoben wurde:
-- `autofocus="off"` explizit gesetzt. Die Prop ist **iOS-only** und invertiert
-  benannt: `"on"` fokussiert einmal und **sperrt dann**, `"off"` fokussiert
-  laufend nach. Nicht „reparieren".
-- Die Kamera startet erst nach `onShow` des Modals. Auf Android ist ein
-  RN-Modal ein eigenes Fenster; startet die CameraX-Vorschau vor dessen
-  Layout, bekommt sie keine brauchbaren Maße.
+Behoben wurde (Details und Belege in `PROJEKTUEBERGABE.md`):
+- `autofocus="off"` explizit — iOS-only und invertiert benannt, nicht
+  „reparieren"
+- `ratio="16:9"` — schaltet die Android-Vorschau von FILL auf FIT, sonst zeigt
+  der Sucher einen anderen Ausschnitt als den analysierten
+- Kamera startet erst nach `onShow` des Modals
+- `onMountError` wird angezeigt statt eines schwarzen Bildes
+- Lampe, Zoom, größerer Rahmen, Abstands-Hinweis
 
 **Wenn es weiter klemmt**, zuerst diese Frage klären, sie trennt zwei völlig
 verschiedene Probleme: *Wird das Kamerabild scharf, aber der Code nicht
 erkannt — oder bleibt schon die Vorschau unscharf?* Ersteres zeigt auf den
-Decoder (Formatliste, Auflösung), Letzteres auf die Kamera (Fokus, Abstand,
-Licht).
+Decoder (Formatliste, Auflösung, Ausschnitt), Letzteres auf die Kamera
+(Fokus, Abstand, Licht).
+
+Falls die Vorschau unscharf bleibt, ist der nächste Schritt eine
+Tipp-zum-Fokussieren-Geste. `expo-camera` bietet dafür **keine** Prop; das
+bräuchte eine eigene native Anbindung oder ein anderes Paket — also erst
+angehen, wenn die vier Punkte oben nachweislich nicht reichen.
 
 ---
 
