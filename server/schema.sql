@@ -151,8 +151,15 @@ CREATE INDEX IF NOT EXISTS idx_friendships_users ON friendships(sender_username,
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
--- Partial index: many drinks have no barcode, and two products must never
--- share one. Makes the scan lookup a single index hit.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_drinks_ean ON drinks(ean) WHERE ean IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
+
+-- ACHTUNG: Indizes auf Spalten, die per ALTER TABLE nachgerüstet werden,
+-- gehören NICHT hierher, sondern in die Migrationsphase von initPgSchema()
+-- (server/db.js). Diese Datei läuft als EIN Query: schlägt eine Anweisung
+-- fehl, bricht alles danach mit ab — inklusive der ALTER-Zeilen, die die
+-- Spalte überhaupt erst anlegen würden. Genau das ist mit drinks.ean
+-- passiert: der Index stand hier, die Spalte entstand in db.js, und auf
+-- bestehenden Datenbanken scheiterte deshalb die ganze Initialisierung.
+-- idx_drinks_ean liegt aus diesem Grund in db.js. tests/schema.test.js
+-- prüft die Regel.
 

@@ -181,11 +181,33 @@ if (process.env.DATABASE_URL) {
   });
 }
 
+/**
+ * Bringt eine Datenbank auf den aktuellen Stand — frisch oder bestehend.
+ *
+ * Die Reihenfolge ist zwingend und der Grund, warum das hier so ausführlich
+ * kommentiert ist:
+ *
+ *   1. schema.sql — legt Tabellen an (CREATE TABLE IF NOT EXISTS). Auf einer
+ *      bestehenden Tabelle ist das ein No-op und fügt KEINE neuen Spalten
+ *      hinzu. Läuft als ein einziger Query: eine fehlschlagende Anweisung
+ *      reißt alles danach mit.
+ *   2. ALTER TABLE — rüstet Spalten nach, die es in Schritt 1 nur für frische
+ *      Datenbanken gibt.
+ *   3. Indizes auf genau diesen Spalten — erst jetzt existieren sie sicher.
+ *
+ * Wer Schritt 3 nach schema.sql verlegt, baut eine Falle: der Index scheitert
+ * auf bestehenden Datenbanken, nimmt die ALTER-Zeilen mit in den Abbruch, und
+ * damit wird die Spalte, die er braucht, nie angelegt. Genau so ist
+ * drinks.ean auf dem Produktionsserver gestrandet.
+ */
 async function initPgSchema() {
   try {
+    // ── 1. Tabellen ─────────────────────────────────────────────────────────
     const sqlPath = path.join(__dirname, "schema.sql");
     const schemaSql = await fs.readFile(sqlPath, "utf8");
     await pool.query(schemaSql);
+
+    // ── 2. Spalten nachrüsten ───────────────────────────────────────────────
     // Alter table to add level and active_quest dynamically if they don't exist
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS active_quest TEXT");
@@ -202,23 +224,49 @@ async function initPgSchema() {
     // Owner of a user-created drink. NULL means "built-in catalog", which
     // nobody may delete. Existing rows become NULL, which is the safe default.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS created_by TEXT");
+    // Barcode (EAN-8/EAN-13) für den Community-Katalog.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS ean TEXT");
+
+    // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
+    // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
+    // weil zwei Produkte sich niemals einen teilen dürfen.
     await pool.query(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_drinks_ean ON drinks(ean) WHERE ean IS NOT NULL"
     );
+
     // blocks/reports are created by schema.sql above on a fresh database; the
     // CREATE TABLE IF NOT EXISTS there also covers an existing one.
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
+    return true;
   } catch (err) {
-    console.error("[TrinkDuell DB] Failed to initialize PostgreSQL schema:", err);
+    // Bewusst laut: ein halb initialisiertes Schema ist der unangenehmste
+    // Zustand überhaupt — der Server läuft, antwortet, und fällt erst bei der
+    // ersten Abfrage der fehlenden Spalte um. Der Hinweis nennt deshalb
+    // gleich die Handlungsanweisung.
+    console.error(
+      "[TrinkDuell DB] ============================================================\n" +
+        "[TrinkDuell DB] SCHEMA-INITIALISIERUNG FEHLGESCHLAGEN — der Server läuft mit\n" +
+        "[TrinkDuell DB] einem möglicherweise unvollständigen Schema weiter.\n" +
+        "[TrinkDuell DB] Ursache:",
+      err.message
+    );
+    console.error(
+      "[TrinkDuell DB] Häufigster Grund: ein Index in schema.sql zeigt auf eine Spalte,\n" +
+        "[TrinkDuell DB] die erst per ALTER TABLE entsteht. Siehe Kommentar über initPgSchema().\n" +
+        "[TrinkDuell DB] ============================================================"
+    );
+    return false;
   }
 }
 
 async function loadDb() {
   if (pool) {
     if (!pgInitialized) {
-      pgInitialized = true;
-      await initPgSchema();
+      // Erst bei Erfolg merken. Vorher wurde das Flag VOR dem await gesetzt —
+      // ein einmaliger Fehlschlag (auch ein kurzer Verbindungsabbruch beim
+      // Start) bedeutete damit, dass die Initialisierung nie wieder versucht
+      // wurde und der Server dauerhaft mit kaputtem Schema weiterlief.
+      pgInitialized = await initPgSchema();
     }
     return null;
   }

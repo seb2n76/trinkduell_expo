@@ -109,8 +109,18 @@ Produktionsdatenbank gelandet.
 - **Avatar:** Ein leerer Wert in `PUT /api/users/:id` überschreibt das Bild
   **nicht** mehr (Schutz gegen Datenverlust). Es gibt bewusst keine
   „Avatar löschen"-Funktion.
-- **Das Auto-Update auf dem Server macht keine DB-Migrationen** — Schema-
-  Änderungen müssen manuell nachgezogen werden.
+- **Schema-Änderungen: die Reihenfolge ist zwingend.** `schema.sql` läuft als
+  **ein** Query und legt nur Tabellen an — `CREATE TABLE IF NOT EXISTS` fügt
+  einer bestehenden Tabelle **keine** neuen Spalten hinzu. Neue Spalten
+  gehören als `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `initPgSchema()`
+  (`server/db.js`), und Indizes auf diesen Spalten **danach**.
+
+  Wer einen solchen Index in `schema.sql` schreibt, baut eine Falle: er
+  scheitert auf bestehenden Datenbanken, reißt als Teil desselben Querys alle
+  folgenden Anweisungen mit — auch die `ALTER`-Zeilen — und damit entsteht die
+  Spalte, die er braucht, nie. Genau so ist `drinks.ean` auf dem
+  Produktionsserver gestrandet (17.08.2026). `tests/schema.test.js` prüft die
+  Regel seitdem automatisch.
 
 ---
 
