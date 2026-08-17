@@ -285,6 +285,44 @@ Nachgemessen mit abgeschaltetem Webserver: die App startet vollständig,
 > **Beim Ändern von `sw.js`** die `VERSION`-Konstante hochzählen. Alte Caches
 > werden nur bei einer neuen Version aufgeräumt.
 
+### Bild-Uploads (Cloudflare R2)
+
+Bilder gehen nicht mehr durch den Node-Server. Der signiert nur eine
+kurzlebige URL, der Client lädt direkt zu R2 (`cdn.trinkduell.com`).
+Zugangsdaten in `server/.env` (siehe `.env.example`); **ohne** sie läuft alles
+weiter wie vorher, nur ohne Uploads — `GET /api/uploads/config` sagt dem
+Client, ob er den Button anbieten soll.
+
+| Datei | Inhalt |
+|---|---|
+| `server/storage.js` | Signieren, Besitzprüfung, Löschen |
+| `src/services/upload.ts` | Verkleinern, neu kodieren, direkt hochladen |
+
+**Drei Dinge, die nicht wegoptimiert werden dürfen:**
+
+1. **`content-type` UND `content-length` müssen signiert sein**
+   (`signableHeaders`). Ohne `content-type` signiert das SDK nur
+   `content-length;host` — dann lässt sich über eine für JPEG ausgestellte URL
+   `text/html` hochladen, und man liefert HTML von `cdn.trinkduell.com` aus.
+   Das ist ein Stored-XSS auf der eigenen Domain.
+2. **`requestChecksumCalculation: "WHEN_REQUIRED"`.** Neuere AWS-SDKs hängen
+   automatisch eine CRC32-Summe an. Beim Signieren kennt das SDK die Bytes
+   nicht und berechnet die Summe des *leeren* Payloads
+   (`x-amz-checksum-crc32=AAAAAA==`); der echte Upload passt dann nicht dazu
+   und R2 lehnt ab. Dieser Fehler wäre nur gegen echtes R2 aufgefallen.
+3. **Besitzprüfung beim Eintragen der URL** (`isOwnStorageUrl`). Signieren und
+   Eintragen sind zwei Requests — ohne die Prüfung könnte man im zweiten eine
+   fremde oder beliebige externe URL unterschieben und hätte ein fremdes Bild
+   im Profil oder einen Tracking-Pixel im Feed aller Freunde. Der Schlüssel
+   trägt deshalb die Nutzer-ID: `proof/<userId>/<32 Hex>.jpg`.
+
+**EXIF/GPS werden clientseitig entfernt, nicht serverseitig.** Bei einem
+Direkt-Upload sieht der Server die Bytes nie. Das Neukodieren in
+`src/services/upload.ts` (Canvas im Web, ImageManipulator nativ) schreibt ein
+frisches Bild ohne Metadaten — die Koordinaten verlassen das Gerät also gar
+nicht, was besser ist als serverseitiges Nachbessern. Der Preis: es ist nicht
+erzwingbar. Wer den Client manipuliert, gibt seinen eigenen Standort preis.
+
 ### EAS-Build und Hardware-Test
 
 ```bash

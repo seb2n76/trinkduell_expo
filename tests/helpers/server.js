@@ -35,7 +35,7 @@ function findFreePort() {
  *   serverLog() - everything the server printed so far (stdout + stderr)
  *   stop()      - kills the server and deletes the throwaway database
  */
-async function startTestServer() {
+async function startTestServer({ env: extraEnv } = {}) {
   const port = await findFreePort();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trinkduell-test-"));
   const dbFile = path.join(tmpDir, "db.json");
@@ -47,9 +47,18 @@ async function startTestServer() {
   // No mail provider, so the reset code goes to the log where a test can
   // read it — exactly the path a beta deployment without Resend uses.
   delete env.RESEND_API_KEY;
+  // R2 aus der Umgebung des Testlaufs fernhalten, damit ein lokal gesetzter
+  // Zugang nicht versehentlich in einen Test hineinwirkt.
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("R2_")) delete env[key];
+  }
+
   env.PORT = String(port);
   env.TRINKDUELL_DB_FILE = dbFile;
   env.JWT_SECRET = "test-secret-not-used-anywhere-else";
+
+  // Testspezifische Zusätze zuletzt, damit sie gezielt überschreiben können.
+  Object.assign(env, extraEnv || {});
 
   const child = spawn(process.execPath, [SERVER_ENTRY], {
     env,

@@ -206,6 +206,36 @@ export const apiService = {
     ),
 
   /**
+   * Lässt eine kurzlebige Upload-URL signieren. Kein Offline-Fallback: ohne
+   * Netz gibt es keinen Upload, und ein lokal behaupteter Erfolg würde ein
+   * Bild versprechen, das nirgends liegt.
+   */
+  requestUploadUrl: async (params: {
+    kind: "avatar" | "proof";
+    contentType: string;
+    contentLength: number;
+  }): Promise<{ uploadUrl: string; publicUrl: string; key: string }> => {
+    const res = await axiosInstance.post<{ uploadUrl: string; publicUrl: string; key: string }>(
+      "/uploads/presign",
+      params
+    );
+    return res.data;
+  },
+
+  /** Ob dieser Server Uploads kann — sonst blendet die UI den Button aus. */
+  getUploadConfig: async (): Promise<{ enabled: boolean; maxBytes: number }> => {
+    try {
+      const res = await axiosInstance.get<{ enabled: boolean; maxBytes: number }>(
+        "/uploads/config"
+      );
+      return res.data;
+    } catch {
+      // Ein älterer Server kennt die Route nicht — dann eben kein Upload.
+      return { enabled: false, maxBytes: 0 };
+    }
+  },
+
+  /**
    * Looks up a scanned barcode. Returns null when the code is unknown — that
    * is the normal path into the community catalogue, not a failure, so the
    * 404 is translated instead of thrown.

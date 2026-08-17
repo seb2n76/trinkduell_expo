@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const { sendPushNotification } = require("./push");
 const { sendPasswordResetEmail } = require("./email");
+const storage = require("./storage");
 
 // Largest request body accepted anywhere. Avatars arrive as Base64 from the
 // image picker, which hands over the photo at quality 0.8 without resizing —
@@ -366,6 +367,29 @@ function validateAvatarDataUrl(raw) {
     return { ok: false, error: "Das Bild ist zu groß." };
   }
   return { ok: true, value: raw };
+}
+
+/**
+ * Akzeptiert entweder ein Base64-Bild (der alte Weg, für Bestandsdaten und
+ * Server ohne R2) oder eine URL aus dem eigenen Objektspeicher.
+ *
+ * Die Besitzprüfung ist der Punkt: Signieren und Eintragen der URL sind zwei
+ * getrennte Schritte, also könnte man sonst im zweiten eine fremde oder
+ * beliebige externe URL unterschieben — und hätte damit ein Bild im eigenen
+ * Profil, das man nie hochgeladen hat, oder einen Tracking-Pixel im Feed
+ * aller Freunde.
+ */
+function validateImageReference(raw, userId) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: "Bilddaten fehlen." };
+  }
+  if (raw.startsWith("data:")) {
+    return validateAvatarDataUrl(raw);
+  }
+  if (storage.isOwnStorageUrl(raw, userId)) {
+    return { ok: true, value: raw };
+  }
+  return { ok: false, error: "Ungültige Bildreferenz." };
 }
 
 // ─── Error responses ──────────────────────────────────────────────────────────
@@ -858,7 +882,7 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
   // users had to re-upload it. There is no "remove avatar" feature, so an
   // empty value here always means "unchanged", never "delete".
   if (avatar) {
-    const avatarCheck = validateAvatarDataUrl(avatar);
+    const avatarCheck = validateImageReference(avatar, req.userId);
     if (!avatarCheck.ok) return res.status(400).json({ error: avatarCheck.error });
     user.avatar = avatarCheck.value;
   }
@@ -898,7 +922,7 @@ app.post("/api/users/:id/avatar", authenticate, avatarUpload.single("avatar"), a
   // an arbitrary string here (a remote URL, a javascript: URL, or simply a
   // megabyte of junk) has no business being accepted.
   if (req.body && req.body.image) {
-    const check = validateAvatarDataUrl(req.body.image);
+    const check = validateImageReference(req.body.image, req.userId);
     if (!check.ok) {
       return res.status(400).json({ error: check.error });
     }
@@ -1829,7 +1853,7 @@ app.post("/api/posts", authenticate, async (req, res) => {
   const text = textCheck.value;
 
   if (image !== undefined && image !== null && image !== "") {
-    const imageCheck = validateAvatarDataUrl(image);
+    const imageCheck = validateImageReference(image, req.userId);
     if (!imageCheck.ok) return res.status(400).json({ error: imageCheck.error });
   }
 
@@ -2329,6 +2353,67 @@ app.get("/api/friends/:username", authenticate, async (req, res) => {
   } catch (error) {
     serverError(res, error, `${req.method} ${req.originalUrl}`);
   }
+});
+
+// ==========================================
+// Uploads (Cloudflare R2)
+// ==========================================
+
+// Signiert eine kurzlebige Upload-URL. Der Client lädt damit direkt zu R2 —
+// das Backend trägt den Bild-Traffic nicht mehr.
+//
+// Bewusst NICHT hier: das Entfernen der EXIF-Daten. Bei einem Direkt-Upload
+// sieht der Server die Bytes nie. Der Client kodiert das Bild vor dem Upload
+// neu (siehe src/services/upload.ts), wodurch EXIF und damit die
+// GPS-Koordinaten verschwinden, bevor das Foto das Gerät verlässt — das ist
+// für die Privatsphäre besser als serverseitiges Nachbessern, aber eben nicht
+// erzwingbar. Wer den Client manipuliert, gibt seinen eigenen Standort preis.
+app.post(
+  "/api/uploads/presign",
+  authenticate,
+  // Jede signierte URL ist ein Schreibrecht auf den Bucket. Begrenzt, damit
+  // niemand sich hunderte auf Vorrat ausstellen lässt.
+  rateLimit({ scope: "presign", ipMax: 120, windowMs: HOUR }),
+  async (req, res) => {
+    try {
+      if (!storage.isStorageConfigured()) {
+        return res.status(503).json({
+          error: "Bild-Upload ist auf diesem Server nicht konfiguriert.",
+        });
+      }
+
+      const { kind, contentType, contentLength } = req.body;
+      const result = await storage.createPresignedUpload({
+        userId: req.userId,
+        kind,
+        contentType,
+        contentLength,
+      });
+
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json({
+        uploadUrl: result.uploadUrl,
+        publicUrl: result.publicUrl,
+        key: result.key,
+        expiresInSeconds: result.expiresInSeconds,
+      });
+    } catch (err) {
+      serverError(res, err, `${req.method} ${req.originalUrl}`);
+    }
+  }
+);
+
+// Sagt dem Client, ob dieser Server Uploads kann — der Client soll den
+// Foto-Button sonst gar nicht erst anbieten.
+app.get("/api/uploads/config", authenticate, (req, res) => {
+  res.json({
+    enabled: storage.isStorageConfigured(),
+    maxBytes: storage.MAX_UPLOAD_BYTES,
+    contentTypes: Object.keys(storage.ALLOWED_CONTENT_TYPES),
+  });
 });
 
 // ==========================================
