@@ -1,5 +1,6 @@
-version: '3.8'
-
+# Kein `version:` — seit Compose v2 obsolet und nur eine Warnung bei jedem
+# Befehl.
+#
 # Secrets are read from a local .env file (see server/.env.example) and must
 # NEVER be committed to git. Copy server/.env.example to server/.env and fill
 # in real values before running `docker compose up`.
@@ -34,6 +35,18 @@ services:
       # (reset code shown in-app) stays active.
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      # Optional: Bild-Uploads nach Cloudflare R2. Ohne diese Werte läuft die
+      # App weiter, nur ohne Uploads.
+      #
+      # ACHTUNG: Ein Wert in server/.env reicht NICHT. Compose liest die Datei
+      # zwar, gibt aber nur an den Container weiter, was hier explizit
+      # aufgelistet ist. Jede neue Umgebungsvariable braucht deshalb zwei
+      # Einträge: einen hier und einen in server/.env.example (Dokumentation).
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
     depends_on:
       - db
 

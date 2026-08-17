@@ -109,6 +109,20 @@ Produktionsdatenbank gelandet.
 - **Avatar:** Ein leerer Wert in `PUT /api/users/:id` überschreibt das Bild
   **nicht** mehr (Schutz gegen Datenverlust). Es gibt bewusst keine
   „Avatar löschen"-Funktion.
+- **Eine neue Umgebungsvariable braucht ZWEI Einträge.** Ein Wert in
+  `server/.env` reicht nicht: Compose liest die Datei, gibt aber nur an den
+  Container weiter, was im `environment:`-Block von
+  `server/docker-compose.yml` explizit aufgelistet ist. Fehlt der Eintrag,
+  sieht der Server die Variable nie — und das Symptom ist irreführend, weil
+  der Wert auf dem Host ja korrekt gesetzt ist. Passiert mit den R2-Zugängen
+  (17.08.2026). Also immer: `docker-compose.yml` **und**
+  `server/.env.example`.
+
+- **`server/docker-compose.yml` ist eine versionierte Repo-Datei.** Sie auf
+  dem Server zu editieren bricht den stündlichen Auto-Update-Cronjob: `git
+  pull` verweigert den Dienst, solange lokale Änderungen an einer getrackten
+  Datei liegen. Änderungen daran gehören ins Repo, nicht auf den Server.
+
 - **Schema-Änderungen: die Reihenfolge ist zwingend.** `schema.sql` läuft als
   **ein** Query und legt nur Tabellen an — `CREATE TABLE IF NOT EXISTS` fügt
   einer bestehenden Tabelle **keine** neuen Spalten hinzu. Neue Spalten
