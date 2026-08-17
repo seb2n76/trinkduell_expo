@@ -185,6 +185,103 @@ test("Uploads", async (t) => {
     const res = await call("POST", `/users/${user.id}/avatar`, { image: gif }, user.token);
     assert.equal(res.status, 200, "Der alte Weg muss weiter funktionieren");
   });
+
+  await t.test("Beweisfoto im Feed", async (t) => {
+    await t.test("speichert das Bild am Beitrag und spielt es im Feed aus", async () => {
+      const author = await register("proof-a");
+      const friend = await register("proof-b");
+      await call("POST", "/friends/request", { receiver_username: friend.name }, author.token);
+      await call("POST", "/friends/accept", { sender_username: author.name }, friend.token);
+
+      const presign = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "proof", contentType: JPEG, contentLength: 80_000 },
+        author.token
+      );
+
+      const post = await call(
+        "POST",
+        "/posts",
+        {
+          text: "📸 Beweisfoto aus „Wortbombe“",
+          contextType: "friends",
+          contextId: author.id,
+          image: presign.json.publicUrl,
+        },
+        author.token
+      );
+      assert.equal(post.status, 201);
+
+      // Der eigentliche Punkt: das Bild muss den ganzen Weg bis in den Feed
+      // eines Freundes überleben. Es fiel vorher an zwei Stellen heraus — die
+      // posts-Tabelle hatte keine image-Spalte, und /api/feed gab das Feld
+      // nicht durch.
+      const feed = await call("GET", "/feed", undefined, friend.token);
+      const entry = feed.json.find((e) => e.id === post.json.id);
+
+      assert.ok(entry, "Der Beitrag muss im Freundes-Feed auftauchen");
+      assert.equal(entry.image, presign.json.publicUrl, "Das Bild muss mitkommen");
+    });
+
+    await t.test("lehnt ein fremdes Bild am Beitrag ab", async () => {
+      const owner = await register("proof-eigner");
+      const attacker = await register("proof-fremd");
+
+      const presign = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "proof", contentType: JPEG, contentLength: 5000 },
+        owner.token
+      );
+
+      const res = await call(
+        "POST",
+        "/posts",
+        {
+          text: "Nicht mein Bild",
+          contextType: "friends",
+          contextId: attacker.id,
+          image: presign.json.publicUrl,
+        },
+        attacker.token
+      );
+      assert.equal(res.status, 400);
+    });
+
+    await t.test("lehnt eine beliebige externe Bild-URL ab", async () => {
+      const user = await register("proof-extern");
+
+      const res = await call(
+        "POST",
+        "/posts",
+        {
+          text: "Tracking-Pixel",
+          contextType: "friends",
+          contextId: user.id,
+          image: "https://boese-seite.example/pixel.png",
+        },
+        user.token
+      );
+      assert.equal(res.status, 400);
+    });
+
+    await t.test("Beiträge ohne Bild funktionieren unverändert", async () => {
+      const user = await register("proof-ohne");
+
+      const res = await call(
+        "POST",
+        "/posts",
+        { text: "Nur Text", contextType: "friends", contextId: user.id },
+        user.token
+      );
+      assert.equal(res.status, 201);
+
+      const feed = await call("GET", "/feed", undefined, user.token);
+      const entry = feed.json.find((e) => e.id === res.json.id);
+      assert.equal(entry.image, null);
+    });
+  });
 });
 
 test("Uploads ohne konfigurierten Speicher", async (t) => {

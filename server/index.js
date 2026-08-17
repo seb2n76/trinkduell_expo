@@ -1465,6 +1465,9 @@ app.get("/api/feed", authenticate, async (req, res) => {
         username: user ? user.name : (post.userId === "system" ? "TrinkDuell" : "System"),
         userAvatar: user ? user.avatar : null,
         text: post.text,
+        // Beweisfoto. Fehlte hier, wodurch ein Bild zwar gespeichert, aber im
+        // Feed nie angezeigt wurde.
+        image: post.image || null,
         timestamp: post.timestamp,
         type: "post",
       };

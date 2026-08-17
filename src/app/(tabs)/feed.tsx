@@ -510,6 +510,18 @@ export default function LivePulseFeed() {
                     <Text className="text-slate-300 text-xs font-medium leading-relaxed mb-2.5">
                       {item.text}
                     </Text>
+
+                    {/* Beweisfoto. Feste Höhe mit cover, damit ein Hochformat
+                        die Feed-Karte nicht auf Bildschirmhöhe aufzieht. */}
+                    {item.image && (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={{ width: "100%", height: 200 }}
+                        className="rounded-2xl mb-2.5 bg-slate-950"
+                        resizeMode="cover"
+                        accessibilityLabel={`Beweisfoto von ${item.username}`}
+                      />
+                    )}
                     <View className="flex-row items-center justify-between border-t border-white/5 pt-2">
                       <View className="flex-row items-center space-x-1.5">
                         <Ionicons

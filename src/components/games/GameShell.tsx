@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { Intensity, INTENSITY_LABELS } from "@/games/content";
+import { ProofPhotoButton } from "./ProofPhotoButton";
 
 interface GameShellProps {
   title: string;
@@ -43,6 +44,14 @@ export function GameShell({
           <Ionicons name="home-outline" size={18} color="#64748b" />
           <Text className="text-slate-500 text-[10px] font-black uppercase ml-1">Pause</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Beweisfoto für eine Bestrafung. Hier statt in jedem einzelnen
+          Bestrafungs-Screen: so erscheint es in allen Spielen, ohne dass es
+          bei der Hälfte vergessen wird. Rendert sich selbst weg, wenn der
+          Server keine Uploads kann. */}
+      <View className="items-center mb-4">
+        <ProofPhotoButton context={title} />
       </View>
 
       {intensity && onIntensityChange && (

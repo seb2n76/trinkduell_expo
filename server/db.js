@@ -226,6 +226,10 @@ async function initPgSchema() {
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS created_by TEXT");
     // Barcode (EAN-8/EAN-13) für den Community-Katalog.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS ean TEXT");
+    // Beweisfoto zu einem Beitrag. Fehlte im Postgres-Zweig komplett: der
+    // JSON-Zweig speichert das ganze Objekt und behielt das Feld deshalb,
+    // Postgres listet die Spalten einzeln auf und verwarf es stillschweigend.
+    await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS image TEXT");
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
@@ -877,14 +881,17 @@ module.exports = {
   getPosts: async () => {
     await loadDb();
     if (pool) {
-      const res = await pool.query("SELECT id, user_id AS \"userId\", text, context_type AS \"contextType\", context_id AS \"contextId\", timestamp FROM posts");
+      const res = await pool.query(
+        'SELECT id, user_id AS "userId", text, context_type AS "contextType", context_id AS "contextId", timestamp, image FROM posts'
+      );
       return res.rows.map(row => ({
         id: row.id,
         userId: row.userId,
         text: row.text,
         contextType: row.contextType,
         contextId: row.contextId,
-        timestamp: row.timestamp.toISOString ? row.timestamp.toISOString() : new Date(row.timestamp).toISOString()
+        timestamp: row.timestamp.toISOString ? row.timestamp.toISOString() : new Date(row.timestamp).toISOString(),
+        image: row.image || null
       }));
     }
     return db.posts;
@@ -893,9 +900,9 @@ module.exports = {
     await loadDb();
     if (pool) {
       await pool.query(
-        `INSERT INTO posts (id, user_id, text, context_type, context_id, timestamp)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [post.id, post.userId, post.text, post.contextType, post.contextId, post.timestamp]
+        `INSERT INTO posts (id, user_id, text, context_type, context_id, timestamp, image)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [post.id, post.userId, post.text, post.contextType, post.contextId, post.timestamp, post.image || null]
       );
       return;
     }

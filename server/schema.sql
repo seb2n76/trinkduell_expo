@@ -70,9 +70,12 @@ CREATE TABLE IF NOT EXISTS posts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   text TEXT NOT NULL,
-  context_type TEXT NOT NULL, -- 'group' or 'event'
+  context_type TEXT NOT NULL, -- 'group', 'event' or 'friends'
   context_id TEXT NOT NULL,
-  timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  -- URL im Objektspeicher (Beweisfoto). Bei Servern ohne R2 auch ein
+  -- Base64-Data-URL, siehe validateImageReference in index.js.
+  image TEXT
 );
 
 CREATE TABLE IF NOT EXISTS duels (

@@ -1271,6 +1271,8 @@ export interface FeedItem {
   alcohol_grams?: number;
   is_water?: boolean;
   text?: string;
+  /** Beweisfoto zu einem Beitrag (URL im Objektspeicher oder Base64). */
+  image?: string | null;
   latitude: number | null;
   longitude: number | null;
   timestamp: string;
@@ -1428,6 +1430,10 @@ export const getFeedLocal = async (scope: FeedScope, username: string): Promise<
       username: user ? user.name : post.userId === "system" ? "TrinkDuell" : "System",
       userAvatar: user ? user.avatar || null : null,
       text: post.text,
+      // Muss mitkommen, sonst verschwindet das Beweisfoto sobald der Feed aus
+      // dem Offline-Fallback kommt (die Regel aus Abschnitt 3.3 der Übergabe:
+      // jeder serverseitige Feldsatz braucht sein Gegenstück hier).
+      image: post.image || null,
       latitude: null,
       longitude: null,
       timestamp: post.timestamp,
