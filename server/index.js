@@ -1596,8 +1596,16 @@ app.get("/api/messages/group/:groupId", authenticate, async (req, res) => {
       return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
     }
 
-    const messages = await db.getGroupMessages(req.params.groupId);
-    res.json(messages);
+    // Blockierte Mitglieder ausblenden. Ein Block hindert niemanden daran, in
+    // einer gemeinsamen Gruppe zu schreiben — beide sind ja Mitglieder. Ohne
+    // diesen Filter läse man also weiter genau die Person mit, die man
+    // loswerden wollte.
+    const [messages, hidden] = await Promise.all([
+      db.getGroupMessages(req.params.groupId),
+      getBlockedUserIds(req.userId),
+    ]);
+
+    res.json(messages.filter((m) => !hidden.has(m.sender_id)));
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
@@ -1619,8 +1627,9 @@ app.post("/api/messages", authenticate, async (req, res) => {
     // Writing follows the same rule as reading: post into a group only as a
     // member, and DM only confirmed friends (which is also the only way the
     // app offers to open a direct chat).
+    let group = null;
     if (groupId) {
-      const group = await getGroupIfMember(groupId, req.userId);
+      group = await getGroupIfMember(groupId, req.userId);
       if (!group) {
         return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
       }
@@ -1651,16 +1660,80 @@ app.post("/api/messages", authenticate, async (req, res) => {
 
     const users = await db.getUsers();
     const sender = users.find((u) => u.id === req.userId);
+    const senderName = sender ? sender.name : "Unbekannt";
+
+    // Chat war das einzige Ereignis ohne Benachrichtigung — Duelle,
+    // Freundschaftsanfragen und Gruppenbeitritte hatten längst eine. Ein Chat,
+    // von dem man nichts mitbekommt, wird nicht benutzt.
+    notifyAboutMessage({ group, senderId: req.userId, senderName, receiverId, content });
 
     res.status(201).json({
       ...newMessage,
-      sender_name: sender ? sender.name : "Unbekannt",
+      sender_name: senderName,
       sender_avatar: sender ? sender.avatar : null,
     });
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
+
+/** Wie viel Nachrichtentext in der Benachrichtigung landet. */
+const MESSAGE_PREVIEW_LENGTH = 120;
+
+/** Obergrenze für Empfänger einer Gruppennachricht, damit eine große Gruppe
+ *  keine unbegrenzte Zahl paralleler Push-Requests auslöst. */
+const MAX_GROUP_PUSH_RECIPIENTS = 50;
+
+/**
+ * Benachrichtigt über eine neue Nachricht.
+ *
+ * Läuft absichtlich ohne await und verschluckt Fehler: ein fehlgeschlagener
+ * Push darf das Senden der Nachricht nicht scheitern lassen — die Nachricht
+ * ist zu diesem Zeitpunkt bereits gespeichert.
+ */
+function notifyAboutMessage({ group, senderId, senderName, receiverId, content }) {
+  const preview =
+    content.length > MESSAGE_PREVIEW_LENGTH
+      ? `${content.slice(0, MESSAGE_PREVIEW_LENGTH)}…`
+      : content;
+
+  (async () => {
+    if (group) {
+      const recipients = (group.memberIds || [])
+        .filter((id) => id !== senderId)
+        .slice(0, MAX_GROUP_PUSH_RECIPIENTS);
+
+      // Wer den Absender blockiert hat, bekommt dessen Gruppennachricht nicht
+      // aufs Sperrbildschirm geschoben. Der Block verhindert das Schreiben in
+      // einer Gruppe nicht (beide sind ja Mitglieder), also muss er hier
+      // greifen.
+      const blocks = await db.getBlocks();
+      const blockedPairs = new Set(
+        blocks.map((b) => `${b.blockerId}:${b.blockedId}`)
+      );
+
+      for (const memberId of recipients) {
+        if (blockedPairs.has(`${memberId}:${senderId}`)) continue;
+        if (blockedPairs.has(`${senderId}:${memberId}`)) continue;
+
+        sendPushNotification(
+          memberId,
+          `${group.name}`,
+          `${senderName}: ${preview}`,
+          { type: "group_message", groupId: group.id }
+        ).catch(() => {});
+      }
+      return;
+    }
+
+    if (receiverId) {
+      sendPushNotification(receiverId, senderName, preview, {
+        type: "direct_message",
+        senderId,
+      }).catch(() => {});
+    }
+  })().catch(() => {});
+}
 
 // Get Groups — only the ones I belong to (or have asked to join).
 // It used to return every group with its full member list, which is both a

@@ -1,6 +1,10 @@
 const db = require("./db");
 
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+// Überschreibbar, damit die Testsuite den Versand gegen einen lokalen
+// Auffangserver prüfen kann. Ohne diese Möglichkeit war die gesamte
+// Push-Logik — wer benachrichtigt wird und wer nicht — nur auf echter
+// Hardware beobachtbar, also praktisch ungetestet.
+const EXPO_PUSH_URL = process.env.EXPO_PUSH_URL || "https://exp.host/--/api/v2/push/send";
 
 // Sends a push notification to a user's registered device via Expo's push
 // service. Uses Node's built-in fetch (Node 18+) instead of adding

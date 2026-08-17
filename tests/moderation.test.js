@@ -130,6 +130,36 @@ test("Moderation", async (t) => {
       assert.equal(request.status, 404, "Der Blockierte darf keine neue Anfrage stellen können");
     });
 
+    await t.test("blendet Gruppennachrichten des Blockierten aus", async () => {
+      const a = await register("gchat-a");
+      const b = await register("gchat-b");
+
+      // Gemeinsame Gruppe: ein Block hindert niemanden daran, dort zu
+      // schreiben — beide sind Mitglieder. Der Filter muss also beim Lesen
+      // greifen, sonst liest man weiter genau die Person mit, die man
+      // loswerden wollte.
+      const group = await call("POST", "/groups", { name: "Chatgruppe", memberIds: [b.id] }, a.token);
+      const groupId = group.json.id;
+
+      await call("POST", "/messages", { groupId, content: "Nachricht von A" }, a.token);
+      await call("POST", "/messages", { groupId, content: "Nachricht von B" }, b.token);
+
+      const before = await call("GET", `/messages/group/${groupId}`, undefined, a.token);
+      assert.equal(before.json.length, 2, "Vor dem Block sind beide Nachrichten sichtbar");
+
+      await call("POST", "/blocks", { userId: b.id }, a.token);
+
+      const after = await call("GET", `/messages/group/${groupId}`, undefined, a.token);
+      assert.equal(after.json.length, 1);
+      assert.equal(after.json[0].sender_id, a.id, "Nur die eigene Nachricht bleibt");
+
+      // Und die Gegenrichtung: der Blockierte sieht den Blockierenden auch
+      // nicht mehr.
+      const forBlocked = await call("GET", `/messages/group/${groupId}`, undefined, b.token);
+      assert.equal(forBlocked.json.length, 1);
+      assert.equal(forBlocked.json[0].sender_id, b.id);
+    });
+
     await t.test("nimmt dem Blockierten die Kartenpunkte, auch über eine gemeinsame Gruppe", async () => {
       const a = await register("karte-a");
       const b = await register("karte-b");

@@ -385,6 +385,11 @@ Immer `npx expo install <paket>` benutzen, nie `npm install`.
 
 Beides ist im Browser prinzipiell nicht testbar und daher noch nie gelaufen:
 
+> **Push ist inzwischen testbar.** `EXPO_PUSH_URL` lässt sich überschreiben,
+> `tests/push.test.js` fängt den Versand mit einem lokalen Server ab und prüft,
+> **wer** benachrichtigt wird. Was Tests nicht abdecken können, ist die
+> Zustellung auf ein echtes Gerät — dafür braucht es FCM und Hardware.
+
 1. **Push.** Nach dem Login mit einem zweiten Account eine
    Freundschaftsanfrage schicken. Kommt keine Benachrichtigung an, im
    Backend-Log nachsehen: `[Push] Delivery error` deutet auf fehlende

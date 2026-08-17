@@ -70,6 +70,13 @@ export function getRouteForNotificationData(data: Record<string, unknown> | unde
   if (type === "group_join_request") {
     return "/notifications";
   }
+  // Chat-Nachrichten landen auf dem Dashboard, weil der Chat als Modal im
+  // Tab-Layout lebt und keine eigene Route hat. Um direkt in die
+  // Unterhaltung zu springen, müsste der Chat erst routebar werden — das ist
+  // ein eigener Umbau und bewusst nicht Teil dieser Änderung.
+  if (type === "direct_message" || type === "group_message") {
+    return "/(tabs)";
+  }
   // friend_request / friend_accepted and anything unrecognized: no dedicated
   // route (friend management lives in the tabs drawer modal), fall back to
   // the dashboard.
