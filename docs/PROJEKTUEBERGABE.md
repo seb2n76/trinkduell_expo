@@ -263,6 +263,38 @@ Der wirksame Hebel für „lädt beim zweiten Mal sofort" ist **Caching per
 Service Worker**, nicht Splitting — und der ist inzwischen umgesetzt (siehe
 unten).
 
+### Web-Hosting (Netlify und Cloudflare Pages)
+
+Beide Hosts lesen dasselbe Konfigurationsformat, deshalb liegt es **einmal** in
+`public/` und wird von `expo export` nach `dist/` kopiert:
+
+| Datei | Zweck |
+|---|---|
+| `public/_headers` | `sw.js` nie cachen, gehashte Assets ewig, Basis-Header |
+| `public/_redirects` | Fallback auf `index.html` für unbekannte Pfade |
+
+`expo export --platform web` erzeugt **echte HTML-Dateien pro Route**
+(`feed.html`, `login.html`, …), Deep Links funktionieren also ohne
+Zusatzregel. Der Fallback greift nur für Pfade, zu denen keine Datei gehört.
+
+**Neue Domain → CORS anpassen.** Das ist der Schritt, der beim Umzug vergessen
+wird: eine neue Hosting-Domain wird von der API abgewiesen, bis ihre Origin in
+der Allow-List steht. Zwei Stellen:
+
+1. `DEFAULT_ALLOWED_ORIGINS` in `server/index.js` (für frische Klone)
+2. `ALLOWED_ORIGINS` in `server/.env` auf dem Server — **ersetzt** die
+   Standardliste, ergänzt sie nicht. Alle Domains müssen also aufgezählt
+   werden.
+
+Aktuell live: `webapp.trinkduell.com` (Netlify) und `cloud.trinkduell.com`
+(Cloudflare Pages).
+
+Ohne `Content-Security-Policy` in `_headers`, bewusst: react-native-web
+erzeugt Inline-Styles, die Karte läuft in einem srcDoc-iframe und lädt Leaflet
+von einem CDN. Eine CSP müsste all das erfassen und würde bei einem Fehler die
+App lahmlegen — das gehört einzeln gemessen, nicht blind gesetzt. Ebenso keine
+`Permissions-Policy`: Kamera und Standort brauchen die Erlaubnis.
+
 ### PWA / Service Worker
 
 `public/` wird von Expo unverändert nach `dist/` kopiert. Dort liegen:

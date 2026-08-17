@@ -131,8 +131,13 @@ const enrichOwnProfile = (user) => enrichUserProgress(user, { includeEmail: true
 // mechanism, and the native app (and curl, and health checks) simply don't
 // send one. Rejecting those would break the mobile app without protecting
 // anything — a non-browser client isn't bound by CORS in the first place.
+// ACHTUNG: ALLOWED_ORIGINS in server/.env ERSETZT diese Liste, es ergänzt sie
+// nicht. Wer die Variable setzt, muss also auch die localhost-Einträge
+// mitnehmen, falls er die Web-App lokal gegen den Produktionsserver testen
+// will.
 const DEFAULT_ALLOWED_ORIGINS = [
-  "https://webapp.trinkduell.com",
+  "https://webapp.trinkduell.com", // Netlify
+  "https://cloud.trinkduell.com", // Cloudflare Pages
   "http://localhost:8081",
   "http://localhost:19006",
 ];

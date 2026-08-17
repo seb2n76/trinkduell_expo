@@ -1,0 +1,37 @@
+# HTTP-Header für die Web-App.
+#
+# Dieses Format lesen Netlify UND Cloudflare Pages identisch — eine Datei für
+# beide Hosts. Sie liegt in public/ und wird von `expo export` unverändert nach
+# dist/ kopiert, landet also automatisch im Deploy.
+
+# Der Service Worker darf NIE aus dem Browser-Cache kommen. Sonst hängt ein
+# Nutzer beliebig lange auf einer alten Version fest: der Browser fragt die
+# neue sw.js gar nicht ab, also erfährt er auch nichts von neuen
+# Cache-Strategien oder einer neuen VERSION.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Gehashte Build-Assets: der Dateiname enthält den Inhalts-Hash, ein geänderter
+# Inhalt hat also einen anderen Namen. Diese Dateien können nie veralten und
+# dürfen entsprechend ewig liegen bleiben.
+/_expo/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Das Manifest ändert sich selten, soll aber nach einem Deploy zeitnah
+# aktualisiert werden.
+/manifest.json
+  Cache-Control: public, max-age=3600
+
+# Basis-Absicherung für alle Seiten.
+#
+# Bewusst OHNE Content-Security-Policy: react-native-web erzeugt Inline-Styles,
+# die Karte läuft in einem srcDoc-iframe und lädt Leaflet von einem CDN. Eine
+# CSP müsste all das erfassen und würde bei einem Fehler die App lahmlegen —
+# das gehört gemessen und einzeln geprüft, nicht blind hinzugefügt.
+#
+# Ebenso ohne Permissions-Policy: Kamera (Barcode-Scanner) und Standort
+# brauchen die Erlaubnis, und ein zu strenger Wert würde beide abschalten.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
