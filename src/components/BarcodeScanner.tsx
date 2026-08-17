@@ -29,6 +29,9 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
   // Cameras fire the same code many times per second; without this the
   // lookup would run dozens of times for one scan.
   const [handled, setHandled] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [zoom, setZoom] = useState(0);
+  const [windowReady, setWindowReady] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -36,6 +39,12 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
       setError(null);
       setManualCode("");
       setManualMode(!cameraSupported);
+      setTorchOn(false);
+      setZoom(0);
+    } else {
+      // Zurücksetzen, damit beim nächsten Öffnen wieder auf onShow gewartet
+      // wird — sonst startet die Kamera beim zweiten Mal zu früh.
+      setWindowReady(false);
     }
   }, [visible, cameraSupported]);
 
@@ -58,10 +67,20 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
     onScanned(raw.trim());
   };
 
-  const showCamera = cameraSupported && !manualMode && permission?.granted;
+  // Die Kamera erst starten, wenn das Modal-Fenster wirklich steht. Auf
+  // Android ist ein RN-Modal ein eigenes Fenster; startet die CameraX-Vorschau
+  // vor dessen Layout, bekommt sie keine brauchbaren Maße — und genau dann
+  // fokussiert sie nicht mehr richtig oder gar nicht. Das war die
+  // wahrscheinlichste Ursache für den nicht funktionierenden Autofokus.
+  const showCamera = cameraSupported && !manualMode && permission?.granted && windowReady;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      onShow={() => setWindowReady(true)}
+    >
       <View className="flex-1 bg-slate-950">
         <View className="flex-row items-center justify-between px-5 pt-14 pb-4">
           <Text className="text-white text-base font-black">Barcode scannen</Text>
@@ -75,6 +94,14 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
             <CameraView
               style={{ flex: 1 }}
               facing="back"
+              // NICHT auf "on" ändern. Die Bedeutung ist entgegen dem Namen
+              // invertiert: "on" fokussiert EINMAL und sperrt dann, "off"
+              // fokussiert laufend nach. Für einen Scanner, bei dem man das
+              // Handy an die Flasche heranbewegt, ist genau das nötig.
+              // (iOS-only; auf Android steuert CameraX den Fokus selbst.)
+              autofocus="off"
+              enableTorch={torchOn}
+              zoom={zoom}
               barcodeScannerSettings={{
                 // Product barcodes only. Narrowing the list keeps the decoder
                 // from spending time on QR and industrial formats.
@@ -89,7 +116,47 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
               <Text className="text-white text-xs font-bold mt-4 px-8 text-center">
                 {busy ? "Getränk wird gesucht…" : "Halte den Barcode in den Rahmen"}
               </Text>
+              <Text className="text-slate-400 text-[10px] font-semibold mt-2 px-10 text-center">
+                Etwa 15–20 cm Abstand. Fokussiert die Kamera nicht, hilft meist
+                mehr Licht oder ein kurzes Wegschwenken und Zurückkommen.
+              </Text>
               {busy && <ActivityIndicator color="#22d3ee" className="mt-3" />}
+            </View>
+
+            {/* Licht und Zoom: die beiden häufigsten Gründe, warum der Fokus
+                nicht greift — zu dunkel, oder der Code zu klein im Bild. */}
+            <View className="absolute top-4 right-5 flex-row">
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic("light");
+                  setTorchOn((on) => !on);
+                }}
+                accessibilityLabel={torchOn ? "Licht ausschalten" : "Licht einschalten"}
+                className={`w-11 h-11 items-center justify-center rounded-2xl border ${
+                  torchOn ? "bg-cyan-400/20 border-cyan-400/50" : "bg-slate-900/90 border-white/10"
+                }`}
+              >
+                <Ionicons
+                  name={torchOn ? "flashlight" : "flashlight-outline"}
+                  size={18}
+                  color={torchOn ? "#22d3ee" : "#94a3b8"}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic("light");
+                  // Drei Stufen reichen; ein Schieber wäre eine zusätzliche
+                  // Abhängigkeit für wenig Gewinn.
+                  setZoom((z) => (z >= 0.4 ? 0 : z + 0.2));
+                }}
+                accessibilityLabel="Zoom ändern"
+                className="ml-2 w-11 h-11 items-center justify-center rounded-2xl bg-slate-900/90 border border-white/10"
+              >
+                <Text className="text-slate-300 text-[10px] font-black">
+                  {zoom === 0 ? "1x" : `${(1 + zoom * 5).toFixed(1)}x`}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity

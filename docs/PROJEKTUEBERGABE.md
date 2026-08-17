@@ -376,6 +376,20 @@ Vor jedem Build lohnt sich `npx expo-doctor` (Ziel: 19/19). Und
 Hermes-Bundle, das EAS baut — schlägt das fehl, schlägt auch der Build fehl,
 nur 15 Minuten früher sichtbar.
 
+**Barcode-Scanner und Autofokus.** Zwei Fallen stecken in `expo-camera`:
+
+- Die Prop `autofocus` ist **iOS-only** und heißt das Gegenteil von dem, was
+  man erwartet: `"on"` fokussiert **einmal und sperrt dann**, `"off"`
+  fokussiert laufend nach. Für einen Scanner braucht man `"off"` — die Prop
+  also bitte nicht „reparieren".
+- Auf Android startet die Kamera erst, wenn das Modal-Fenster steht
+  (`onShow`). Ein RN-Modal ist dort ein eigenes Fenster; startet die
+  CameraX-Vorschau vor dessen Layout, bekommt sie keine brauchbaren Maße und
+  fokussiert nicht mehr richtig.
+
+Dazu Licht- und Zoom-Schalter im Sucher: zu dunkel und „Code zu klein im
+Bild" sind die häufigsten Gründe, warum der Fokus nicht greift.
+
 **Falle: Versionen dürfen nicht „neuer als das SDK" sein.** `npm install
 babel-preset-expo` holt die neueste Version (57.x), SDK 55 braucht ~55.0.24 —
 mit der falschen bricht Hermes mit „private properties are not supported" ab.

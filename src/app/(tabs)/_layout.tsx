@@ -96,6 +96,7 @@ export default function TabsLayout() {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [friendsLoading, setFriendsLoading] = useState(false);
+  const [groupsList, setGroupsList] = useState<Group[]>([]);
 
   // Chat / Direct Messaging states
   const [showChatModal, setShowChatModal] = useState(false);
@@ -150,6 +151,11 @@ export default function TabsLayout() {
       const data = await apiService.getFriends(currentUser.name);
       setFriendsList(data.friends || []);
       setPendingRequests(data.pending || []);
+
+      // Gruppen kommen aus derselben Ansicht: /api/groups liefert seit der
+      // Autorisierungsrunde nur noch die eigenen, es ist also keine
+      // zusätzliche Filterung nötig.
+      setGroupsList(await apiService.getGroups());
     } catch (e) {
       console.error("Failed to load friends in layout modal:", e);
     } finally {
@@ -308,6 +314,27 @@ export default function TabsLayout() {
       setChatMessages(msgs);
     } catch (e) {
       console.error("Failed to load DMs:", e);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const openGroupChat = async (targetGroup: Group) => {
+    setChatTargetGroup(targetGroup);
+    setChatTargetUser(null);
+    setShowChatModal(true);
+    setChatLoading(true);
+    try {
+      setChatMessages(await apiService.getGroupMessages(targetGroup.id));
+    } catch (e) {
+      // Der Server antwortet mit 403, wenn man nicht (mehr) Mitglied ist —
+      // etwa nachdem man aus der Gruppe entfernt wurde, während die Liste
+      // noch offen war.
+      notify(
+        "Chat nicht verfügbar",
+        e instanceof Error ? e.message : "Der Gruppenchat konnte nicht geladen werden."
+      );
+      setShowChatModal(false);
     } finally {
       setChatLoading(false);
     }
@@ -1193,6 +1220,57 @@ export default function TabsLayout() {
               <Ionicons name="people-circle-outline" size={18} color="#c084fc" />
               <Text className="text-purple-300 font-black text-xs uppercase tracking-wider">+ Neue Gruppe erstellen</Text>
             </TouchableOpacity>
+
+            {/* Meine Gruppen. Der Gruppen-Chat war vollständig gebaut —
+                Backend, API-Client, Chat-Modal — hatte aber keinen Auslöser:
+                chatTargetGroup wurde nie gesetzt. Gruppen ließen sich anlegen
+                und dann nie wieder öffnen. */}
+            {groupsList.length > 0 && (
+              <View className="mb-4">
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-3">
+                  Meine Gruppen ({groupsList.length})
+                </Text>
+                {groupsList.map((group) => {
+                  const isAdmin = group.adminId === dbUser?.id;
+                  return (
+                    <View
+                      key={group.id}
+                      className="bg-slate-950/60 border border-purple-500/10 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                    >
+                      <View className="flex-row items-center flex-1 mr-2">
+                        <View className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
+                          <Ionicons name="people" size={16} color="#c084fc" />
+                        </View>
+                        <View className="flex-1 ml-3">
+                          <Text className="text-white text-xs font-black" numberOfLines={1}>
+                            {group.name}
+                          </Text>
+                          <Text className="text-purple-400 text-[9px] font-bold mt-0.5">
+                            {(group.memberIds || []).length}{" "}
+                            {(group.memberIds || []).length === 1 ? "Mitglied" : "Mitglieder"}
+                            {isAdmin ? " · Admin" : ""}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFriendsModal(false);
+                          openGroupChat(group);
+                        }}
+                        accessibilityLabel={`Gruppenchat ${group.name} öffnen`}
+                        className="bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl flex-row items-center"
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={14} color="#c084fc" />
+                        <Text className="text-purple-300 text-[10px] font-black uppercase ml-1">
+                          Chat
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Friend Request & Live User Search Input */}
             <View className="bg-slate-950/80 border border-white/5 rounded-2xl p-4 mb-4">
