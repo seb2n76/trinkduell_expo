@@ -53,20 +53,12 @@ Der Zustand war beim Schreiben dieses Dokuments sauber.
 
 Nach Priorität. Die ersten drei sind klein und schließen echte Lücken.
 
-### 1.1 Beitrag löschen — **hoch**
+### ~~1.1 Beitrag löschen~~ — **erledigt** (Commit nach `152e822`)
 
-Es gibt **keine Möglichkeit, einen Beitrag zu löschen** — weder Route noch UI.
-Seit es Beweisfotos gibt, wiegt das schwer: wer versehentlich das falsche Bild
-hochlädt, kommt nicht mehr dran. Für die Stores ist „Nutzer können eigene
-Inhalte entfernen" außerdem eine Erwartung.
-
-- `DELETE /api/posts/:id` — nur der Autor
-- Beim Löschen eines Beitrags mit Bild auch das R2-Objekt entfernen
-  (`storage.keyFromPublicUrl` + `storage.deleteObject`, Muster:
-  `releaseReplacedAvatar` in `server/index.js`)
-- UI: Löschen-Option an eigenen Beiträgen im Feed (`src/app/(tabs)/feed.tsx`,
-  dort sitzt schon der Melden-Knopf für fremde Beiträge)
-- Tests: Autor darf, Fremder nicht (403), Bild wird mitgelöscht
+`DELETE /api/posts/:id`, Papierkorb-Symbol an eigenen Beiträgen im Feed,
+Bild wird aus R2 mitgelöscht. Systembeiträge (Level-Ups) gehören niemandem
+und sind nicht löschbar. Eine bestehende Meldung überlebt das Löschen, weil
+sie einen eigenen Textauszug speichert.
 
 ### 1.2 Passwort ändern im eingeloggten Zustand — **hoch**
 

@@ -909,6 +909,15 @@ module.exports = {
     db.posts.push(post);
     await saveDb();
   },
+  deletePost: async (postId) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("DELETE FROM posts WHERE id = $1", [postId]);
+      return;
+    }
+    db.posts = (db.posts || []).filter((p) => p.id !== postId);
+    await saveDb();
+  },
   recalculateAllUsers: async () => {
     await loadDb();
     const allLogs = await module.exports.getLogs();

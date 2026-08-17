@@ -345,6 +345,138 @@ test("Uploads", async (t) => {
       assert.equal(res.status, 400);
     });
 
+    await t.test("löscht den eigenen Beitrag", async () => {
+      const author = await register("del-autor");
+      const friend = await register("del-freund");
+      await call("POST", "/friends/request", { receiver_username: friend.name }, author.token);
+      await call("POST", "/friends/accept", { sender_username: author.name }, friend.token);
+
+      const presign = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "proof", contentType: JPEG, contentLength: 9000 },
+        author.token
+      );
+      const post = await call(
+        "POST",
+        "/posts",
+        {
+          text: "Doch nicht so witzig",
+          contextType: "friends",
+          contextId: author.id,
+          image: presign.json.publicUrl,
+        },
+        author.token
+      );
+
+      const before = await call("GET", "/feed", undefined, friend.token);
+      assert.ok(before.json.some((e) => e.id === post.json.id), "Vorher im Freundes-Feed");
+
+      const res = await call("DELETE", `/posts/${post.json.id}`, undefined, author.token);
+      assert.equal(res.status, 200);
+
+      // Der eigentliche Punkt: weg beim Autor UND bei allen, die ihn sahen.
+      const afterAuthor = await call("GET", "/posts", undefined, author.token);
+      assert.ok(!afterAuthor.json.some((p) => p.id === post.json.id));
+
+      const afterFriend = await call("GET", "/feed", undefined, friend.token);
+      assert.ok(!afterFriend.json.some((e) => e.id === post.json.id), "Auch aus fremden Feeds");
+    });
+
+    await t.test("lässt fremde Beiträge nicht löschen", async () => {
+      const author = await register("del-eigner");
+      const other = await register("del-fremd");
+      await call("POST", "/friends/request", { receiver_username: other.name }, author.token);
+      await call("POST", "/friends/accept", { sender_username: author.name }, other.token);
+
+      const post = await call(
+        "POST",
+        "/posts",
+        { text: "Meiner", contextType: "friends", contextId: author.id },
+        author.token
+      );
+
+      const res = await call("DELETE", `/posts/${post.json.id}`, undefined, other.token);
+      assert.equal(res.status, 403);
+
+      const still = await call("GET", "/posts", undefined, author.token);
+      assert.ok(still.json.some((p) => p.id === post.json.id), "Der Beitrag muss bleiben");
+    });
+
+    await t.test("meldet 404 für einen unbekannten Beitrag", async () => {
+      const user = await register("del-404");
+      const res = await call("DELETE", "/posts/post-gibtsnicht", undefined, user.token);
+      assert.equal(res.status, 404);
+    });
+
+    await t.test("verlangt ein Token", async () => {
+      const res = await call("DELETE", "/posts/irgendwas");
+      assert.equal(res.status, 401);
+    });
+
+    await t.test("löscht den Beitrag auch, wenn das Aufräumen des Bildes scheitert", async () => {
+      // Das Löschen im Objektspeicher läuft gegen einen erfundenen Endpunkt
+      // und schlägt fehl. Der Beitrag ist zu dem Zeitpunkt schon weg — das
+      // darf die Antwort nicht kippen.
+      const author = await register("del-cleanup");
+
+      const presign = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "proof", contentType: JPEG, contentLength: 4000 },
+        author.token
+      );
+      const post = await call(
+        "POST",
+        "/posts",
+        {
+          text: "Mit Bild",
+          contextType: "friends",
+          contextId: author.id,
+          image: presign.json.publicUrl,
+        },
+        author.token
+      );
+
+      const res = await call("DELETE", `/posts/${post.json.id}`, undefined, author.token);
+      assert.equal(res.status, 200);
+    });
+
+    await t.test("eine Meldung überlebt das Löschen des Beitrags", async () => {
+      const author = await register("del-gemeldet");
+      const reporter = await register("del-melder");
+      await call("POST", "/friends/request", { receiver_username: reporter.name }, author.token);
+      await call("POST", "/friends/accept", { sender_username: author.name }, reporter.token);
+
+      const post = await call(
+        "POST",
+        "/posts",
+        { text: "Etwas Anstößiges", contextType: "friends", contextId: author.id },
+        author.token
+      );
+
+      await call(
+        "POST",
+        "/reports",
+        {
+          reportedUserId: author.id,
+          contentType: "post",
+          contentId: post.json.id,
+          reason: "unangemessen",
+        },
+        reporter.token
+      );
+
+      await call("DELETE", `/posts/${post.json.id}`, undefined, author.token);
+
+      // Die Meldung speichert einen eigenen Textauszug, gerade damit sie
+      // nicht ins Leere läuft, wenn der Autor das Original entfernt.
+      assert.ok(
+        server.serverLog().includes("Etwas Anstößiges"),
+        "Der gesicherte Auszug muss den gelöschten Beitrag überdauern"
+      );
+    });
+
     await t.test("Beiträge ohne Bild funktionieren unverändert", async () => {
       const user = await register("proof-ohne");
 

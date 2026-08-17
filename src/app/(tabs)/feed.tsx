@@ -267,6 +267,37 @@ export default function LivePulseFeed() {
     setRefreshing(false);
   }, [scope]);
 
+  const handleDeletePost = (item: FeedItem) => {
+    const question = item.image
+      ? "Diesen Beitrag samt Foto löschen? Das lässt sich nicht rückgängig machen."
+      : "Diesen Beitrag löschen? Das lässt sich nicht rückgängig machen.";
+
+    const remove = async () => {
+      try {
+        await triggerHaptic("medium");
+        await apiService.deletePost(item.id);
+        // Sofort aus der Liste nehmen statt auf den nächsten Ladevorgang zu
+        // warten — bei einem Foto, das man loswerden will, zählt genau das.
+        setFeedItems((items) => items.filter((i) => i.id !== item.id));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Beitrag konnte nicht gelöscht werden.";
+        if (Platform.OS === "web") window.alert(msg);
+        else Alert.alert("Fehler", msg);
+      }
+    };
+
+    // Alert.alert ist auf react-native-web ein No-op — ohne diesen Zweig
+    // erschiene die Rückfrage im Browser nie und nichts würde passieren.
+    if (Platform.OS === "web") {
+      if (window.confirm(question)) remove();
+      return;
+    }
+    Alert.alert("Beitrag löschen", question, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Löschen", style: "destructive", onPress: remove },
+    ]);
+  };
+
   const handleSubmitReport = async () => {
     if (!reportTarget || !reportReason) return;
     setReportSubmitting(true);
@@ -555,6 +586,20 @@ export default function LivePulseFeed() {
                             className="ml-2 w-6 h-6 items-center justify-center"
                           >
                             <Ionicons name="flag-outline" size={11} color="#64748b" />
+                          </TouchableOpacity>
+                        )}
+
+                        {/* Löschen sitzt an derselben Stelle wie das Melden
+                            fremder Beiträge — beides gehört an den Inhalt,
+                            nicht in ein Menü. Systembeiträge (Level-Ups)
+                            gehören niemandem und sind nicht löschbar. */}
+                        {isMe && !isSystem && (
+                          <TouchableOpacity
+                            onPress={() => handleDeletePost(item)}
+                            accessibilityLabel="Eigenen Beitrag löschen"
+                            className="ml-2 w-6 h-6 items-center justify-center"
+                          >
+                            <Ionicons name="trash-outline" size={11} color="#64748b" />
                           </TouchableOpacity>
                         )}
                       </View>

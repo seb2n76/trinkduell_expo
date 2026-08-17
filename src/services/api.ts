@@ -375,6 +375,17 @@ export const apiService = {
       () => SyncService.enqueueSyncJob("CREATE_POST", { text, contextType, contextId, image })
     ),
 
+  /**
+   * Löscht einen eigenen Beitrag samt Bild.
+   *
+   * Kein Offline-Fallback: ein lokal als gelöscht markierter Beitrag, der
+   * serverseitig weiterlebt, wäre die gefährlichere Variante — der Nutzer
+   * glaubt, sein Foto sei weg, und es steht weiter im Feed seiner Freunde.
+   */
+  deletePost: async (postId: string): Promise<void> => {
+    await axiosInstance.delete<void>(`/posts/${postId}`);
+  },
+
   // Auth Operations
   login: async (emailOrUsername: string, password: string): Promise<{ user: db.User; token: string }> => {
     const res = await executeApiCall(

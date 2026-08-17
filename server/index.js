@@ -2002,6 +2002,46 @@ app.post("/api/posts", authenticate, async (req, res) => {
   res.status(201).json(newPost);
 });
 
+// Eigenen Beitrag löschen.
+//
+// Seit es Beweisfotos gibt, wiegt das schwer: wer versehentlich das falsche
+// Bild hochlädt, kam bisher nicht mehr daran. Für die Stores ist "Nutzer
+// können eigene Inhalte entfernen" außerdem eine Erwartung.
+app.delete("/api/posts/:id", authenticate, async (req, res) => {
+  try {
+    const posts = await db.getPosts();
+    const post = posts.find((p) => p.id === req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ error: "Beitrag nicht gefunden." });
+    }
+    if (post.userId !== req.userId) {
+      return res.status(403).json({ error: "Du kannst nur eigene Beiträge löschen." });
+    }
+
+    await db.deletePost(post.id);
+
+    // Das Bild muss mit weg, sonst bleibt es unter seiner CDN-URL abrufbar,
+    // obwohl der Beitrag gelöscht ist — für ein Beweisfoto von einer Party
+    // wäre "gelöscht, aber weiterhin öffentlich erreichbar" das Gegenteil
+    // dessen, was der Nutzer erwartet.
+    //
+    // Eine bestehende Meldung zu diesem Beitrag bleibt davon unberührt: sie
+    // speichert einen eigenen Textauszug (siehe POST /api/reports), gerade
+    // damit sie nicht ins Leere läuft, wenn der Autor das Original entfernt.
+    if (post.image && storage.isOwnStorageUrl(post.image, req.userId)) {
+      const key = storage.keyFromPublicUrl(post.image);
+      // Ohne await und mit verschlucktem Fehler: der Beitrag ist bereits
+      // gelöscht, ein misslungenes Aufräumen darf die Antwort nicht kippen.
+      if (key) storage.deleteObject(key).catch(() => {});
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
 // ==========================================
 // Duels & Quests Endpoints
 // ==========================================
