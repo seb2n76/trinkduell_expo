@@ -74,7 +74,8 @@
         {
           "locationWhenInUsePermission": "TrinkDuell speichert auf Wunsch den Ort deiner Getränke-Einträge, damit du deinen Verlauf auf der Karte siehst und deine Freunde sehen, wo ihr unterwegs seid. Du kannst das jederzeit in den Einstellungen ausschalten."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false,
