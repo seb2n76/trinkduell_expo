@@ -186,6 +186,85 @@ test("Uploads", async (t) => {
     assert.equal(res.status, 200, "Der alte Weg muss weiter funktionieren");
   });
 
+  await t.test("Avatar-Wechsel", async (t) => {
+    await t.test("ersetzt eine R2-URL durch die nächste", async () => {
+      const user = await register("av-wechsel");
+
+      const first = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "avatar", contentType: JPEG, contentLength: 3000 },
+        user.token
+      );
+      await call("POST", `/users/${user.id}/avatar`, { image: first.json.publicUrl }, user.token);
+
+      const second = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "avatar", contentType: JPEG, contentLength: 4000 },
+        user.token
+      );
+      const res = await call(
+        "POST",
+        `/users/${user.id}/avatar`,
+        { image: second.json.publicUrl },
+        user.token
+      );
+
+      assert.equal(res.status, 200);
+      assert.equal(res.json.avatarUrl, second.json.publicUrl);
+
+      const me = await call("GET", "/users/me", undefined, user.token);
+      assert.equal(me.json.avatar, second.json.publicUrl);
+    });
+
+    await t.test("überlebt das Aufräumen des alten Objekts", async () => {
+      // Das Löschen läuft ohne await und gegen einen erfundenen R2-Endpunkt,
+      // schlägt hier also fehl. Genau das ist der Test: ein misslungenes
+      // Aufräumen darf den Bildwechsel nicht kaputt machen.
+      const user = await register("av-cleanup");
+
+      const first = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "avatar", contentType: JPEG, contentLength: 3000 },
+        user.token
+      );
+      await call("POST", `/users/${user.id}/avatar`, { image: first.json.publicUrl }, user.token);
+
+      const gif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      const res = await call("POST", `/users/${user.id}/avatar`, { image: gif }, user.token);
+
+      assert.equal(res.status, 200, "Wechsel von R2 auf Base64 muss klappen");
+      assert.equal(res.json.avatarUrl, gif);
+    });
+
+    await t.test("löscht nichts, wenn dasselbe Bild erneut gesetzt wird", async () => {
+      const user = await register("av-gleich");
+
+      const presign = await call(
+        "POST",
+        "/uploads/presign",
+        { kind: "avatar", contentType: JPEG, contentLength: 3000 },
+        user.token
+      );
+      await call("POST", `/users/${user.id}/avatar`, { image: presign.json.publicUrl }, user.token);
+
+      // Zweimal dasselbe Bild: würde hier gelöscht, zeigte das Profil
+      // anschließend auf ein Objekt, das es nicht mehr gibt.
+      const res = await call(
+        "POST",
+        `/users/${user.id}/avatar`,
+        { image: presign.json.publicUrl },
+        user.token
+      );
+
+      assert.equal(res.status, 200);
+      const me = await call("GET", "/users/me", undefined, user.token);
+      assert.equal(me.json.avatar, presign.json.publicUrl);
+    });
+  });
+
   await t.test("Beweisfoto im Feed", async (t) => {
     await t.test("speichert das Bild am Beitrag und spielt es im Feed aus", async () => {
       const author = await register("proof-a");

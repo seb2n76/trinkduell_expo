@@ -222,6 +222,21 @@ export const apiService = {
     return res.data;
   },
 
+  /**
+   * Setzt das Profilbild auf eine URL aus dem eigenen Objektspeicher.
+   *
+   * Getrennt von uploadAvatar(), das den alten Base64-Weg bedient: eine
+   * R2-URL existiert nur, wenn der Upload wirklich geklappt hat, also gibt es
+   * hier auch keinen Offline-Fallback. Ein lokal gemerkter Verweis auf ein
+   * Objekt, das nie hochgeladen wurde, wäre ein dauerhaft kaputtes Bild.
+   */
+  setAvatarUrl: async (userId: string, imageUrl: string): Promise<{ avatarUrl: string }> => {
+    const res = await axiosInstance.post<{ avatarUrl: string }>(`/users/${userId}/avatar`, {
+      image: imageUrl,
+    });
+    return res.data;
+  },
+
   /** Ob dieser Server Uploads kann — sonst blendet die UI den Button aus. */
   getUploadConfig: async (): Promise<{ enabled: boolean; maxBytes: number }> => {
     try {

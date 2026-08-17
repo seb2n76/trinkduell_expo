@@ -31,6 +31,7 @@ import {
 } from "@/services/mockData";
 import * as ImagePicker from "expo-image-picker";
 import { Avatar } from "@/components/Avatar";
+import { uploadImage } from "@/services/upload";
 import {
   LocationMode,
   DEFAULT_LOCATION_MODE,
@@ -480,20 +481,41 @@ export default function TabsLayout() {
       if (!result.canceled) {
         setDrawerLoading(true);
         const pickedUri = result.assets[0].uri;
-        // ImagePicker's own base64 output is more reliable across platforms
-        // than re-reading the picked URI via fetch/blob; only fall back to
-        // that if ImagePicker didn't provide it.
-        let base64Data = result.assets[0].base64 || "";
-        if (!base64Data) {
-          try {
-            base64Data = await uriToBase64(pickedUri);
-          } catch (e) {
-            console.warn("Base64 conversion failed, using direct URI:", e);
+
+        // Bevorzugt in den Objektspeicher: bisher landete jedes Profilbild
+        // als Base64-Block in der Datenbank und wurde damit in JEDER
+        // Nutzerliste mitgeschleppt. Kann der Server das nicht (keine
+        // R2-Zugangsdaten), bleibt der alte Weg als Rückfall — sonst hätten
+        // Bestandsserver plötzlich keine Profilbilder mehr.
+        let avatarUrl: string;
+        const uploadConfig = await apiService.getUploadConfig();
+
+        if (uploadConfig.enabled) {
+          const publicUrl = await uploadImage(pickedUri, "avatar");
+          const saved = await apiService.setAvatarUrl(dbUser.id, publicUrl);
+          avatarUrl = saved.avatarUrl;
+        } else {
+          // ImagePicker's own base64 output is more reliable across platforms
+          // than re-reading the picked URI via fetch/blob; only fall back to
+          // that if ImagePicker didn't provide it.
+          let base64Data = result.assets[0].base64 || "";
+          if (!base64Data) {
+            try {
+              base64Data = await uriToBase64(pickedUri);
+            } catch (e) {
+              console.warn("Base64 conversion failed, using direct URI:", e);
+            }
           }
+
+          const uploadResult = await apiService.uploadAvatar(
+            dbUser.id,
+            pickedUri,
+            base64Data || undefined
+          );
+          avatarUrl = uploadResult.avatarUrl;
         }
 
-        const uploadResult = await apiService.uploadAvatar(dbUser.id, pickedUri, base64Data || undefined);
-        const updatedUser = { ...dbUser, avatar: uploadResult.avatarUrl };
+        const updatedUser = { ...dbUser, avatar: avatarUrl };
         setDbUser(updatedUser);
         updateUserContext(updatedUser);
       }

@@ -316,6 +316,26 @@ Client, ob er den Button anbieten soll.
    im Profil oder einen Tracking-Pixel im Feed aller Freunde. Der Schlüssel
    trägt deshalb die Nutzer-ID: `proof/<userId>/<32 Hex>.jpg`.
 
+**Bestandsavatare migrieren.** Profilbilder aus der Zeit vor R2 liegen als
+Base64 in der Nutzertabelle und werden dadurch in **jeder** Antwort
+mitgeschleppt, die Nutzer enthält — Nutzerliste, Suche, Freundesliste,
+Rangliste. Einmalig verschieben:
+
+```bash
+docker compose -f server/docker-compose.yml exec backend node server/migrate-avatars.js --dry-run
+docker compose -f server/docker-compose.yml exec backend node server/migrate-avatars.js
+```
+
+Wiederholbar: bereits migrierte Nutzer werden übersprungen, ein Abbruch
+mitten drin ist unproblematisch. Das Skript verkleinert die Bilder nicht — das
+passiert im Client, und eine Bildbibliothek auf dem Server gibt es bewusst
+nicht.
+
+**Beim Bildwechsel wird das alte Objekt gelöscht** (`releaseReplacedAvatar`),
+sonst bleibt bei jedem Wechsel eine Datei im Bucket liegen, auf die nichts
+mehr zeigt. Ohne `await` und mit verschlucktem Fehler: ein misslungenes
+Aufräumen darf den Bildwechsel nicht scheitern lassen.
+
 **EXIF/GPS werden clientseitig entfernt, nicht serverseitig.** Bei einem
 Direkt-Upload sieht der Server die Bytes nie. Das Neukodieren in
 `src/services/upload.ts` (Canvas im Web, ImageManipulator nativ) schreibt ein

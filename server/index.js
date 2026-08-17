@@ -379,6 +379,24 @@ function validateAvatarDataUrl(raw) {
  * Profil, das man nie hochgeladen hat, oder einen Tracking-Pixel im Feed
  * aller Freunde.
  */
+/**
+ * Löscht das ersetzte Avatar-Objekt aus dem Speicher.
+ *
+ * Nur wenn es überhaupt ein eigenes Speicher-Objekt war (Base64-Bestandsdaten
+ * liegen in der Datenbank und verschwinden mit dem Feld) und nur, wenn es
+ * nicht dasselbe Objekt ist — ein zweimal gesetztes Bild darf sich nicht
+ * selbst löschen.
+ */
+function releaseReplacedAvatar(previousAvatar, nextAvatar, userId) {
+  if (!previousAvatar || previousAvatar === nextAvatar) return;
+  if (!storage.isOwnStorageUrl(previousAvatar, userId)) return;
+
+  const key = storage.keyFromPublicUrl(previousAvatar);
+  if (key) {
+    storage.deleteObject(key).catch(() => {});
+  }
+}
+
 function validateImageReference(raw, userId) {
   if (typeof raw !== "string") {
     return { ok: false, error: "Bilddaten fehlen." };
@@ -926,8 +944,19 @@ app.post("/api/users/:id/avatar", authenticate, avatarUpload.single("avatar"), a
     if (!check.ok) {
       return res.status(400).json({ error: check.error });
     }
+
+    const previousAvatar = user.avatar;
     user.avatar = check.value;
     await db.saveUser(user);
+
+    // Das ersetzte Objekt aufräumen. Ohne das bleibt bei jedem
+    // Profilbildwechsel eine Datei im Bucket liegen, auf die nichts mehr
+    // zeigt — nach genug Wechseln zahlt man für Müll. Erst nach dem
+    // erfolgreichen Speichern, damit ein Fehlschlag nicht beide Bilder
+    // vernichtet, und ohne await: ein misslungenes Löschen darf den
+    // Bildwechsel nicht scheitern lassen.
+    releaseReplacedAvatar(previousAvatar, check.value, req.userId);
+
     return res.json({ avatarUrl: check.value });
   }
 

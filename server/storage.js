@@ -148,6 +148,20 @@ function isOwnStorageUrl(url, userId) {
   return UPLOAD_KINDS.includes(kind) && ownerId === userId;
 }
 
+/**
+ * Zieht den Objekt-Schlüssel aus einer öffentlichen URL. Gibt null zurück,
+ * wenn die URL nicht aus diesem Speicher kommt — Löschen soll nie auf einer
+ * fremden URL operieren.
+ */
+function keyFromPublicUrl(url) {
+  if (!isStorageConfigured()) return null;
+  if (typeof url !== "string" || !url.startsWith(`${PUBLIC_URL}/`)) return null;
+
+  const key = url.slice(PUBLIC_URL.length + 1);
+  if (!key || key.includes("..")) return null;
+  return key;
+}
+
 /** Existiert das Objekt und passt seine Größe? Nach dem Upload aufgerufen. */
 async function verifyUploadedObject(key) {
   if (!isStorageConfigured()) return { ok: false, error: "Speicher nicht konfiguriert." };
@@ -179,6 +193,7 @@ module.exports = {
   isStorageConfigured,
   createPresignedUpload,
   isOwnStorageUrl,
+  keyFromPublicUrl,
   verifyUploadedObject,
   deleteObject,
   MAX_UPLOAD_BYTES,
