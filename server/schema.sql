@@ -21,7 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
   -- JWTs issued before this timestamp are rejected (see authenticate() in
   -- index.js). Set on password reset so a stolen long-lived token dies.
   session_valid_after TIMESTAMP WITH TIME ZONE,
-  push_token TEXT
+  push_token TEXT,
+  -- Hat dieser Nutzer seine Schnellwahl schon einmal selbst gesetzt?
+  -- Ohne diesen Merker wäre "noch nie gewählt" nicht von "bewusst geleert"
+  -- zu unterscheiden — und eine geleerte Schnellwahl käme bei jedem Abruf
+  -- als Standardauswahl zurück.
+  quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS drinks (
@@ -118,6 +123,20 @@ CREATE TABLE IF NOT EXISTS messages (
   timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
+-- Persönliche Schnellwahl: welche Getränke jemand auf dem Dashboard als
+-- Kachel sieht, und in welcher Reihenfolge.
+--
+-- Der Grund für die Trennung von `drinks`: der Katalog ist geteilt und wächst
+-- durch Barcode-Scans (Community-Datenbank). Vorher war jeder Katalogeintrag
+-- automatisch bei allen eine Kachel — legte jemand ein Getränk an, stand es
+-- im Dashboard sämtlicher Nutzer.
+CREATE TABLE IF NOT EXISTS user_drinks (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  drink_id TEXT NOT NULL REFERENCES drinks(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, drink_id)
+);
+
 -- Blocking. Mutual by effect: once a block exists in either direction, the
 -- two users stop seeing each other everywhere (feed, radar, map, search,
 -- chat). Store requirement for apps with user-generated content.
@@ -155,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, rece
 CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
+CREATE INDEX IF NOT EXISTS idx_user_drinks_user ON user_drinks(user_id, position);
 
 -- ACHTUNG: Indizes auf Spalten, die per ALTER TABLE nachgerüstet werden,
 -- gehören NICHT hierher, sondern in die Migrationsphase von initPgSchema()

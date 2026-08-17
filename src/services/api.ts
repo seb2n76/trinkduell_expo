@@ -251,6 +251,25 @@ export const apiService = {
   },
 
   /**
+   * Die persönliche Schnellwahl: die Kacheln auf dem Dashboard.
+   *
+   * Getrennt von getDrinks(), das den geteilten Katalog liefert. Vorher war
+   * beides dasselbe — jedes angelegte Getränk wurde bei allen zur Kachel.
+   */
+  getMyDrinks: (): Promise<db.Drink[]> =>
+    executeApiCall(
+      () => axiosInstance.get<db.Drink[]>("/users/me/drinks"),
+      // Offline: der zuletzt bekannte Katalog, damit das Dashboard nicht leer
+      // ist. Die persönliche Auswahl selbst lebt auf dem Server.
+      async () => (await db.getDrinks()).slice(0, 6)
+    ),
+
+  setMyDrinks: async (drinkIds: string[]): Promise<db.Drink[]> => {
+    const res = await axiosInstance.put<db.Drink[]>("/users/me/drinks", { drinkIds });
+    return res.data;
+  },
+
+  /**
    * Looks up a scanned barcode. Returns null when the code is unknown — that
    * is the normal path into the community catalogue, not a failure, so the
    * 404 is translated instead of thrown.

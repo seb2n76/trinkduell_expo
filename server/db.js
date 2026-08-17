@@ -20,6 +20,34 @@ const DEFAULT_DRINKS = [
   { id: "drink-sip-wine", name: "Schluck Wein/Sekt", category: "Wein", volume: 20, abv: 12.0, calories: 16 },
   { id: "drink-sip-mix", name: "Schluck Mischgetränk", category: "Mischgetränk", volume: 30, abv: 10.0, calories: 20 },
   { id: "drink-sip-water", name: "Zwischenwasser", category: "Alkoholfrei", volume: 30, abv: 0.0, calories: 0 },
+  // Diese 14 standen bis 17.08.2026 fest verdrahtet im Dashboard
+  // (src/app/(tabs)/index.tsx) und wurden dort clientseitig zugemischt — in
+  // zwei getrennten Kopien, von denen eine keine Kategorien hatte. Der
+  // Katalog gehört an EINE Stelle, sonst weiß niemand, was es wirklich gibt.
+  { id: "drink-beer-helles", name: "Helles", category: "Bier", volume: 500, abv: 4.9, calories: 215 },
+  { id: "drink-beer-pils", name: "Pils 0,33", category: "Bier", volume: 330, abv: 4.8, calories: 140 },
+  { id: "drink-beer-export", name: "Export", category: "Bier", volume: 500, abv: 5.2, calories: 225 },
+  { id: "drink-beer-weizen", name: "Weizen", category: "Bier", volume: 500, abv: 5.4, calories: 240 },
+  { id: "drink-wine-white", name: "Weißwein", category: "Wein", volume: 200, abv: 12.0, calories: 160 },
+  { id: "drink-wine-red-200", name: "Rotwein 0,2", category: "Wein", volume: 200, abv: 13.0, calories: 170 },
+  { id: "drink-wine-schoerle", name: "Weinschorle", category: "Wein", volume: 250, abv: 6.0, calories: 110 },
+  { id: "drink-sekt-prosecco", name: "Prosecco", category: "Sekt", volume: 100, abv: 11.0, calories: 80 },
+  { id: "drink-cocktail-aperol", name: "Aperol Spritz 0,3", category: "Mischgetränk", volume: 300, abv: 11.0, calories: 270 },
+  { id: "drink-cocktail-gin", name: "Gin Tonic", category: "Mischgetränk", volume: 300, abv: 12.0, calories: 290 },
+  { id: "drink-cocktail-wodka", name: "Wodka Energy", category: "Mischgetränk", volume: 300, abv: 10.0, calories: 300 },
+  { id: "drink-cocktail-mojito", name: "Mojito", category: "Mischgetränk", volume: 300, abv: 12.0, calories: 320 },
+  { id: "drink-water-glass", name: "Wasser", category: "Alkoholfrei", volume: 400, abv: 0.0, calories: 0 },
+  { id: "drink-water-soft", name: "Softdrink", category: "Alkoholfrei", volume: 330, abv: 0.0, calories: 140 },
+];
+
+/** Startauswahl für ein neues Konto — sechs Getränke, die die üblichen Fälle abdecken. */
+const DEFAULT_QUICK_PICKS = [
+  "drink-beer-helles",
+  "drink-beer-pils",
+  "drink-shot",
+  "drink-wine-white",
+  "drink-water-glass",
+  "drink-cocktail-aperol",
 ];
 
 const calculateAlcoholGrams = (volumeMl, abv) => {
@@ -230,6 +258,10 @@ async function initPgSchema() {
     // JSON-Zweig speichert das ganze Objekt und behielt das Feld deshalb,
     // Postgres listet die Spalten einzeln auf und verwarf es stillschweigend.
     await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS image TEXT");
+    // Unterscheidet "noch nie eine Schnellwahl gesetzt" von "bewusst geleert".
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE"
+    );
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
@@ -240,6 +272,25 @@ async function initPgSchema() {
 
     // blocks/reports are created by schema.sql above on a fresh database; the
     // CREATE TABLE IF NOT EXISTS there also covers an existing one.
+
+    // ── 4. Standard-Katalog nachtragen ──────────────────────────────────────
+    // Postgres hat kein Gegenstück zum Auto-Heal des JSON-Modus: Getränke
+    // entstehen dort nur über saveDrink(). Ohne diesen Schritt fehlen einer
+    // bestehenden Datenbank alle Einträge, die nach ihrer Erstellung zum
+    // Standard dazugekommen sind — inklusive derer, auf die die
+    // Standard-Schnellwahl zeigt.
+    //
+    // ON CONFLICT DO NOTHING: vorhandene Einträge bleiben unangetastet, auch
+    // wenn jemand Namen oder Menge angepasst hat.
+    for (const drink of DEFAULT_DRINKS) {
+      await pool.query(
+        `INSERT INTO drinks (id, name, category, volume, abv, calories)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [drink.id, drink.name, drink.category, drink.volume, drink.abv, drink.calories]
+      );
+    }
+
     console.log("[TrinkDuell DB] PostgreSQL schema initialized successfully.");
     return true;
   } catch (err) {
@@ -281,7 +332,7 @@ async function loadDb() {
     db = JSON.parse(data);
     // Auto-heal collections added after a database file was first written.
     let healed = false;
-    for (const key of ["friendships", "blocks", "reports"]) {
+    for (const key of ["friendships", "blocks", "reports", "userDrinks"]) {
       if (!db[key]) {
         db[key] = [];
         healed = true;
@@ -455,6 +506,7 @@ module.exports = {
     db.messages = (db.messages || []).filter((m) => m.sender_id !== userId && m.receiver_id !== userId);
     // Mirrors the FK cascade the Postgres branch gets for free.
     db.blocks = (db.blocks || []).filter((b) => b.blockerId !== userId && b.blockedId !== userId);
+    db.userDrinks = (db.userDrinks || []).filter((e) => e.userId !== userId);
     // Reports survive their subject, but must not keep pointing at a gone id.
     for (const r of db.reports || []) {
       if (r.reporterId === userId) r.reporterId = null;
@@ -619,17 +671,14 @@ module.exports = {
       }));
     }
     
-    // Auto-heal missing sip drinks in JSON database
-    const requiredSips = [
-      { id: "drink-sip-beer", name: "Schluck Bier", category: "Bier", volume: 30, abv: 5.0, calories: 13 },
-      { id: "drink-sip-wine", name: "Schluck Wein/Sekt", category: "Wein", volume: 20, abv: 12.0, calories: 16 },
-      { id: "drink-sip-mix", name: "Schluck Mischgetränk", category: "Mischgetränk", volume: 30, abv: 10.0, calories: 20 },
-      { id: "drink-sip-water", name: "Zwischenwasser", category: "Alkoholfrei", volume: 30, abv: 0.0, calories: 0 },
-    ];
+    // Fehlende Standard-Getränke nachtragen. Vorher galt das nur für die vier
+    // "Schluck"-Einträge; seit der Katalog aus dem Client hierher gezogen ist,
+    // muss die ganze Liste nachwachsen — sonst fehlen einer bestehenden
+    // Datenbank genau die Getränke, auf die die Standard-Schnellwahl zeigt.
     let needsSave = false;
-    for (const sip of requiredSips) {
-      if (!db.drinks.some((d) => d.id === sip.id)) {
-        db.drinks.push(sip);
+    for (const drink of DEFAULT_DRINKS) {
+      if (!db.drinks.some((d) => d.id === drink.id)) {
+        db.drinks.push({ ...drink });
         needsSave = true;
       }
     }
@@ -907,6 +956,71 @@ module.exports = {
       return;
     }
     db.posts.push(post);
+    await saveDb();
+  },
+  /**
+   * Persönliche Schnellwahl eines Nutzers, in seiner Reihenfolge.
+   *
+   * Wer noch keine hat (jedes Bestandskonto), bekommt die Standardauswahl
+   * zurück — aber sie wird NICHT gespeichert. Sonst könnte man sie nie leeren:
+   * jeder Abruf würde sie wieder anlegen.
+   */
+  getUserDrinkIds: async (userId) => {
+    await loadDb();
+    if (pool) {
+      const flag = await pool.query("SELECT quick_picks_set FROM users WHERE id = $1", [userId]);
+      if (!flag.rows[0]?.quick_picks_set) return [...DEFAULT_QUICK_PICKS];
+
+      const res = await pool.query(
+        "SELECT drink_id FROM user_drinks WHERE user_id = $1 ORDER BY position ASC",
+        [userId]
+      );
+      return res.rows.map((r) => r.drink_id);
+    }
+
+    const user = db.users.find((u) => u.id === userId);
+    if (!user?.quickPicksSet) return [...DEFAULT_QUICK_PICKS];
+
+    return (db.userDrinks || [])
+      .filter((e) => e.userId === userId)
+      .sort((a, b) => a.position - b.position)
+      .map((e) => e.drinkId);
+  },
+  /** Hat der Nutzer überhaupt schon eine eigene Auswahl getroffen? */
+  hasOwnQuickPicks: async (userId) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query("SELECT quick_picks_set FROM users WHERE id = $1", [userId]);
+      return Boolean(res.rows[0]?.quick_picks_set);
+    }
+    return Boolean(db.users.find((u) => u.id === userId)?.quickPicksSet);
+  },
+  /** Ersetzt die Auswahl vollständig; die Reihenfolge des Arrays zählt. */
+  setUserDrinkIds: async (userId, drinkIds) => {
+    await loadDb();
+    if (pool) {
+      // Komplett ersetzen statt zu vergleichen: die Liste ist kurz, und ein
+      // Differenz-Abgleich wäre mehr Code für dieselbe Wirkung.
+      await pool.query("DELETE FROM user_drinks WHERE user_id = $1", [userId]);
+      for (let i = 0; i < drinkIds.length; i++) {
+        await pool.query(
+          `INSERT INTO user_drinks (user_id, drink_id, position)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_id, drink_id) DO UPDATE SET position = $3`,
+          [userId, drinkIds[i], i]
+        );
+      }
+      // Ab jetzt zählt die gespeicherte Liste, auch wenn sie leer ist.
+      await pool.query("UPDATE users SET quick_picks_set = TRUE WHERE id = $1", [userId]);
+      return;
+    }
+    if (!db.userDrinks) db.userDrinks = [];
+    db.userDrinks = db.userDrinks.filter((e) => e.userId !== userId);
+    drinkIds.forEach((drinkId, position) => {
+      db.userDrinks.push({ userId, drinkId, position });
+    });
+    const user = db.users.find((u) => u.id === userId);
+    if (user) user.quickPicksSet = true;
     await saveDb();
   },
   deletePost: async (postId) => {

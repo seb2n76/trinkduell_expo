@@ -50,12 +50,21 @@ export default function DashboardScreen() {
 
   // GPS/Location deactivated for cross-platform stability (no expo-location)
 
+  // Der geteilte Katalog (alles, was dieser Nutzer sehen darf).
   const [drinks, setDrinks] = useState<Drink[]>([]);
+  // Die persönliche Schnellwahl: nur diese erscheinen als Kachel.
+  const [myDrinks, setMyDrinks] = useState<Drink[]>([]);
   const [logs, setLogs] = useState<DrinkLog[]>([]);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-  // Active Category State
-  const [activeCategory, setActiveCategory] = useState<"Bier" | "Wein" | "Mischgetränk" | "Alkoholfrei">("Bier");
+  // Auswahl-Ansicht und Bearbeiten-Modus der Schnellwahl
+  const [showPickerModal, setShowPickerModal] = useState(false);
+  const [drinkSearch, setDrinkSearch] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [savingPicks, setSavingPicks] = useState(false);
+  // Gerade gescanntes Getränk, das noch nicht in der Schnellwahl ist — wird
+  // als Angebot eingeblendet statt ungefragt hinzugefügt.
+  const [pendingQuickPick, setPendingQuickPick] = useState<Drink | null>(null);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -112,11 +121,15 @@ export default function DashboardScreen() {
   const loadData = async () => {
     try {
       const currentUser = await apiService.getCurrentUser();
-      const drinkList = await apiService.getDrinks();
-      const allLogs = await apiService.getDrinkLogs();
+      const [drinkList, myList, allLogs] = await Promise.all([
+        apiService.getDrinks(),
+        apiService.getMyDrinks(),
+        apiService.getDrinkLogs(),
+      ]);
 
       updateUserContext(currentUser);
       setDrinks(drinkList);
+      setMyDrinks(myList);
 
       const userLogs = allLogs.filter((l) => l.userId === currentUser.id);
       const sortedLogs = userLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -132,29 +145,12 @@ export default function DashboardScreen() {
     }, [])
   );
 
-  // Get drink details safely from state or hardcoded items
+  // Getränkedetails aus dem geladenen Katalog. Hier stand bis 17.08.2026
+  // eine fest verdrahtete Kopie des Katalogs — die zweite von zweien in
+  // dieser Datei. Beide sind in server/db.js zusammengeführt, damit es genau
+  // eine Wahrheit darüber gibt, welche Getränke existieren.
   const getDrinkDetails = (drinkId: string) => {
-    const catalogDefaults = [
-      { id: "drink-beer-helles", name: "Helles", volume: 500, abv: 4.9 },
-      { id: "drink-beer-pils", name: "Pils", volume: 330, abv: 4.8 },
-      { id: "drink-beer-export", name: "Export", volume: 500, abv: 5.2 },
-      { id: "drink-beer-weizen", name: "Weizen", volume: 500, abv: 5.4 },
-      
-      { id: "drink-wine-white", name: "Weißwein", volume: 200, abv: 12.0 },
-      { id: "drink-wine-red-200", name: "Rotwein", volume: 200, abv: 13.0 },
-      { id: "drink-wine-schoerle", name: "Weinschorle", volume: 250, abv: 6.0 },
-      { id: "drink-sekt-prosecco", name: "Sekt", volume: 100, abv: 11.0 },
-      
-      { id: "drink-cocktail-aperol", name: "Aperol Spritz", volume: 300, abv: 11.0 },
-      { id: "drink-cocktail-gin", name: "Gin Tonic", volume: 300, abv: 12.0 },
-      { id: "drink-cocktail-wodka", name: "Wodka Energy", volume: 300, abv: 10.0 },
-      { id: "drink-cocktail-mojito", name: "Mojito", volume: 300, abv: 12.0 },
-      
-      { id: "drink-water-glass", name: "Wasser", volume: 400, abv: 0.0 },
-      { id: "drink-water-soft", name: "Softdrink", volume: 330, abv: 0.0 },
-    ];
-
-    const match = drinks.find(d => d.id === drinkId) || catalogDefaults.find(d => d.id === drinkId);
+    const match = drinks.find(d => d.id === drinkId);
     if (match) {
       return {
         name: match.name,
@@ -191,44 +187,26 @@ export default function DashboardScreen() {
 
   const katerSchutz = getKaterSchutzStatus();
 
-  // Compile drinks for selection based on active Category
-  const filteredDrinks = useMemo(() => {
-    const catalogDefaults = [
-      { id: "drink-beer-helles", name: "Helles", volume: 500, abv: 4.9, category: "Bier" as const },
-      { id: "drink-beer-pils", name: "Pils", volume: 330, abv: 4.8, category: "Bier" as const },
-      { id: "drink-beer-export", name: "Export", volume: 500, abv: 5.2, category: "Bier" as const },
-      { id: "drink-beer-weizen", name: "Weizen", volume: 500, abv: 5.4, category: "Bier" as const },
-      
-      { id: "drink-wine-white", name: "Weißwein", volume: 200, abv: 12.0, category: "Wein" as const },
-      { id: "drink-wine-red-200", name: "Rotwein", volume: 200, abv: 13.0, category: "Wein" as const },
-      { id: "drink-wine-schoerle", name: "Weinschorle", volume: 250, abv: 6.0, category: "Wein" as const },
-      { id: "drink-sekt-prosecco", name: "Sekt", volume: 100, abv: 11.0, category: "Wein" as const },
-      
-      { id: "drink-cocktail-aperol", name: "Aperol Spritz", volume: 300, abv: 11.0, category: "Mischgetränk" as const },
-      { id: "drink-cocktail-gin", name: "Gin Tonic", volume: 300, abv: 12.0, category: "Mischgetränk" as const },
-      { id: "drink-cocktail-wodka", name: "Wodka Energy", volume: 300, abv: 10.0, category: "Mischgetränk" as const },
-      { id: "drink-cocktail-mojito", name: "Mojito", volume: 300, abv: 12.0, category: "Mischgetränk" as const },
-      
-      { id: "drink-water-glass", name: "Wasser", volume: 400, abv: 0.0, category: "Alkoholfrei" as const },
-      { id: "drink-water-soft", name: "Softdrink", volume: 330, abv: 0.0, category: "Alkoholfrei" as const },
-    ];
+  /**
+   * Der Katalog für die Auswahl-Ansicht, nach Suchbegriff gefiltert.
+   *
+   * Die Kategorie-Reiter auf dem Dashboard sind entfallen: dort stehen jetzt
+   * nur noch die selbst gewählten Getränke. Der vollständige Katalog lebt
+   * hinter "Getränke wählen" und wird über die Suche erschlossen — bei
+   * inzwischen 25 Standardgetränken plus allen gescannten Produkten ist
+   * Suchen schneller als Blättern.
+   */
+  const catalogSearchResults = useMemo(() => {
+    const query = drinkSearch.trim().toLowerCase();
+    const list = query
+      ? drinks.filter((d) => d.name.toLowerCase().includes(query))
+      : drinks;
 
-    const combined = [...drinks];
-    catalogDefaults.forEach(def => {
-      if (!combined.some(d => d.id === def.id || (d.name === def.name && d.volume === def.volume))) {
-        combined.push({
-          id: def.id,
-          name: def.name,
-          volume: def.volume,
-          abv: def.abv,
-          category: def.category,
-          calories: def.abv === 0 ? 0 : Math.round(def.volume * 0.43)
-        });
-      }
-    });
-
-    return combined.filter(d => d.category === activeCategory);
-  }, [drinks, activeCategory]);
+    // Alphabetisch innerhalb der Kategorie, damit die Liste vorhersehbar ist.
+    return [...list].sort(
+      (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
+    );
+  }, [drinks, drinkSearch]);
 
   // Extract exactly last 3 logs
   const lastThreeLogs = useMemo(() => {
@@ -390,11 +368,20 @@ export default function DashboardScreen() {
       setFormAbv("");
       setShowAddModal(false);
 
+      // Wer ein Getränk selbst anlegt, will es benutzen — also direkt in die
+      // eigene Schnellwahl. Bei ALLEN anderen taucht es nicht auf; genau das
+      // war vorher das Problem.
+      if (!myDrinks.some((d) => d.id === created.id) && myDrinks.length < MAX_QUICK_PICKS) {
+        try {
+          await apiService.setMyDrinks([...myDrinks.map((d) => d.id), created.id]);
+        } catch (e) {
+          // Das Getränk existiert bereits — die Schnellwahl ist Beiwerk.
+          console.warn("Konnte neues Getränk nicht in die Schnellwahl legen:", e);
+        }
+      }
+
       // Reload drinks
       await loadData();
-
-      // Update active category
-      setActiveCategory(formCategory as "Bier" | "Wein" | "Mischgetränk" | "Alkoholfrei");
 
       if (pendingEan) {
         setPendingEan(null);
@@ -414,6 +401,54 @@ export default function DashboardScreen() {
     }
   };
 
+  // ── Schnellwahl bearbeiten ────────────────────────────────────────────────
+  const MAX_QUICK_PICKS = 12;
+
+  /** Speichert die Reihenfolge; bei einem Fehler bleibt der alte Stand stehen. */
+  const persistPicks = async (next: Drink[]) => {
+    const previous = myDrinks;
+    // Sofort anzeigen: eine Kachel, die erst nach der Serverantwort umspringt,
+    // fühlt sich kaputt an.
+    setMyDrinks(next);
+    setSavingPicks(true);
+    try {
+      await apiService.setMyDrinks(next.map((d) => d.id));
+    } catch (e) {
+      setMyDrinks(previous);
+      notify("Fehler", e instanceof Error ? e.message : "Auswahl konnte nicht gespeichert werden.");
+    } finally {
+      setSavingPicks(false);
+    }
+  };
+
+  const toggleQuickPick = async (drink: Drink) => {
+    await triggerHaptic("light");
+    const exists = myDrinks.some((d) => d.id === drink.id);
+
+    if (exists) {
+      await persistPicks(myDrinks.filter((d) => d.id !== drink.id));
+      return;
+    }
+    if (myDrinks.length >= MAX_QUICK_PICKS) {
+      notify(
+        "Schnellwahl voll",
+        `Mehr als ${MAX_QUICK_PICKS} Getränke wären keine Schnellwahl mehr. Nimm zuerst eines heraus.`
+      );
+      return;
+    }
+    await persistPicks([...myDrinks, drink]);
+  };
+
+  const moveQuickPick = async (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= myDrinks.length) return;
+    await triggerHaptic("light");
+
+    const next = [...myDrinks];
+    [next[index], next[target]] = [next[target], next[index]];
+    await persistPicks(next);
+  };
+
   // ── Barcode scanning ──────────────────────────────────────────────────────
   const handleScanned = async (ean: string) => {
     setScanBusy(true);
@@ -429,6 +464,13 @@ export default function DashboardScreen() {
           abv: drink.abv,
           category: drink.category,
         });
+
+        // Geloggt ist es — aber eine Kachel wird es nur, wenn man das will.
+        // Automatisch hinzuzufügen hieße, dass die Schnellwahl bei jeder
+        // fremden Flasche zuwächst, und genau das soll sie nicht.
+        if (!myDrinks.some((d) => d.id === drink.id) && myDrinks.length < MAX_QUICK_PICKS) {
+          setPendingQuickPick(drink);
+        }
         return;
       }
 
@@ -645,66 +687,141 @@ export default function DashboardScreen() {
         </View>
 
         {/* ==========================================
-            3. CATEGORY SELECTOR (TOP-TABS PILLS)
-            ========================================== */}
-        <View className="flex-row bg-slate-950 space-x-2 mb-6">
-          {(["Bier", "Wein", "Mischgetränk", "Alkoholfrei"] as const).map((cat) => {
-            const isActive = activeCategory === cat;
-            return (
+            3. SCHNELLWAHL — nur die selbst gewählten Getränke
+            ==========================================
+            Hier standen Kategorie-Reiter über dem gesamten Katalog. Jedes
+            angelegte oder gescannte Getränk wurde damit bei ALLEN zur
+            Kachel. Der Katalog lebt jetzt hinter "Getränke wählen". */}
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+            Schnellwahl ({myDrinks.length})
+          </Text>
+          <View className="flex-row items-center">
+            {savingPicks && <ActivityIndicator color="#22d3ee" size="small" className="mr-3" />}
+            {myDrinks.length > 0 && (
               <TouchableOpacity
-                key={cat}
                 onPress={() => {
                   triggerHaptic("light");
-                  setActiveCategory(cat);
+                  setEditMode((on) => !on);
                 }}
-                className={`flex-1 py-3.5 rounded-2xl items-center justify-center border ${
-                  isActive
-                    ? "bg-cyan-500 border-cyan-500 shadow-lg shadow-cyan-500/20"
-                    : "bg-slate-900 border-white/5"
+                accessibilityLabel={editMode ? "Bearbeiten beenden" : "Schnellwahl bearbeiten"}
+                className={`px-3 py-1.5 rounded-xl border ${
+                  editMode
+                    ? "bg-cyan-400/10 border-cyan-400/40"
+                    : "bg-slate-900 border-white/10"
                 }`}
               >
                 <Text
-                  className={`text-[10px] font-black uppercase tracking-widest ${
-                    isActive ? "text-slate-950" : "text-slate-400"
+                  className={`text-[10px] font-black uppercase tracking-wider ${
+                    editMode ? "text-cyan-400" : "text-slate-400"
                   }`}
                 >
-                  {getCategoryLabel(cat)}
+                  {editMode ? "Fertig" : "Bearbeiten"}
                 </Text>
               </TouchableOpacity>
-            );
-          })}
+            )}
+          </View>
         </View>
 
         {/* ==========================================
             4. DRINKS GRID (3-4 COLUMNS - COMPACT)
             ========================================== */}
         <View className="flex-row flex-wrap mb-4" style={{ gap }}>
-          {filteredDrinks.length === 0 ? (
+          {myDrinks.length === 0 ? (
             <View className="w-full py-12 items-center justify-center bg-slate-900/20 border border-white/5 rounded-3xl">
               <Ionicons name="beer-outline" size={32} color="#475569" className="mb-2" />
-              <Text className="text-slate-500 text-xs font-black uppercase tracking-wider text-center">Keine Getränke vorhanden</Text>
-              <Text className="text-slate-600 text-[10px] font-medium text-center mt-1">Füge dein eigenes Getränk unten hinzu!</Text>
+              <Text className="text-slate-500 text-xs font-black uppercase tracking-wider text-center">
+                Noch keine Schnellwahl
+              </Text>
+              <Text className="text-slate-600 text-[10px] font-medium text-center mt-1 px-8">
+                Wähle unten die Getränke aus, die du am häufigsten trinkst — oder scanne einfach eine Flasche.
+              </Text>
             </View>
           ) : (
-            filteredDrinks.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                activeOpacity={0.8}
-                onPress={(e) => handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)}
-                style={{ width: tileWidth, height: tileWidth * 0.95 }}
-                className="bg-slate-900 border border-white/5 rounded-2xl p-2 items-center justify-center mb-1 shadow"
-              >
-                <Text className="text-xl mb-0.5">{getCategoryIconChar(item.category, item.name)}</Text>
-                <Text className="text-white text-[10px] font-black text-center" numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text className="text-slate-500 text-[8px] font-bold mt-0.5">
-                  {(item.volume / 1000).toFixed(2)}l • {item.abv}%
-                </Text>
-              </TouchableOpacity>
+            myDrinks.map((item, index) => (
+              <View key={item.id} style={{ width: tileWidth }}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  // Im Bearbeiten-Modus nicht loggen: wer gerade sortiert,
+                  // will keine Getränke eintragen.
+                  onPress={(e) =>
+                    editMode
+                      ? undefined
+                      : handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)
+                  }
+                  disabled={editMode}
+                  style={{ height: tileWidth * 0.95 }}
+                  className="bg-slate-900 border border-white/5 rounded-2xl p-2 items-center justify-center mb-1 shadow"
+                >
+                  <Text className="text-xl mb-0.5">{getCategoryIconChar(item.category, item.name)}</Text>
+                  <Text className="text-white text-[10px] font-black text-center" numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text className="text-slate-500 text-[8px] font-bold mt-0.5">
+                    {(item.volume / 1000).toFixed(2)}l • {item.abv}%
+                  </Text>
+                </TouchableOpacity>
+
+                {editMode && (
+                  <View className="flex-row justify-between mb-1">
+                    <TouchableOpacity
+                      onPress={() => moveQuickPick(index, -1)}
+                      disabled={index === 0}
+                      accessibilityLabel={`${item.name} nach vorne`}
+                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-900 border border-white/10 mr-0.5 disabled:opacity-30"
+                    >
+                      <Ionicons name="chevron-back" size={12} color="#94a3b8" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => toggleQuickPick(item)}
+                      accessibilityLabel={`${item.name} aus der Schnellwahl entfernen`}
+                      className="flex-1 py-1.5 items-center rounded-lg bg-rose-500/10 border border-rose-500/30 mx-0.5"
+                    >
+                      <Ionicons name="close" size={12} color="#f43f5e" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => moveQuickPick(index, 1)}
+                      disabled={index === myDrinks.length - 1}
+                      accessibilityLabel={`${item.name} nach hinten`}
+                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-900 border border-white/10 ml-0.5 disabled:opacity-30"
+                    >
+                      <Ionicons name="chevron-forward" size={12} color="#94a3b8" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             ))
           )}
         </View>
+
+        {/* Angebot nach einem Scan. Bewusst ein Streifen und kein Dialog: das
+            Getränk ist schon geloggt, die Frage darf niemanden aufhalten. */}
+        {pendingQuickPick && (
+          <View className="mb-4 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-3.5 flex-row items-center">
+            <Ionicons name="add-circle-outline" size={18} color="#22d3ee" />
+            <Text className="text-cyan-300/90 text-[11px] leading-4 ml-2.5 flex-1">
+              „{pendingQuickPick.name}“ zur Schnellwahl hinzufügen?
+            </Text>
+            <TouchableOpacity
+              onPress={() => setPendingQuickPick(null)}
+              accessibilityLabel="Nicht hinzufügen"
+              className="px-3 py-1.5"
+            >
+              <Text className="text-slate-400 text-[10px] font-black uppercase">Nein</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={async () => {
+                const drink = pendingQuickPick;
+                setPendingQuickPick(null);
+                await toggleQuickPick(drink);
+              }}
+              accessibilityLabel={`${pendingQuickPick.name} zur Schnellwahl hinzufügen`}
+              className="bg-cyan-400 px-3 py-1.5 rounded-xl"
+            >
+              <Text className="text-slate-950 text-[10px] font-black uppercase">Ja</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ==========================================
             5. CUSTOM DRINK CREATOR BUTTON
@@ -726,13 +843,15 @@ export default function DashboardScreen() {
             activeOpacity={0.8}
             onPress={() => {
               triggerHaptic("light");
-              setPendingEan(null);
-              setShowAddModal(true);
+              setDrinkSearch("");
+              setShowPickerModal(true);
             }}
             className="flex-1 ml-3 bg-slate-900 border border-white/5 rounded-2xl py-4 flex-row items-center justify-center active:scale-95 shadow-md"
           >
-            <Ionicons name="add" size={16} color="#94a3b8" />
-            <Text className="text-slate-300 text-xs font-black uppercase tracking-wider ml-2">Eigenes</Text>
+            <Ionicons name="apps-outline" size={16} color="#94a3b8" />
+            <Text className="text-slate-300 text-xs font-black uppercase tracking-wider ml-2">
+              Wählen
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -778,6 +897,108 @@ export default function DashboardScreen() {
         </View>
 
       </ScrollView>
+
+      {/* ==========================================
+          MODAL: GETRÄNKE WÄHLEN
+          ==========================================
+          Der vollständige Katalog. Vorher gab es diese Ansicht nicht — alles
+          stand direkt im Dashboard, weshalb dort jedes je angelegte Getränk
+          landete. */}
+      <Modal
+        visible={showPickerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPickerModal(false)}
+      >
+        <View className="flex-1 bg-black/80 justify-end">
+          <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[85%]">
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                Getränke wählen
+              </Text>
+              <TouchableOpacity onPress={() => setShowPickerModal(false)} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-slate-500 text-[10px] font-semibold mb-4">
+              Angetippte Getränke erscheinen auf dem Dashboard ({myDrinks.length}/{MAX_QUICK_PICKS})
+            </Text>
+
+            <View className="bg-slate-900 border border-white/5 rounded-2xl flex-row items-center px-4 py-3 mb-4">
+              <Ionicons name="search" size={16} color="#475569" />
+              <TextInput
+                placeholder="Getränk suchen…"
+                placeholderTextColor="#475569"
+                value={drinkSearch}
+                onChangeText={setDrinkSearch}
+                className="flex-1 text-white font-bold text-sm ml-3"
+              />
+              {drinkSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setDrinkSearch("")} accessibilityLabel="Suche leeren">
+                  <Ionicons name="close-circle" size={16} color="#475569" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView className="mb-4">
+              {catalogSearchResults.length === 0 ? (
+                <View className="py-10 items-center">
+                  <Text className="text-slate-500 text-xs font-bold text-center">
+                    Nichts gefunden. Lege das Getränk unten selbst an oder scanne den Barcode.
+                  </Text>
+                </View>
+              ) : (
+                catalogSearchResults.map((item) => {
+                  const chosen = myDrinks.some((d) => d.id === item.id);
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => toggleQuickPick(item)}
+                      accessibilityLabel={`${item.name} ${chosen ? "aus der Schnellwahl entfernen" : "zur Schnellwahl hinzufügen"}`}
+                      className={`flex-row items-center px-4 py-3 rounded-2xl mb-2 border ${
+                        chosen
+                          ? "bg-cyan-400/10 border-cyan-400/40"
+                          : "bg-slate-900 border-white/5"
+                      }`}
+                    >
+                      <Text className="text-lg mr-3">
+                        {getCategoryIconChar(item.category, item.name)}
+                      </Text>
+                      <View className="flex-1">
+                        <Text className="text-white text-xs font-black" numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                          {(item.volume / 1000).toFixed(2)}l • {item.abv}% • {item.category}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={chosen ? "checkmark-circle" : "add-circle-outline"}
+                        size={20}
+                        color={chosen ? "#22d3ee" : "#475569"}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic("light");
+                setShowPickerModal(false);
+                setPendingEan(null);
+                setShowAddModal(true);
+              }}
+              className="w-full bg-slate-900 border border-white/10 py-3.5 rounded-2xl items-center active:scale-95"
+            >
+              <Text className="text-slate-300 font-black text-xs uppercase tracking-wider">
+                + Eigenes Getränk anlegen
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ==========================================
           MODAL: CUSTOM DRINK CREATOR

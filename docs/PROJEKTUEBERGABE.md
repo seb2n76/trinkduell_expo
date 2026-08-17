@@ -140,6 +140,19 @@ Produktionsdatenbank gelandet.
   Produktionsserver gestrandet (17.08.2026). `tests/schema.test.js` prüft die
   Regel seitdem automatisch.
 
+- **Der Getränkekatalog ist geteilt, die Kachelauswahl nicht.** Das sind zwei
+  verschiedene Dinge, und sie zu verwechseln war der ursprüngliche Fehler:
+  jeder Katalogeintrag war automatisch bei allen eine Kachel. Legte jemand
+  „Omas Eierlikör" an, stand das im Dashboard sämtlicher Nutzer.
+
+  Seitdem gilt: `drinks` = geteilter Katalog, `user_drinks` = wer sieht was
+  in welcher Reihenfolge. Sichtbar im Katalog ist ein Getränk nur, wenn es
+  eingebaut ist (`created_by IS NULL`), einem selbst gehört, **oder** einen
+  Barcode hat — Letzteres ist die Community-Datenbank und ausdrücklich
+  gewollt. `isDrinkVisibleTo()` in `server/index.js` ist die eine Stelle
+  dafür; wer eine neue Katalog-Route baut, muss sie benutzen. Ein Scan loggt
+  und **bietet** die Kachel an, er setzt sie nicht.
+
 ---
 
 ## 4. Was fertig ist
@@ -148,9 +161,10 @@ Produktionsdatenbank gelandet.
 (Resend), Session überlebt Reload auch bei Serverausfall, Kontolöschung
 in-app (Store-Pflicht), 18+-Alters-Gate, Datenschutz/AGB-Screens.
 
-**Kern:** Getränke loggen (inkl. eigener Drinks), XP/Level mit
-Level-Up-Aufgaben, Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge,
-Rangliste mit Zeitfiltern.
+**Kern:** Getränke loggen (inkl. eigener Drinks), persönliche Schnellwahl
+(eigene Kachelauswahl und -reihenfolge, getrennt vom geteilten Katalog),
+Barcode-Scanner mit Community-EAN-Datenbank, XP/Level mit Level-Up-Aufgaben,
+Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge, Rangliste mit Zeitfiltern.
 
 **Social:** Freundschaftsanfragen mit Live-Suche (Instagram-Stil),
 Gruppen, Direkt- und Gruppenchat, **getrennte** Freunde-/Gruppen-Feeds,

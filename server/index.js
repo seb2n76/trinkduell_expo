@@ -1058,11 +1058,89 @@ app.post("/api/users/level-up", authenticate, async (req, res) => {
 // Drinks Endpoints
 // ==========================================
 
+/**
+ * Welche Getränke aus dem geteilten Katalog jemand sehen darf.
+ *
+ * Vorher bekam jeder alles — legte irgendwer ein Getränk an, stand es bei
+ * allen im Katalog UND als Kachel im Dashboard. Diese Regel lässt genau das
+ * durch, was für andere einen Wert hat:
+ *
+ *   - der eingebaute Katalog (kein Ersteller)
+ *   - die eigenen Getränke
+ *   - alles mit gültigem Barcode: ein gescanntes Produkt ist ein reales
+ *     Produkt, das ist der Sinn der Community-Datenbank
+ *
+ * Was übrig bleibt — fremde Frei-Text-Einträge wie "Testgetränk 123" —
+ * bleibt beim Ersteller.
+ */
+function isDrinkVisibleTo(drink, userId) {
+  if (!drink.createdBy) return true;
+  if (drink.createdBy === userId) return true;
+  return Boolean(drink.ean);
+}
+
 // Get All Drinks
 app.get("/api/drinks", authenticate, async (req, res) => {
   try {
     const drinks = await db.getDrinks();
-    res.json(drinks);
+    res.json(drinks.filter((d) => isDrinkVisibleTo(d, req.userId)));
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+// Persönliche Schnellwahl: die Kacheln auf dem Dashboard.
+app.get("/api/users/me/drinks", authenticate, async (req, res) => {
+  try {
+    const [ids, drinks] = await Promise.all([
+      db.getUserDrinkIds(req.userId),
+      db.getDrinks(),
+    ]);
+
+    // Nach ids sortiert ausgeben, nicht nach Katalogreihenfolge — die
+    // Reihenfolge IST die Einstellung des Nutzers. Verwaiste Einträge
+    // (Getränk gelöscht) fallen dabei still heraus.
+    const byId = new Map(drinks.map((d) => [d.id, d]));
+    res.json(ids.map((id) => byId.get(id)).filter(Boolean));
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+const MAX_QUICK_PICKS = 12;
+
+app.put("/api/users/me/drinks", authenticate, async (req, res) => {
+  try {
+    const { drinkIds } = req.body;
+    if (!Array.isArray(drinkIds)) {
+      return res.status(400).json({ error: "drinkIds muss eine Liste sein." });
+    }
+    if (drinkIds.length > MAX_QUICK_PICKS) {
+      return res.status(400).json({
+        error: `Höchstens ${MAX_QUICK_PICKS} Getränke in der Schnellwahl.`,
+      });
+    }
+
+    const drinks = await db.getDrinks();
+    const byId = new Map(drinks.map((d) => [d.id, d]));
+
+    // Doppelte entfernen, Reihenfolge des ersten Vorkommens behalten.
+    const seen = new Set();
+    const cleaned = [];
+    for (const id of drinkIds) {
+      if (typeof id !== "string" || seen.has(id)) continue;
+      const drink = byId.get(id);
+      // Nichts in die Schnellwahl legen, was der Nutzer gar nicht sehen darf —
+      // sonst wäre die Sichtbarkeitsregel über diesen Weg umgehbar.
+      if (!drink || !isDrinkVisibleTo(drink, req.userId)) {
+        return res.status(400).json({ error: "Unbekanntes Getränk in der Auswahl." });
+      }
+      seen.add(id);
+      cleaned.push(id);
+    }
+
+    await db.setUserDrinkIds(req.userId, cleaned);
+    res.json(cleaned.map((id) => byId.get(id)));
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
