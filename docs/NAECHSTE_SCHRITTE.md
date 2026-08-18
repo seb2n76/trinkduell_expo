@@ -83,33 +83,39 @@ Slots.
 damit die eigene weiterläuft; ein offener Reset-Code verfällt mit. Eintrag im
 Drawer über „Abmelden“. 13 Tests in `tests/changepassword.test.js`.
 
-### 1.2b Async-Routen ohne try/catch können den Server beenden — **hoch**
+### ~~1.2b Async-Routen ohne try/catch~~ — **erledigt**
 
-Beim Testen der Passwort-Änderung ist der Backend-Prozess an einer ganz
-anderen Stelle komplett abgestürzt (`GET /api/logs`, `logs.map` auf
-`undefined`). Ursache ist nicht diese eine Zeile, sondern die Bauart:
+Express 4 leitet eine abgelehnte Promise aus einem `async`-Handler nicht an
+die Fehler-Middleware weiter; sie wird zur `unhandledRejection` und beendet
+den Prozess.
 
-- Express **4** (4.22.2) leitet eine abgelehnte Promise aus einem
-  `async`-Handler **nicht** an die Fehler-Middleware weiter. Sie wird zur
-  `unhandledRejection`, und die beendet den Node-Prozess.
-- Es gibt kein `process.on("unhandledRejection")`-Auffangnetz.
-- Von 58 Routen haben 35 ein `try/catch`. Die übrigen 23 sind jeweils ein
-  Weg, das gesamte Backend für alle Nutzer abzuschießen.
+**Korrektur zur ersten Notiz:** es waren **19** ungesicherte Routen, nicht 23.
+Die 23 stammten aus einer groben `grep`-Zählung, die auch nicht-`async`-Routen
+mitzählte. Genaue Lage jetzt: 58 Routen, davon 55 `async`, davon hatten 36 ein
+`try/catch`.
 
-Der Absturz oben kam aus einer selbst gebauten Test-Datenbank, war also
-nicht produktionsnah — die **Bauart** dahinter schon.
+Gelöst nach Weg 2 der ursprünglichen Liste: `wrapAsync` biegt in
+`server/index.js` **einmal** die Registrierungsfunktionen um, statt 19-mal
+einen Rumpf zu ergänzen. Jeder Handler, der eine Promise zurückgibt, hängt
+danach automatisch am `catch(next)`. Dazu `process.on("unhandledRejection")`
+(protokollieren, weiterlaufen) und `process.on("uncaughtException")`
+(protokollieren, beenden — der Zustand kann beschädigt sein, und der
+Container startet ohnehin neu).
 
-Zu tun (in dieser Reihenfolge, jeder Schritt wirkt für sich):
+Die beiden Netze tun **Verschiedenes**, im Mutationstest getrennt belegt:
 
-1. Die 23 Routen ohne `try/catch` nachziehen, Muster wie gehabt:
-   `catch (err) { serverError(res, err, `${req.method} ${req.originalUrl}`); }`
-2. Besser als 23 Einzelfälle: ein `asyncHandler(fn)`-Wrapper, der
-   `Promise.resolve(fn(req,res,next)).catch(next)` macht, und alle Routen
-   darauf umstellen. Dann kann die Lücke nicht wiederkommen.
-3. Zusätzlich `process.on("unhandledRejection", ...)` mit Logging als
-   letztes Netz — protokollieren statt sterben.
-4. Alternativ Express 5 (fängt async-Fehler von sich aus). Größerer
-   Eingriff, eigene Session wert.
+| ausgebaut | Ergebnis |
+|---|---|
+| nur `wrapAsync` | Server lebt, aber der Request bekommt **nie** eine Antwort — der Aufrufer hängt bis ins Timeout |
+| beide | Prozess tot, keine Antwort (Zustand vom 18.08.2026) |
+
+Die bestehenden 36 `try/catch`-Blöcke bleiben: sie fangen weiterhin zuerst,
+und ihre Log-Zeile nennt die Route direkt. Der Wrapper ist das Netz darunter.
+
+9 Tests in `tests/asyncerrors.test.js`, gegen den echten Server über HTTP.
+Dafür gibt es drei Fehlerinjektions-Routen in `server/index.js`, die nur bei
+gesetztem `TRINKDUELL_ENABLE_FAULT_ROUTE=1` existieren; ein eigener Test
+prüft, dass sie ohne die Variable 404 liefern.
 
 ### 1.3 Gruppenmitglieder verwalten — **hoch**
 

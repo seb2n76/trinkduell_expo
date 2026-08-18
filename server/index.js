@@ -93,6 +93,76 @@ async function migratePlaintextPasswords() {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ─── Async-Fehler auffangen ───────────────────────────────────────────────────
+//
+// Express 4 leitet eine abgelehnte Promise aus einem `async`-Handler NICHT an
+// die Fehler-Middleware weiter. Sie wird zur `unhandledRejection` — und die
+// beendet seit Node 15 den Prozess. Ein einziger fehlerhafter Request nimmt
+// damit den Server für ALLE Nutzer mit. Genau das ist am 18.08.2026 passiert:
+// ein `undefined.map()` in `GET /api/logs` hat das Backend abgerissen.
+//
+// Von 58 Routen hatten 19 kein `try/catch`. Die Lücke ist also nicht dadurch
+// entstanden, dass jemand die Regel nicht kannte, sondern dadurch, dass man
+// sie 19-mal vergessen kann. Deshalb wird hier EINMAL die Registrierung
+// umgebogen statt 19-mal der Rumpf ergänzt: jeder Handler, der eine Promise
+// zurückgibt, hängt danach automatisch am `catch(next)` und landet in der
+// Fehler-Middleware ganz unten — die dieselbe 500-Antwort schickt wie das
+// bisherige `serverError()`. Für den Aufrufer ändert sich also nichts.
+//
+// Die bestehenden `try/catch`-Blöcke bleiben, wo sie sind: sie fangen weiter
+// zuerst, und ihre Log-Zeile nennt die Route direkt. Das hier ist das Netz
+// darunter, nicht ihr Ersatz.
+function wrapAsync(handler) {
+  if (typeof handler !== "function") return handler;
+  // Fehler-Middleware erkennt Express an vier Parametern. Würde sie umgebogen,
+  // hätte die Hülle drei — Express hielte sie für normale Middleware und die
+  // Fehlerbehandlung wäre still abgeschaltet.
+  if (handler.length === 4) return handler;
+
+  return function wrapped(req, res, next) {
+    let result;
+    try {
+      result = handler(req, res, next);
+    } catch (err) {
+      // Synchroner Wurf. Express fängt den zwar selbst, aber hier ist es
+      // einheitlich und kostet nichts.
+      next(err);
+      return undefined;
+    }
+    if (result && typeof result.then === "function") {
+      result.catch(next);
+    }
+    return result;
+  };
+}
+
+// `use` und `all` sind bewusst dabei: auch Middleware kann async sein, und ein
+// Fehler darin hat dieselbe Wirkung.
+for (const method of ["get", "post", "put", "delete", "patch", "use", "all"]) {
+  const original = app[method].bind(app);
+  app[method] = (...args) => original(...args.map(wrapAsync));
+}
+
+// Letztes Netz. Mit dem Wrapper oben sollte hier nichts mehr ankommen; wenn
+// doch, dann aus Code außerhalb eines Requests (Timer, Ereignis-Handler).
+//
+// Bewusst OHNE `process.exit`: eine abgelehnte Promise irgendwo ist kein Grund,
+// alle laufenden Requests abzubrechen. Protokollieren und weiterlaufen ist hier
+// die richtige Abwägung — der Container hat `restart: always`, ein Absturz wäre
+// also ohnehin nur die teurere Variante desselben Ausgangs.
+process.on("unhandledRejection", (reason) => {
+  console.error("[TrinkDuell] Unbehandelte Promise-Ablehnung:", reason);
+});
+
+// Eine `uncaughtException` ist etwas anderes: danach kann der Prozesszustand
+// beschädigt sein (halb geschriebene Datei, offene Transaktion). Hier wird
+// deshalb protokolliert und beendet — der Neustart durch Docker ist der
+// sauberere Weg als mit unbekanntem Zustand weiterzumachen.
+process.on("uncaughtException", (err) => {
+  console.error("[TrinkDuell] Unbehandelte Ausnahme, Prozess wird beendet:", err);
+  process.exit(1);
+});
+
 /**
  * The single place a user record becomes an API response.
  *
@@ -2875,6 +2945,34 @@ app.post(
     }
   }
 );
+// Fehlerinjektion, ausschließlich für den Test in tests/asyncerrors.test.js.
+//
+// Ohne eine Route, die zuverlässig scheitert, ließe sich die Zusicherung
+// „ein Fehler in einer Route beendet den Server nicht" nicht über HTTP gegen
+// den echten Server prüfen — und genau darum geht es hier. Die Routen
+// existieren nur, wenn die Umgebungsvariable gesetzt ist; im Container ist sie
+// es nicht (siehe server/docker-compose.yml).
+if (process.env.TRINKDUELL_ENABLE_FAULT_ROUTE === "1") {
+  console.warn("[TrinkDuell] ACHTUNG: Fehlerinjektions-Routen aktiv (nur für Tests).");
+
+  // Bewusst OHNE try/catch — das ist der Fall, den wrapAsync abfangen muss.
+  app.get("/api/__fault/async", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    throw new Error("Absichtlicher Testfehler: geheimer interner Pfad D:\\\\intern\\\\secret");
+  });
+
+  app.get("/api/__fault/sync", () => {
+    throw new Error("Absichtlicher synchroner Testfehler");
+  });
+
+  // Eine abgelehnte Promise, die keinem Request gehört: sie kann den Wrapper
+  // gar nicht erreichen und trifft nur auf das process-Netz.
+  app.get("/api/__fault/detached", (req, res) => {
+    Promise.reject(new Error("Absichtlich losgeloeste Ablehnung"));
+    res.json({ ok: true });
+  });
+}
+
 
 // ==========================================
 // Error handling
@@ -2909,6 +3007,13 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 // ==========================================
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`[TrinkDuell Backend] Server läuft auf http://localhost:${PORT}`);
-  // Hash any existing plaintext passwords (safe no-op if already hashed)
-  await migratePlaintextPasswords();
+  try {
+    // Hash any existing plaintext passwords (safe no-op if already hashed)
+    await migratePlaintextPasswords();
+  } catch (err) {
+    // Der listen-Rückruf ist async und hängt an keinem Request: eine Ablehnung
+    // hier ginge am Wrapper vorbei. Ein fehlgeschlagener Migrationslauf darf
+    // den gerade gestarteten Server nicht sofort wieder umwerfen.
+    console.error("[TrinkDuell] Passwort-Migration beim Start fehlgeschlagen:", err);
+  }
 });

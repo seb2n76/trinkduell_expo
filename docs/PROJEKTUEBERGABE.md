@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `8e7b617` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `167ea16` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -165,18 +165,33 @@ Produktionsdatenbank gelandet.
   Startbelegung mehr als drei haben, verlieren dadurch nichts; die Reihe
   bricht einfach um, bis sie selbst kürzen.
 
-- **Ein `async`-Handler ohne `try/catch` kann den ganzen Server beenden.**
-  Das Projekt läuft auf Express **4**, und Express 4 leitet eine abgelehnte
-  Promise aus einem `async`-Handler **nicht** an die Fehler-Middleware weiter.
-  Sie wird zur `unhandledRejection` — und die beendet den Node-Prozess.
+- **Async-Fehler in Routen sind abgefangen — aber nur, weil das zentral
+  passiert.** Express **4** leitet eine abgelehnte Promise aus einem
+  `async`-Handler **nicht** an die Fehler-Middleware weiter. Sie wird zur
+  `unhandledRejection` — und die beendet den Node-Prozess. Am 18.08.2026
+  hat auf diesem Weg ein `undefined.map()` in `GET /api/logs` das komplette
+  Backend abgerissen: ein Request, alle Nutzer offline.
 
-  Das ist kein theoretisches Risiko: beim Testen der Passwort-Änderung
-  (18.08.2026) hat ein `undefined.map()` in `GET /api/logs` das komplette
-  Backend abgerissen. Ein einziger Request, alle Nutzer offline.
+  Seitdem biegt `wrapAsync` in `server/index.js` **einmal** die
+  Registrierungsfunktionen (`app.get`/`post`/`put`/`delete`/`patch`/`use`/
+  `all`) um. Jeder Handler, der eine Promise zurückgibt, hängt automatisch am
+  `catch(next)`. Dazu zwei `process.on`-Netze. **Ein `try/catch` ist damit
+  nicht mehr Pflicht** — es ist weiterhin nett, weil die Log-Zeile dann die
+  Route direkt nennt.
 
-  Also: **jede** neue Route bekommt ein `try/catch` mit
-  `serverError(res, err, ...)`. 23 der 58 Routen haben noch keins — das
-  ist als Aufgabe 1.2b in `docs/NAECHSTE_SCHRITTE.md` notiert.
+  Zwei Dinge, die man dabei kaputt machen kann:
+
+  1. **Die Fehler-Middleware muss die LETZTE Registrierung bleiben.** Eine
+     Route dahinter erreicht sie nicht; ihre Fehler landen bei Express'
+     Standard-Handler, der eine HTML-Seite mit Rohmeldung und Stacktrace
+     ausliefert. Genau das ist beim Bauen der Tests passiert, weil die
+     Fehlerinjektions-Routen zuerst dahinter standen.
+  2. **`wrapAsync` darf Handler mit vier Parametern nicht umbiegen.** Express
+     erkennt Fehler-Middleware an der Parameterzahl. Eine Hülle mit drei
+     Parametern gilt als normale Middleware, und die Fehlerbehandlung wäre
+     still abgeschaltet.
+
+  `tests/asyncerrors.test.js` prüft beides über HTTP gegen den echten Server.
 
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
@@ -269,8 +284,16 @@ alles über Node's eingebauten Test-Runner.
 
 | Datei | Inhalt |
 |---|---|
+| `tests/asyncerrors.test.js` | Ein Routenfehler beendet den Server nicht |
 | `tests/auth.test.js` | Passwort-Reset, Rate-Limiting, Session-Invalidierung |
 | `tests/authorization.test.js` | Wer darf was sehen und ändern |
+| `tests/barcode.test.js` | EAN-Prüfung, Community-Datenbank |
+| `tests/changepassword.test.js` | Passwort ändern, Wirkung auf Sitzungen |
+| `tests/moderation.test.js` | Blockieren und Melden |
+| `tests/push.test.js` | Push-Versand, Empfängerauswahl |
+| `tests/quickpicks.test.js` | Katalog-Sichtbarkeit, persönliche Schnellwahl |
+| `tests/schema.test.js` | Indizes stehen nicht vor ihren `ALTER`-Zeilen |
+| `tests/uploads.test.js` | Presigned URLs, Bildvalidierung, EXIF |
 | `tests/validation.test.js` | Eingabegrenzen, Body-Größe, CORS, Fehlerform |
 
 **Warum die Tests so aussehen, wie sie aussehen:**
