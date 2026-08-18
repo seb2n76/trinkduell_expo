@@ -625,17 +625,97 @@ export default function TabsLayout() {
     }
   };
 
+  // ── Einladungscode ──────────────────────────────────────────────────────
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinError, setJoinError] = useState("");
+
+  const loadInviteCode = async (groupId: string) => {
+    setInviteBusy(true);
+    try {
+      setInviteCode(await apiService.getGroupInvite(groupId));
+    } catch {
+      // Kein notify: für ein einfaches Mitglied ist die 403 der Normalfall,
+      // nicht ein Fehler. Der Abschnitt bleibt dann einfach leer.
+      setInviteCode(null);
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const handleRotateInvite = async () => {
+    if (!manageGroup) return;
+    const frage =
+      "Der bisherige Code wird ungültig. Wer ihn hat, kommt damit nicht mehr herein — " +
+      "genau dafür ist das gedacht, wenn jemand die Gruppe verlassen musste.";
+
+    const ausfuehren = async () => {
+      setInviteBusy(true);
+      try {
+        setInviteCode(await apiService.rotateGroupInvite(manageGroup.id));
+        await triggerHaptic("success");
+      } catch (error) {
+        await triggerHaptic("error");
+        notify("Fehler", error instanceof Error ? error.message : "Code konnte nicht erneuert werden.");
+      } finally {
+        setInviteBusy(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm(frage)) await ausfuehren();
+      return;
+    }
+    Alert.alert("Code erneuern?", frage, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Erneuern", style: "destructive", onPress: ausfuehren },
+    ]);
+  };
+
+  const handleJoinByCode = async () => {
+    setJoinError("");
+    const code = joinCodeInput.trim();
+    if (!code) {
+      setJoinError("Bitte gib einen Code ein.");
+      return;
+    }
+
+    setJoinBusy(true);
+    try {
+      const group = await apiService.joinGroupByCode(code);
+      await triggerHaptic("success");
+      setShowJoinModal(false);
+      setJoinCodeInput("");
+      setGroupsList(await apiService.getGroups());
+      notify("Willkommen", `Du bist jetzt Mitglied von "${group.name}".`);
+    } catch (error) {
+      await triggerHaptic("error");
+      setJoinError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Beitritt fehlgeschlagen. Bist du mit dem Internet verbunden?"
+      );
+    } finally {
+      setJoinBusy(false);
+    }
+  };
+
   const openGroupManage = async (group: Group) => {
     await triggerHaptic("light");
     setManageGroup(group);
     setGroupMembers(null);
     await loadGroupMembers(group.id);
+    await loadInviteCode(group.id);
   };
 
   const closeGroupManage = () => {
     setManageGroup(null);
     setGroupMembers(null);
     setGroupBusyUserId(null);
+    setInviteCode(null);
   };
 
   const handleAddGroupMember = async (user: User) => {
@@ -1544,16 +1624,32 @@ export default function TabsLayout() {
             </View>
 
             {/* Top Action Bar: Create Group Button */}
-            <TouchableOpacity
-              onPress={() => {
-                triggerHaptic("light");
-                setShowCreateGroupModal(true);
-              }}
-              className="bg-purple-500/10 border border-purple-500/30 p-3 rounded-2xl mb-4 flex-row items-center justify-center space-x-2 active:scale-95"
-            >
-              <Ionicons name="people-circle-outline" size={18} color="#c084fc" />
-              <Text className="text-purple-300 font-black text-xs uppercase tracking-wider">+ Neue Gruppe erstellen</Text>
-            </TouchableOpacity>
+            <View className="flex-row mb-4" style={{ gap: 10 }}>
+              <View className="flex-1">
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic("light");
+                  setShowCreateGroupModal(true);
+                }}
+                className="bg-purple-500/10 border border-purple-500/30 p-3 rounded-2xl mb-4 flex-row items-center justify-center space-x-2 active:scale-95"
+              >
+                <Ionicons name="people-circle-outline" size={18} color="#c084fc" />
+                <Text className="text-purple-300 font-black text-xs uppercase tracking-wider">+ Neue Gruppe erstellen</Text>
+              </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic("light");
+                  setJoinError("");
+                  setJoinCodeInput("");
+                  setShowJoinModal(true);
+                }}
+                accessibilityLabel="Gruppe per Code beitreten"
+                className="bg-slate-950 border border-white/10 px-4 rounded-2xl items-center justify-center"
+              >
+                <Ionicons name="enter-outline" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
 
             {/* Meine Gruppen. Der Gruppen-Chat war vollständig gebaut —
                 Backend, API-Client, Chat-Modal — hatte aber keinen Auslöser:
@@ -1858,6 +1954,45 @@ export default function TabsLayout() {
               </View>
             ) : (
               <ScrollView className="mb-4" showsVerticalScrollIndicator={false}>
+                {/* Einladungscode — nur der Admin bekommt ihn vom Server */}
+                {inviteCode && (
+                  <View className="mb-5 bg-cyan-400/5 border border-cyan-400/25 rounded-2xl p-4">
+                    <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                      Einladungscode
+                    </Text>
+                    <Text
+                      selectable
+                      accessibilityLabel={`Einladungscode ${inviteCode}`}
+                      className="text-white text-2xl font-black tracking-[6px] mb-2"
+                    >
+                      {inviteCode}
+                    </Text>
+                    <Text className="text-slate-400 text-[10px] leading-4 mb-3">
+                      Wer diesen Code eingibt, wird sofort Mitglied — ohne weitere Freigabe.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleRotateInvite}
+                      disabled={inviteBusy}
+                      accessibilityLabel="Einladungscode erneuern"
+                      className="bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center flex-row justify-center"
+                    >
+                      {inviteBusy ? (
+                        <ActivityIndicator size="small" color="#22d3ee" />
+                      ) : (
+                        <>
+                          <Ionicons name="refresh" size={13} color="#94a3b8" />
+                          <Text className="text-slate-300 text-[10px] font-black uppercase tracking-wider ml-1.5">
+                            Code erneuern
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <Text className="text-slate-600 text-[9px] leading-3.5 mt-2">
+                      Nach einem Rauswurf erneuern — sonst kommt die Person mit dem alten
+                      Code einfach zurück.
+                    </Text>
+                  </View>
+                )}
                 {/* Offene Beitrittsanfragen — nur der Admin sieht sie */}
                 {groupMembers?.isAdmin && (groupMembers?.pending.length ?? 0) > 0 && (
                   <View className="mb-5">
@@ -1987,6 +2122,82 @@ export default function TabsLayout() {
               <Text className="text-rose-400 text-xs font-black uppercase tracking-wider ml-2">
                 {(groupMembers?.members.length ?? 0) <= 1 ? "Gruppe auflösen" : "Gruppe verlassen"}
               </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gruppe per Code beitreten.
+          Steht wie „Gruppe verwalten" NACH dem Freunde-Modal — sonst läge es
+          dahinter (siehe Falle zur Modal-Stapelung in der Projektübergabe). */}
+      <Modal
+        visible={showJoinModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowJoinModal(false)}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-purple-500/30 rounded-t-3xl p-6 pb-8">
+            <View className="flex-row justify-between items-center mb-2">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                Gruppe beitreten
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowJoinModal(false);
+                  setJoinCodeInput("");
+                  setJoinError("");
+                }}
+                className="p-1"
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+              Gib den Einladungscode ein, den du vom Gruppen-Admin bekommen hast.
+              Gruppen lassen sich bewusst nicht durchsuchen.
+            </Text>
+
+            <TextInput
+              value={joinCodeInput}
+              onChangeText={(t) => setJoinCodeInput(t.toUpperCase())}
+              placeholder="z. B. A1B2C3D4"
+              placeholderTextColor="#475569"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={32}
+              onSubmitEditing={handleJoinByCode}
+              accessibilityLabel="Einladungscode eingeben"
+              className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-lg font-black tracking-[4px] mb-3"
+            />
+
+            {joinError ? (
+              <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                <Ionicons name="alert-circle" size={15} color="#f43f5e" />
+                <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{joinError}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={handleJoinByCode}
+              disabled={joinBusy || !joinCodeInput.trim()}
+              accessibilityLabel="Mit Code beitreten"
+              className={`rounded-2xl py-3.5 items-center ${
+                joinBusy || !joinCodeInput.trim() ? "bg-slate-800" : "bg-purple-500"
+              }`}
+            >
+              {joinBusy ? (
+                <ActivityIndicator size="small" color="#0f172a" />
+              ) : (
+                <Text
+                  className={`text-xs font-black uppercase tracking-wider ${
+                    !joinCodeInput.trim() ? "text-slate-600" : "text-white"
+                  }`}
+                >
+                  Beitreten
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

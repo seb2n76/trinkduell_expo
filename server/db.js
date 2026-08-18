@@ -262,12 +262,23 @@ async function initPgSchema() {
     await pool.query(
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE"
     );
+    // Einladungscode für den Gruppenbeitritt. Bestehende Gruppen bekommen ihn
+    // erst, wenn ihr Admin ihn das erste Mal abruft (siehe
+    // ensureGroupInviteCode in index.js) — deshalb NULL als Ausgangswert und
+    // ein partieller Index weiter unten.
+    await pool.query("ALTER TABLE groups ADD COLUMN IF NOT EXISTS invite_code TEXT");
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
     // weil zwei Produkte sich niemals einen teilen dürfen.
     await pool.query(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_drinks_ean ON drinks(ean) WHERE ean IS NOT NULL"
+    );
+
+    // Ebenfalls partiell und unique: zwei Gruppen dürfen sich keinen Code
+    // teilen, aber Gruppen ohne Code (noch nie abgerufen) sind normal.
+    await pool.query(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_invite_code ON groups(invite_code) WHERE invite_code IS NOT NULL"
     );
 
     // blocks/reports are created by schema.sql above on a fresh database; the
@@ -838,13 +849,14 @@ module.exports = {
   getGroups: async () => {
     await loadDb();
     if (pool) {
-      const res = await pool.query("SELECT id, name, admin_id AS \"adminId\", member_ids AS \"memberIds\", pending_user_ids AS \"pendingUserIds\" FROM groups");
+      const res = await pool.query("SELECT id, name, admin_id AS \"adminId\", member_ids AS \"memberIds\", pending_user_ids AS \"pendingUserIds\" , invite_code FROM groups");
       return res.rows.map(row => ({
         id: row.id,
         name: row.name,
         adminId: row.adminId,
         memberIds: Array.isArray(row.memberIds) ? row.memberIds : (typeof row.memberIds === 'string' ? JSON.parse(row.memberIds) : []),
-        pendingUserIds: Array.isArray(row.pendingUserIds) ? row.pendingUserIds : (typeof row.pendingUserIds === 'string' ? JSON.parse(row.pendingUserIds) : [])
+        pendingUserIds: Array.isArray(row.pendingUserIds) ? row.pendingUserIds : (typeof row.pendingUserIds === 'string' ? JSON.parse(row.pendingUserIds) : []),
+        inviteCode: row.invite_code || null
       }));
     }
     return db.groups;
@@ -853,11 +865,11 @@ module.exports = {
     await loadDb();
     if (pool) {
       await pool.query(
-        `INSERT INTO groups (id, name, admin_id, member_ids, pending_user_ids)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO groups (id, name, admin_id, member_ids, pending_user_ids, invite_code)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO UPDATE SET
-           name = $2, admin_id = $3, member_ids = $4, pending_user_ids = $5`,
-        [group.id, group.name, group.adminId, JSON.stringify(group.memberIds), JSON.stringify(group.pendingUserIds)]
+           name = $2, admin_id = $3, member_ids = $4, pending_user_ids = $5, invite_code = $6`,
+        [group.id, group.name, group.adminId, JSON.stringify(group.memberIds), JSON.stringify(group.pendingUserIds), group.inviteCode || null]
       );
       
       const adminRes = await pool.query("SELECT * FROM users WHERE id = $1", [group.adminId]);

@@ -143,7 +143,11 @@ async function startTestServer({ env: extraEnv } = {}) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  return { base, call, register, stop, serverLog: () => log };
+  // dbFile ist heraus, damit ein Test einen Zustand herstellen kann, den die
+  // API selbst nicht mehr erzeugt — etwa eine Gruppe aus der Zeit vor den
+  // Einladungscodes. Nur lesend/schreibend auf die WEGWERF-Datei, nie auf
+  // server/db.json.
+  return { base, call, register, stop, dbFile, serverLog: () => log };
 }
 
 async function waitUntilReady(base, child, getLog) {

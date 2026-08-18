@@ -159,16 +159,45 @@ sieht in der App aber nirgends, **wo** etwas Neues ist. Das fällt jetzt auf.
 - Badge an Freund/Gruppe in der Liste, Zähler im Drawer-Icon
 - Achtung: `messages` hat noch keinen Index auf `(receiver_id, timestamp)`
 
-### 1.5 Gruppenbeitritt — **mittel, braucht eine Entscheidung**
+### ~~1.5 Gruppenbeitritt~~ — **erledigt**
 
-`joinGroup` existiert im Client, wird von keinem Screen benutzt. Der Admin
-sieht Beitrittsanfragen in `notifications.tsx` — nur kann niemand eine
-stellen. Seit der Autorisierungsrunde liefert `/api/groups` außerdem nur noch
-eigene Gruppen, fremde sind also auch nicht auffindbar.
+**Entscheidung: Einladungscode**, nicht öffentliche Gruppenliste — so war es in
+dieser Aufgabe auch als Standard vorgemerkt. Eine durchsuchbare Liste aller
+Gruppen wäre genau der Social-Graph-Leak, den die Autorisierungsrunde
+geschlossen hat. Events benutzen dasselbe Muster.
 
-**Offene Entscheidung des Betreibers:** Einladungscode (wie bei Events,
-privatsphärenfreundlich) oder öffentliche Gruppenliste. Ohne Antwort:
-Einladungscode bauen, das passt zum Rest.
+```
+GET  /api/groups/:id/invite          Code ansehen (nur Admin)
+POST /api/groups/:id/invite/rotate   Code neu vergeben (nur Admin)
+POST /api/groups/join                mit Code beitreten
+```
+
+8 Hex-Zeichen aus `crypto.randomBytes`, wie bei Events. Wer den Code eingibt,
+wird **sofort** Mitglied — eine zweite Freigabe wäre Reibung, denn den Code
+bekommt man ja vom Admin. Der alte Weg über `POST /:id/join` (Anfrage, die
+der Admin freigibt) bleibt daneben bestehen.
+
+**Die Rotation ist kein Komfort, sondern nötig.** Ohne sie wäre das Entfernen
+eines Mitglieds wirkungslos: wer den alten Code noch hat, träte sofort wieder
+bei. Ein Test belegt beide Richtungen — ohne Rotation kommt der Entfernte
+zurück, nach der Rotation nicht mehr. Die Oberfläche weist beim Code darauf hin.
+
+Der Code geht **nur** an den Admin: `GET /api/groups` entfernt ihn für alle
+anderen aus der Antwort, und die Beitritts-Antwort enthält ihn ebenfalls nicht.
+
+**Schema:** `groups.invite_code` kommt per `ALTER TABLE` in `initPgSchema()`,
+der partielle Unique-Index danach — die Reihenfolge aus Falle 3.5. Neue
+Gruppen bekommen den Code beim Anlegen, Bestandsgruppen beim ersten Abruf
+durch ihren Admin (`ensureGroupInviteCode`). **Kein Migrationsskript nötig.**
+
+UI: Knopf neben „Neue Gruppe erstellen“ öffnet die Code-Eingabe; der Code samt
+„Code erneuern“ steht im Verwaltungsdialog.
+
+17 Tests in `tests/groupinvite.test.js`.
+
+> Kein Kopieren in die Zwischenablage: dafür bräuchte es `expo-clipboard`, und
+> eine Abhängigkeit für acht Zeichen lohnt nicht. Der Code steht groß und
+> markierbar da.
 
 ### 1.6 Events und Gruppen-Quests erreichbar machen — **mittel**
 

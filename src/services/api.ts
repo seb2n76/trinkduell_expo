@@ -409,6 +409,29 @@ export const apiService = {
     return res.data;
   },
 
+  /** Einladungscode der Gruppe. Nur der Admin darf — sonst 403. */
+  getGroupInvite: async (groupId: string): Promise<string> => {
+    const res = await axiosInstance.get<{ inviteCode: string }>(`/groups/${groupId}/invite`);
+    return res.data.inviteCode;
+  },
+
+  /**
+   * Vergibt einen neuen Code und entwertet den alten.
+   *
+   * Gehört nach jedem Rauswurf gemacht: ohne Rotation träte ein Entferntes
+   * Mitglied mit dem alten Code einfach wieder bei.
+   */
+  rotateGroupInvite: async (groupId: string): Promise<string> => {
+    const res = await axiosInstance.post<{ inviteCode: string }>(`/groups/${groupId}/invite/rotate`);
+    return res.data.inviteCode;
+  },
+
+  /** Beitritt per Code — ohne Offline-Fallback, die Mitgliedschaft liegt am Server. */
+  joinGroupByCode: async (code: string): Promise<db.Group> => {
+    const res = await axiosInstance.post<db.Group>("/groups/join", { code });
+    return res.data;
+  },
+
   // Events
   getEvents: (): Promise<db.Event[]> =>
     executeApiCall(

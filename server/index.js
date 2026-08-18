@@ -1974,11 +1974,18 @@ function notifyAboutMessage({ group, senderId, senderName, receiverId, content }
 // group chats readable.
 app.get("/api/groups", authenticate, async (req, res) => {
   const groups = await db.getGroups();
+  const meine = groups.filter(
+    (g) =>
+      (g.memberIds || []).includes(req.userId) ||
+      (g.pendingUserIds || []).includes(req.userId)
+  );
+
+  // Der Einladungscode geht nur an den Admin. Für alle anderen wird er hier
+  // entfernt: wer ihn hat, kann beliebige Leute hereinholen, und das ist eine
+  // Admin-Entscheidung. Ohne diese Zeile stünde er in jeder Gruppenliste.
   res.json(
-    groups.filter(
-      (g) =>
-        (g.memberIds || []).includes(req.userId) ||
-        (g.pendingUserIds || []).includes(req.userId)
+    meine.map(({ inviteCode, ...rest }) =>
+      rest.adminId === req.userId ? { ...rest, inviteCode } : rest
     )
   );
 });
@@ -2013,11 +2020,133 @@ app.post("/api/groups", authenticate, async (req, res) => {
     adminId: req.userId,
     memberIds: initialMembers,
     pendingUserIds: [],
+    inviteCode: generateInviteCode(),
   };
 
   await db.saveGroup(newGroup);
   res.status(201).json(newGroup);
 });
+// ─── Gruppen-Einladungscodes ─────────────────────────────────────────────────
+//
+// Warum ein Code und keine öffentliche Gruppenliste: seit der
+// Autorisierungsrunde liefert `GET /api/groups` nur noch eigene Gruppen. Fremde
+// sind bewusst nicht auffindbar — eine durchsuchbare Liste aller Gruppen wäre
+// genau der Social-Graph-Leak, der damals geschlossen wurde. Der Code kehrt die
+// Richtung um: nicht suchen, sondern eingeladen werden. Events machen es seit
+// jeher genauso.
+//
+// 8 Hex-Zeichen aus crypto.randomBytes — dieselbe Stärke wie bei Events. Zu
+// kurz wäre ratbar, zu lang unpraktisch zum Weitergeben.
+function generateInviteCode() {
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
+}
+
+/**
+ * Gibt den Code der Gruppe zurück und legt ihn an, falls er fehlt.
+ *
+ * Gruppen, die vor dieser Funktion entstanden sind, haben keinen. Statt eines
+ * Migrationsskripts entsteht er beim ersten Abruf — das kostet nichts und kann
+ * nicht vergessen werden.
+ */
+async function ensureGroupInviteCode(group) {
+  if (group.inviteCode) return group.inviteCode;
+  group.inviteCode = generateInviteCode();
+  await db.saveGroup(group);
+  return group.inviteCode;
+}
+
+// Einladungscode ansehen (nur Admin)
+//
+// Bewusst nicht für alle Mitglieder: wer den Code hat, kann beliebige Leute
+// hereinholen. Das ist eine Admin-Entscheidung.
+app.get("/api/groups/:id/invite", authenticate, async (req, res) => {
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.id === req.params.id);
+  if (!group) {
+    return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  }
+  if (group.adminId !== req.userId) {
+    return res.status(403).json({ error: "Nur Administratoren sehen den Einladungscode." });
+  }
+
+  res.json({ inviteCode: await ensureGroupInviteCode(group) });
+});
+
+// Einladungscode neu vergeben (nur Admin)
+//
+// Nicht bequem, sondern nötig: ohne Rotation wäre das Entfernen eines
+// Mitglieds wirkungslos. Wer den alten Code noch hat, träte einfach wieder
+// bei. Nach jedem Rauswurf gehört der Code erneuert — der Hinweis dazu steht
+// in der Oberfläche.
+app.post("/api/groups/:id/invite/rotate", authenticate, async (req, res) => {
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.id === req.params.id);
+  if (!group) {
+    return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  }
+  if (group.adminId !== req.userId) {
+    return res.status(403).json({ error: "Nur Administratoren können den Code erneuern." });
+  }
+
+  group.inviteCode = generateInviteCode();
+  await db.saveGroup(group);
+  res.json({ inviteCode: group.inviteCode });
+});
+
+// Mit einem Code beitreten
+//
+// Direkt Mitglied, ohne Freigabe durch den Admin — wie bei Events. Wer den
+// Code hat, wurde eingeladen; eine zweite Bestätigung wäre reine Reibung.
+// Der Weg über `POST /:id/join` (Anfrage, die der Admin freigibt) bleibt
+// daneben bestehen für den Fall, dass jemand die Gruppen-ID kennt.
+app.post("/api/groups/join", authenticate, async (req, res) => {
+  const { code } = req.body;
+  if (typeof code !== "string" || !code.trim() || code.length > 32) {
+    return res.status(400).json({ error: "Einladungscode fehlt oder ist ungültig." });
+  }
+
+  const gesucht = code.trim().toUpperCase();
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.inviteCode && g.inviteCode === gesucht);
+  if (!group) {
+    return res.status(404).json({ error: "Ungültiger Code. Gruppe nicht gefunden." });
+  }
+
+  if ((group.memberIds || []).includes(req.userId)) {
+    // Ohne Code in der Antwort: der Beitretende ist kein Admin, und der Code
+    // hat in seinem Client nichts verloren.
+    const { inviteCode: _schonDrin, ...ohneCode } = group;
+    return res.status(200).json(ohneCode);
+  }
+  if ((group.memberIds || []).length >= MAX_GROUP_MEMBERS) {
+    return res.status(400).json({
+      error: `Diese Gruppe ist voll (${MAX_GROUP_MEMBERS} Mitglieder).`,
+    });
+  }
+
+  // Dieselbe Regel wie beim Hinzufügen durch den Admin: eine Blockierung darf
+  // sich nicht über den Umweg Gruppe aushebeln lassen. Geprüft wird gegen den
+  // Admin, denn er ist es, der die Gruppe führt.
+  const blocked = await getBlockedUserIds(req.userId);
+  if (blocked.has(group.adminId)) {
+    return res.status(403).json({ error: "Zwischen euch besteht eine Blockierung." });
+  }
+
+  group.memberIds.push(req.userId);
+  group.pendingUserIds = (group.pendingUserIds || []).filter((id) => id !== req.userId);
+  await db.saveGroup(group);
+
+  sendPushNotification(
+    group.adminId,
+    "Neues Gruppenmitglied",
+    `${req.user.name} ist "${group.name}" beigetreten.`,
+    { type: "group_joined", groupId: group.id }
+  ).catch(() => {});
+
+  const { inviteCode: _verbraucht, ...ohneCode } = group;
+  res.json(ohneCode);
+});
+
 
 // Join Group Request
 app.post("/api/groups/:id/join", authenticate, async (req, res) => {

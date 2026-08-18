@@ -59,7 +59,11 @@ CREATE TABLE IF NOT EXISTS groups (
   name TEXT NOT NULL,
   admin_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   member_ids JSONB DEFAULT '[]'::jsonb,
-  pending_user_ids JSONB DEFAULT '[]'::jsonb
+  pending_user_ids JSONB DEFAULT '[]'::jsonb,
+  -- Einladungscode für den Beitritt. NULL, solange der Admin ihn nie abgerufen
+  -- hat. Der Index dazu liegt in db.js, weil die Spalte auf bestehenden
+  -- Datenbanken per ALTER nachkommt (siehe Hinweis am Dateiende).
+  invite_code TEXT
 );
 
 CREATE TABLE IF NOT EXISTS events (
