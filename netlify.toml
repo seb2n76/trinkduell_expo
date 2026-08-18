@@ -1,0 +1,30 @@
+# Netlify-Konfiguration für webapp.trinkduell.com
+#
+# Warum der SPA-Rückfall hier steht und nicht mehr in `public/_redirects`:
+# beide Hosts bekommen dasselbe `dist/`, und Cloudflare Workers weist eine
+# `_redirects`-Datei mit einer 200er-Regel ab (dort sind nur echte
+# Weiterleitungen erlaubt). Diese Datei bleibt im Repo-Stammverzeichnis, wird
+# also nicht nach `dist/` kopiert und von Wrangler nie gelesen.
+#
+# `public/_headers` liegt weiterhin in public/ — das Format lesen beide Hosts,
+# und Header sind auf keiner Seite ein Problem.
+
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+# Fallback für clientseitiges Routing.
+#
+# Status 200 ist ein Rewrite, kein Redirect: die URL bleibt stehen, Netlify
+# liefert nur den Inhalt von index.html aus. Ohne `force = true` greift die
+# Regel NUR, wenn keine statische Datei passt — Assets und die von Expo
+# erzeugten Routen-HTMLs (feed.html, login.html, …) gehen also weiterhin
+# direkt raus.
+#
+# Ohne diese Regel zeigt Netlify bei einem unbekannten Pfad seine eigene
+# 404-Seite. Mit ihr lädt die App und expo-router entscheidet selbst, was zu
+# tun ist — inklusive des eigenen „nicht gefunden"-Screens.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

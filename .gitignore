@@ -46,3 +46,7 @@ app-example
 
 # Backend local database & secrets (never commit real user data or credentials)
 server/db.json
+
+# Wrangler legt das beim Deploy an. Stand es nicht hier, hat der
+# Cloudflare-Build bei jedem Lauf selbst die .gitignore veraendert.
+.wrangler/

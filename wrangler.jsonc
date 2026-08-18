@@ -1,0 +1,40 @@
+// Cloudflare Workers (Static Assets) — Deploy-Konfiguration für cloud.trinkduell.com
+//
+// Diese Datei gehört ins Repo, obwohl `wrangler deploy` auch ohne sie läuft.
+// Ohne sie erzeugt Wrangler bei JEDEM Build eine neue Konfiguration, und zwei
+// Dinge daran sind schädlich:
+//
+//   1. Das `compatibility_date` wird auf den Build-Tag gesetzt. Das Verhalten
+//      der Workers-Laufzeit ändert sich dann von Deploy zu Deploy, ohne dass
+//      im Repo eine Zeile anders wäre. Hier steht es fest.
+//   2. Die erzeugte Konfiguration kennt kein `not_found_handling`, und genau
+//      das braucht diese App (siehe unten).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trinkduell-expo",
+  "compatibility_date": "2026-08-18",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./dist",
+
+    // Der SPA-Rückfall für unbekannte Pfade.
+    //
+    // Das stand vorher als `/*  /index.html  200` in `public/_redirects` und
+    // ließ das Deploy scheitern: Workers Static Assets unterstützt in
+    // `_redirects` ausschließlich echte Weiterleitungen (301/302/303/307/308),
+    // keine Rewrites. Zusätzlich erkennt die Prüfung dort eine Endlosschleife,
+    // weil das automatische html_handling `/index.html` auf `/` normalisiert —
+    // was die Regel sofort wieder auslöst.
+    //
+    // `single-page-application` ist der dafür vorgesehene Weg: passt kein
+    // Asset, liefert Workers `/index.html` mit 200 aus, ohne Weiterleitung.
+    //
+    // Die 19 statisch gerenderten Routen (`/feed.html`, `/login.html`, …)
+    // sind davon nicht betroffen — die liefert das Standard-html_handling
+    // weiterhin direkt aus. Der Rückfall greift nur, wenn wirklich nichts
+    // passt, und dann übernimmt expo-router inklusive eigenem 404-Screen.
+    "not_found_handling": "single-page-application"
+  }
+}

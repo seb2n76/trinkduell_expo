@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `32a5cf6` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `8e7b617` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -49,8 +49,10 @@ Postgres, darunter der JSON-Zweig). Das wurde mehrfach übersehen.
   (`trinkduell-db` + `trinkduell-backend`), Code unter `/opt/trinkduell`
 - **Öffentlich:** `https://api.trinkduell.com` via Cloudflare Tunnel
   (`trinkduell-lxctunnel`, als systemd-Dienst)
-- **Web-App:** `https://webapp.trinkduell.com` auf Netlify, baut automatisch
-  bei jedem Push auf `main`
+- **Web-App:** zwei Hosts, beide bauen automatisch bei jedem Push auf `main`:
+  `https://webapp.trinkduell.com` (Netlify) und `https://cloud.trinkduell.com`
+  (Cloudflare Workers). Der SPA-Fallback ist pro Host konfiguriert, siehe
+  Abschnitt 6.
 - **Auto-Update:** stündlicher Cronjob auf dem Server (`git pull` + Rebuild)
 
 Details in [`PROXMOX_DEPLOYMENT.md`](./PROXMOX_DEPLOYMENT.md) und
@@ -310,19 +312,46 @@ Der wirksame Hebel für „lädt beim zweiten Mal sofort" ist **Caching per
 Service Worker**, nicht Splitting — und der ist inzwischen umgesetzt (siehe
 unten).
 
-### Web-Hosting (Netlify und Cloudflare Pages)
-
-Beide Hosts lesen dasselbe Konfigurationsformat, deshalb liegt es **einmal** in
-`public/` und wird von `expo export` nach `dist/` kopiert:
-
-| Datei | Zweck |
-|---|---|
-| `public/_headers` | `sw.js` nie cachen, gehashte Assets ewig, Basis-Header |
-| `public/_redirects` | Fallback auf `index.html` für unbekannte Pfade |
+### Web-Hosting (Netlify und Cloudflare Workers)
 
 `expo export --platform web` erzeugt **echte HTML-Dateien pro Route**
 (`feed.html`, `login.html`, …), Deep Links funktionieren also ohne
-Zusatzregel. Der Fallback greift nur für Pfade, zu denen keine Datei gehört.
+Zusatzregel. Ein Fallback braucht es nur für Pfade, zu denen keine Datei
+gehört.
+
+**Der Fallback ist pro Host verschieden konfiguriert — und das muss so sein:**
+
+| Datei | Gilt für | Zweck |
+|---|---|---|
+| `public/_headers` | beide | `sw.js` nie cachen, gehashte Assets ewig, Basis-Header |
+| `wrangler.jsonc` | Cloudflare | `not_found_handling: "single-page-application"` |
+| `netlify.toml` | Netlify | `[[redirects]]` mit `status = 200` |
+
+Bis 18.08.2026 stand der Fallback als `/*  /index.html  200` in
+`public/_redirects` und galt für beide. Das ließ das Cloudflare-Deploy
+scheitern:
+
+> Invalid _redirects configuration: Line 10: Infinite loop detected in this
+> rule.
+
+Zwei Gründe, jeder für sich ausreichend:
+
+1. **Workers Static Assets unterstützt in `_redirects` keine Rewrites.**
+   Erlaubt sind dort ausschließlich echte Weiterleitungen (301/302/303/307/308).
+   Ein 200er ist etwas anderes als eine Weiterleitung und wird abgewiesen.
+2. Das automatische `html_handling` normalisiert `/index.html` zu `/` — was
+   die Regel `/*` sofort wieder auslöst. Daher die Schleifenmeldung.
+
+`netlify.toml` liegt bewusst im **Stammverzeichnis** und nicht in `public/`:
+so wandert es nicht nach `dist/` und Wrangler bekommt es nie zu sehen. Wäre es
+in `public/`, wäre nichts gewonnen — beide Hosts bekommen dasselbe `dist/`.
+
+**`wrangler.jsonc` gehört ins Repo**, obwohl `wrangler deploy` auch ohne läuft.
+Ohne die Datei erzeugt Wrangler bei jedem Build eine neue Konfiguration, setzt
+dabei `compatibility_date` auf den **Build-Tag** (das Laufzeitverhalten ändert
+sich also von Deploy zu Deploy, ohne dass im Repo eine Zeile anders wäre) und
+kennt kein `not_found_handling`. Nebenbei hat dieser Automatismus bei jedem
+Lauf die `.gitignore` verändert; `.wrangler/` steht deshalb jetzt dort drin.
 
 **Neue Domain → CORS anpassen.** Das ist der Schritt, der beim Umzug vergessen
 wird: eine neue Hosting-Domain wird von der API abgewiesen, bis ihre Origin in
@@ -334,13 +363,19 @@ der Allow-List steht. Zwei Stellen:
    werden.
 
 Aktuell live: `webapp.trinkduell.com` (Netlify) und `cloud.trinkduell.com`
-(Cloudflare Pages).
+(Cloudflare Workers, Worker-Name `trinkduell-expo`).
 
 Ohne `Content-Security-Policy` in `_headers`, bewusst: react-native-web
 erzeugt Inline-Styles, die Karte läuft in einem srcDoc-iframe und lädt Leaflet
 von einem CDN. Eine CSP müsste all das erfassen und würde bei einem Fehler die
 App lahmlegen — das gehört einzeln gemessen, nicht blind gesetzt. Ebenso keine
 `Permissions-Policy`: Kamera und Standort brauchen die Erlaubnis.
+
+> **Randnotiz zum statischen Rendern:** 17 der 19 erzeugten Routen-HTMLs sind
+> byte-identisch. AgeGate und AuthProvider rendern serverseitig nichts, also
+> entsteht überall dieselbe leere Hülle. Das statische Rendern bringt damit
+> derzeit weder für SEO noch für den ersten Bildpunkt etwas — es schadet aber
+> auch nicht, und der SPA-Fallback liefert genau dasselbe wie eine Routen-Datei.
 
 ### PWA / Service Worker
 
