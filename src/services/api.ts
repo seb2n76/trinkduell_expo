@@ -462,6 +462,21 @@ export const apiService = {
     return res.data;
   },
 
+  // Ebenfalls ohne Offline-Fallback, und der zurückgegebene Token ist nicht
+  // optional: die Änderung beendet serverseitig alle Sitzungen, auch die
+  // eigene. Wer den neuen Token nicht speichert, fliegt beim nächsten Request
+  // raus.
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; token: string }> => {
+    const res = await axiosInstance.post<{ success: boolean; token: string }>(
+      "/auth/change-password",
+      { currentPassword, newPassword }
+    );
+    return res.data;
+  },
+
   // Deliberately doesn't use executeApiCall's generic offline fallback:
   // db.mockGetSession() only understands locally-issued "mock-jwt-token-*"
   // strings, so for a real server-issued JWT it would find no match and —

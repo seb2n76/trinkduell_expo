@@ -68,18 +68,40 @@ mit Reihenfolge. Frei angelegte Getränke sieht nur ihr Urheber, gescannte
 bleiben geteilt (Community-Datenbank). **Auf dem Server einmalig
 `node server/migrate-quickpicks.js` laufen lassen** — siehe Abschnitt 2.
 
-### 1.2 Passwort ändern im eingeloggten Zustand — **hoch**
+### ~~1.2 Passwort ändern im eingeloggten Zustand~~ — **erledigt** (Commit nach `32a5cf6`)
 
-Existiert nicht. Es gibt nur „vergessen" per E-Mail.
+`POST /api/auth/change-password` mit dem alten Passwort als Nachweis. Die
+Änderung beendet alle anderen Sitzungen und gibt einen frischen Token zurück,
+damit die eigene weiterläuft; ein offener Reset-Code verfällt mit. Eintrag im
+Drawer über „Abmelden“. 13 Tests in `tests/changepassword.test.js`.
 
-- `POST /api/auth/change-password` mit **altem** Passwort als Nachweis
-- `db.setPasswordAndClearResetCode()` setzt bereits `session_valid_after` und
-  beendet damit alle anderen Sitzungen — genau das ist hier gewünscht, aber
-  die **eigene** Sitzung muss weiterlaufen: neues Token zurückgeben und im
-  Client speichern, sonst wirft sich der Nutzer selbst raus
-- Rate-Limit wie beim Login (`rateLimit({ scope: "changepw", ... })`)
-- UI: im Drawer bei den Kontoeinstellungen
-- Tests: falsches altes Passwort → 401, andere Sitzungen ungültig, eigene gilt
+### 1.2b Async-Routen ohne try/catch können den Server beenden — **hoch**
+
+Beim Testen der Passwort-Änderung ist der Backend-Prozess an einer ganz
+anderen Stelle komplett abgestürzt (`GET /api/logs`, `logs.map` auf
+`undefined`). Ursache ist nicht diese eine Zeile, sondern die Bauart:
+
+- Express **4** (4.22.2) leitet eine abgelehnte Promise aus einem
+  `async`-Handler **nicht** an die Fehler-Middleware weiter. Sie wird zur
+  `unhandledRejection`, und die beendet den Node-Prozess.
+- Es gibt kein `process.on("unhandledRejection")`-Auffangnetz.
+- Von 58 Routen haben 35 ein `try/catch`. Die übrigen 23 sind jeweils ein
+  Weg, das gesamte Backend für alle Nutzer abzuschießen.
+
+Der Absturz oben kam aus einer selbst gebauten Test-Datenbank, war also
+nicht produktionsnah — die **Bauart** dahinter schon.
+
+Zu tun (in dieser Reihenfolge, jeder Schritt wirkt für sich):
+
+1. Die 23 Routen ohne `try/catch` nachziehen, Muster wie gehabt:
+   `catch (err) { serverError(res, err, `${req.method} ${req.originalUrl}`); }`
+2. Besser als 23 Einzelfälle: ein `asyncHandler(fn)`-Wrapper, der
+   `Promise.resolve(fn(req,res,next)).catch(next)` macht, und alle Routen
+   darauf umstellen. Dann kann die Lücke nicht wiederkommen.
+3. Zusätzlich `process.on("unhandledRejection", ...)` mit Logging als
+   letztes Netz — protokollieren statt sterben.
+4. Alternativ Express 5 (fängt async-Fehler von sich aus). Größerer
+   Eingriff, eigene Session wert.
 
 ### 1.3 Gruppenmitglieder verwalten — **hoch**
 

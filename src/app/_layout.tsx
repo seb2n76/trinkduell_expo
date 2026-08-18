@@ -110,6 +110,7 @@ interface AuthContextType {
   login: (emailOrUsername: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   isLoading: boolean;
   updateUserContext: (updatedUser: User) => void;
 }
@@ -215,6 +216,16 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // Gehört hierher und nicht in den Drawer: die Änderung entwertet serverseitig
+  // jeden bestehenden Token, auch den in AsyncStorage. Wird der Austausch
+  // vergessen, ist die eigene Sitzung ab dem nächsten Request tot — also
+  // liegt er an derselben Stelle wie bei login/register.
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    const res = await apiService.changePassword(currentPassword, newPassword);
+    await AsyncStorage.setItem("trinkduell_v2_jwt_token", res.token);
+    setToken(res.token);
+  };
+
   const updateUserContext = (updatedUser: User) => {
     setUser(updatedUser);
     // Keep the session-restore cache current so a reload shortly after any
@@ -231,6 +242,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        changePassword,
         isLoading,
         updateUserContext,
       }}

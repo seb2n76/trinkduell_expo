@@ -772,6 +772,82 @@ app.post(
   }
 );
 
+// Passwort ändern, während man eingeloggt ist
+//
+// Der Nachweis ist hier das ALTE Passwort, nicht der Token. Sonst würde ein
+// kurz unbeaufsichtigtes, entsperrtes Gerät reichen, um das Konto dauerhaft zu
+// übernehmen — der Token allein darf das nicht können.
+app.post(
+  "/api/auth/change-password",
+  authenticate,
+  // Bewusst NACH authenticate: so sitzt der Kontozähler auf der Nutzer-ID
+  // statt auf einem Wert aus dem Body. Eine ID aus einem geprüften Token kann
+  // der Aufrufer nicht fälschen, um fremde Konten auszusperren.
+  rateLimit({
+    scope: "changepw",
+    ipMax: 60,
+    accountMax: 10,
+    windowMs: 15 * MINUTE,
+    accountKey: (req) => req.userId,
+  }),
+  async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string" || !currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Aktuelles und neues Passwort werden benötigt." });
+    }
+    // Vor bcrypt.compare begrenzen: ein unbegrenztes Passwort ist Rechenzeit,
+    // die der Aufrufer sonst gratis auf dem Server verbrennt.
+    if (currentPassword.length > LIMITS.password.max) {
+      return res.status(401).json({ error: "Das aktuelle Passwort ist falsch." });
+    }
+    if (newPassword.length < LIMITS.password.min) {
+      return res.status(400).json({
+        error: `Passwort muss mindestens ${LIMITS.password.min} Zeichen lang sein.`,
+      });
+    }
+    if (newPassword.length > LIMITS.password.max) {
+      return res.status(400).json({ error: "Passwort ist zu lang." });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ error: "Das neue Passwort muss sich vom alten unterscheiden." });
+    }
+
+    // try/catch ist hier Pflicht, nicht Geschmack: unter Express 4 landet eine
+    // abgelehnte Promise aus einem async-Handler NICHT in der Fehler-Middleware,
+    // sondern als unhandledRejection - und die beendet den Node-Prozess. Ein
+    // Ausrutscher von bcrypt oder der Datenbank wuerde sonst den ganzen Server
+    // mitnehmen, nicht nur diesen einen Request.
+    try {
+      const isCurrentValid = await bcrypt.compare(currentPassword, req.user.password);
+      if (!isCurrentValid) {
+        return res.status(401).json({ error: "Das aktuelle Passwort ist falsch." });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      // Beendet auch jede andere bestehende Sitzung — genau der Sinn der Übung,
+      // wenn jemand das Passwort ändert, weil es in fremde Hände geraten ist.
+      // Ein offener Reset-Code verfällt dabei mit, sonst bliebe der Weg über
+      // „Passwort vergessen" für den Angreifer offen.
+      await db.setPasswordAndClearResetCode(req.user.id, hashedPassword);
+
+      // Die eigene Sitzung darf das überleben: ohne frischen Token würde sich
+      // der Nutzer mit der Änderung selbst aussperren. Der neue Token wird nach
+      // dem Stichtag ausgestellt und ist deshalb als einziger noch gültig.
+      const token = signToken(req.user.id);
+
+      // Wer sein Passwort gerade nachweislich kannte, soll nicht an einem
+      // Limit hängen bleiben, das eigene Tippfehler aufgebaut haben.
+      clearRateLimit(`changepw:acct:${req.user.id.toLowerCase()}`);
+      clearRateLimit(`login:acct:${req.user.email.toLowerCase()}`);
+      clearRateLimit(`login:acct:${req.user.name.toLowerCase()}`);
+
+      res.json({ success: true, token });
+    } catch (err) {
+      serverError(res, err, `${req.method} ${req.originalUrl}`);
+    }
+  }
+);
+
 // Get Session — verifies real JWT signature
 app.get("/api/auth/session", async (req, res) => {
   const authHeader = req.headers.authorization;

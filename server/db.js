@@ -352,6 +352,7 @@ async function loadDb() {
       groupQuests: [],
       friendships: [],
       messages: [],
+      userDrinks: [],
       blocks: [],
       reports: []
     };

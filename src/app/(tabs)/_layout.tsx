@@ -70,7 +70,7 @@ const ACHIEVEMENTS: AchievementDef[] = [
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { logout: authLogout, updateUserContext } = useAuth();
+  const { logout: authLogout, updateUserContext, changePassword } = useAuth();
   const [notificationCount, setNotificationCount] = useState(0);
 
   // Drawer states
@@ -86,6 +86,15 @@ export default function TabsLayout() {
 
   const [showLicensesModal, setShowLicensesModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+
+  // Passwort ändern
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [repeatPassword, setRepeatPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordDone, setPasswordDone] = useState(false);
   const [locationMode, setLocationModeState] = useState<LocationMode>(DEFAULT_LOCATION_MODE);
 
   // Friends & Live Search states
@@ -662,6 +671,58 @@ export default function TabsLayout() {
     }
   };
 
+  const closePasswordModal = () => {
+    setShowPasswordModal(false);
+    // Klartext-Passwörter nicht im State liegen lassen, nachdem der Dialog zu
+    // ist — der Drawer bleibt die ganze Sitzung über montiert.
+    setCurrentPassword("");
+    setNewPassword("");
+    setRepeatPassword("");
+    setPasswordError("");
+    setPasswordDone(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+
+    // Die Wiederholung prüft nur der Client: der Server kennt sie nicht und
+    // soll sie auch nicht kennen. Länge und Gleichheit prüft er trotzdem
+    // selbst noch einmal — das hier erspart nur den Rundweg.
+    if (newPassword !== repeatPassword) {
+      setPasswordError("Die beiden neuen Passwörter stimmen nicht überein.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("Das neue Passwort muss mindestens 8 Zeichen lang sein.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setPasswordError("Das neue Passwort muss sich vom alten unterscheiden.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      await triggerHaptic("success");
+      setPasswordDone(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setRepeatPassword("");
+    } catch (error) {
+      await triggerHaptic("error");
+      // Der Interceptor hat die deutsche Servermeldung schon in `message`
+      // gelegt („Das aktuelle Passwort ist falsch.", Rate-Limit, …).
+      const msg =
+        error instanceof Error && error.message
+          ? error.message
+          : "Passwort konnte nicht geändert werden. Bist du mit dem Internet verbunden?";
+      setPasswordError(msg);
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   // Helper colors
   const getCategoryColor = (cat: string) => {
     switch (cat) {
@@ -1032,6 +1093,17 @@ export default function TabsLayout() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic("light");
+                    setShowPasswordModal(true);
+                  }}
+                  className="flex-row items-center space-x-2 mb-3.5 py-1"
+                >
+                  <Ionicons name="key-outline" size={18} color="#22d3ee" />
+                  <Text className="text-white/60 text-xs font-bold">Passwort ändern</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   onPress={handleLogout}
                   className="flex-row items-center space-x-2 py-1 mb-3.5"
                 >
@@ -1054,6 +1126,127 @@ export default function TabsLayout() {
       )}
 
 
+
+      {/* Passwort ändern */}
+      <Modal
+        visible={showPasswordModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closePasswordModal}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-cyan-500/30 rounded-t-3xl p-6 pb-8">
+            <View className="flex-row justify-between items-center mb-2">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                Passwort ändern 🔑
+              </Text>
+              <TouchableOpacity onPress={closePasswordModal} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {passwordDone ? (
+              <>
+                <View className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 mb-5 mt-3">
+                  <View className="flex-row items-center mb-2">
+                    <Ionicons name="checkmark-circle" size={18} color="#34d399" />
+                    <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider ml-2">
+                      Passwort geändert
+                    </Text>
+                  </View>
+                  <Text className="text-emerald-300/80 text-[11px] leading-relaxed">
+                    Auf diesem Gerät bleibst du angemeldet. Alle anderen Geräte wurden
+                    abgemeldet und brauchen ab jetzt das neue Passwort.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={closePasswordModal}
+                  className="bg-cyan-500 rounded-2xl py-3.5 items-center"
+                >
+                  <Text className="text-slate-950 text-xs font-black uppercase tracking-wider">
+                    Fertig
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+                  Zur Sicherheit brauchen wir dein aktuelles Passwort. Danach werden alle
+                  anderen Geräte abgemeldet — auf diesem bleibst du eingeloggt.
+                </Text>
+
+                <TextInput
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="Aktuelles Passwort"
+                  placeholderTextColor="#475569"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="current-password"
+                  textContentType="password"
+                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-2.5"
+                />
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Neues Passwort (min. 8 Zeichen)"
+                  placeholderTextColor="#475569"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-2.5"
+                />
+                <TextInput
+                  value={repeatPassword}
+                  onChangeText={setRepeatPassword}
+                  placeholder="Neues Passwort wiederholen"
+                  placeholderTextColor="#475569"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  onSubmitEditing={handleChangePassword}
+                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-3"
+                />
+
+                {passwordError ? (
+                  <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                    <Ionicons name="alert-circle" size={15} color="#f43f5e" />
+                    <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">
+                      {passwordError}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={handleChangePassword}
+                  disabled={passwordSaving || !currentPassword || !newPassword || !repeatPassword}
+                  className={`rounded-2xl py-3.5 items-center ${
+                    passwordSaving || !currentPassword || !newPassword || !repeatPassword
+                      ? "bg-slate-800"
+                      : "bg-cyan-500"
+                  }`}
+                >
+                  {passwordSaving ? (
+                    <ActivityIndicator size="small" color="#0f172a" />
+                  ) : (
+                    <Text
+                      className={`text-xs font-black uppercase tracking-wider ${
+                        !currentPassword || !newPassword || !repeatPassword
+                          ? "text-slate-600"
+                          : "text-slate-950"
+                      }`}
+                    >
+                      Passwort ändern
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Standort-Einstellungen */}
       <Modal

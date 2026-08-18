@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 08.08.2026 · letzter Commit `8c98931` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `32a5cf6` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -153,11 +153,30 @@ Produktionsdatenbank gelandet.
   dafür; wer eine neue Katalog-Route baut, muss sie benutzen. Ein Scan loggt
   und **bietet** die Kachel an, er setzt sie nicht.
 
+- **Ein `async`-Handler ohne `try/catch` kann den ganzen Server beenden.**
+  Das Projekt läuft auf Express **4**, und Express 4 leitet eine abgelehnte
+  Promise aus einem `async`-Handler **nicht** an die Fehler-Middleware weiter.
+  Sie wird zur `unhandledRejection` — und die beendet den Node-Prozess.
+
+  Das ist kein theoretisches Risiko: beim Testen der Passwort-Änderung
+  (18.08.2026) hat ein `undefined.map()` in `GET /api/logs` das komplette
+  Backend abgerissen. Ein einziger Request, alle Nutzer offline.
+
+  Also: **jede** neue Route bekommt ein `try/catch` mit
+  `serverError(res, err, ...)`. 23 der 58 Routen haben noch keins — das
+  ist als Aufgabe 1.2b in `docs/NAECHSTE_SCHRITTE.md` notiert.
+
+- **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
+  `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
+  falschen Schlüssel hat genau den Absturz oben ausgelöst. Den Server die
+  Datei selbst anlegen lassen (einfach löschen und neu starten), statt sie
+  von Hand zu schreiben.
 ---
 
 ## 4. Was fertig ist
 
-**Auth & Konto:** Registrierung/Login (bcrypt+JWT), Passwort-Reset per E-Mail
+**Auth & Konto:** Registrierung/Login (bcrypt+JWT), Passwort ändern im
+eingeloggten Zustand (beendet alle anderen Sitzungen), Passwort-Reset per E-Mail
 (Resend), Session überlebt Reload auch bei Serverausfall, Kontolöschung
 in-app (Store-Pflicht), 18+-Alters-Gate, Datenschutz/AGB-Screens.
 
