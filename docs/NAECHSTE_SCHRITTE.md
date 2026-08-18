@@ -150,14 +150,50 @@ annehmen/ablehnen (die Route dazu gab es längst, aber ohne Bedienelement) und
 Das Annehmen von Anfragen ist jetzt bedienbar, das Stellen einer Anfrage
 braucht weiterhin die Gruppen-ID.
 
-### 1.4 Ungelesen-Markierung im Chat — **mittel**
+### ~~1.4 Ungelesen-Markierung im Chat~~ — **erledigt**
 
-Seit `7841c4d` gibt es Push für Nachrichten. Man wird also benachrichtigt,
-sieht in der App aber nirgends, **wo** etwas Neues ist. Das fällt jetzt auf.
+Push gab es seit `7841c4d`, aber in der App war nirgends zu sehen, **wo**
+etwas Neues liegt.
 
-- Einfachste tragfähige Lösung: `last_read_at` pro Nutzer und Unterhaltung
-- Badge an Freund/Gruppe in der Liste, Zähler im Drawer-Icon
-- Achtung: `messages` hat noch keinen Index auf `(receiver_id, timestamp)`
+```
+GET  /api/messages/unread   alle Zahlen auf einmal
+POST /api/messages/read     eine Unterhaltung als gelesen markieren
+```
+
+Neue Tabelle `conversation_reads` mit `last_read_at` pro Nutzer und
+Unterhaltung. Der Schlüssel ist `dm:<nutzerId>` bzw. `group:<gruppenId>`,
+also **ein** Feld statt zweier nullbarer Spalten — das gibt einen sauberen
+Primärschlüssel und erspart partielle Unique-Indizes.
+
+**Die Zählregeln sind der eigentliche Inhalt**, nicht das Speichern:
+
+- Eigene Nachrichten zählen nie.
+- In Gruppen zählen fremde Nachrichten, aber **nicht die von Blockierten**.
+  Der Gruppenchat filtert Blockierte beim Lesen heraus — ein Zähler dafür
+  liesse sich nie leeren.
+- Ohne Lesestand ist alles ungelesen. Das ist die ehrliche Bedeutung; beim
+  ersten Start nach dem Deploy stehen deshalb **einmalig** Zahlen an alten
+  Unterhaltungen. Sie verschwinden beim öffnen.
+- Der Zeitstempel kommt vom Server, nicht aus dem Body: eine falsch gehende
+  Geräteuhr würde sonst künftige Nachrichten stumm als gelesen verbuchen.
+- Nie zurückdatieren (Postgres `GREATEST`, JSON ein Vergleich) — zwei Geräte
+  lesen dieselbe Unterhaltung, und das langsamere darf den Stand des
+  schnelleren nicht überschreiben.
+
+**Die in dieser Aufgabe notierten fehlenden Indizes sind angelegt:**
+`idx_messages_receiver_time` auf `(receiver_id, timestamp)` und
+`idx_messages_group_time` auf `(group_id, timestamp)`. Der vorhandene
+`idx_messages_conversation` liegt auf `(sender_id, receiver_id)` und half
+nicht — gezählt wird nach Empfänger UND Zeit.
+
+UI: Zahl am Menü-Symbol (die Glocke rechts bleibt für Beitrittsanfragen),
+Punkte an Freundes- und Gruppenzeilen. Beim öffnen eines Chats wird sofort
+lokal abgezogen und der Server nachgezogen — auf die Antwort zu warten,
+bevor der Punkt verschwindet, fühlt sich träge an. Schlägt der Aufruf fehl,
+wird die Zahl neu geladen statt falsch stehen zu lassen.
+
+20 Tests in `tests/unread.test.js`. Kein neuer Timer: die Zahlen hängen am
+bestehenden 15-Sekunden-Takt der Glocke.
 
 ### ~~1.5 Gruppenbeitritt~~ — **erledigt**
 

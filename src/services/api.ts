@@ -103,6 +103,13 @@ export interface GroupMembers {
   isAdmin: boolean;
 }
 
+/** Antwort von GET /messages/unread. */
+export interface UnreadSummary {
+  total: number;
+  /** Schlüssel: `dm:<nutzerId>` oder `group:<gruppenId>`. */
+  conversations: Record<string, number>;
+}
+
 const JWT_TOKEN_KEY = "trinkduell_v2_jwt_token";
 const CACHED_USER_KEY = "trinkduell_v2_cached_user";
 
@@ -430,6 +437,22 @@ export const apiService = {
   joinGroupByCode: async (code: string): Promise<db.Group> => {
     const res = await axiosInstance.post<db.Group>("/groups/join", { code });
     return res.data;
+  },
+
+  /**
+   * Ungelesen-Zahlen für alle Unterhaltungen.
+   *
+   * Ohne Offline-Fallback: die lokale Mock-DB kennt keine Lesestände, und eine
+   * erfundene Zahl wäre schlimmer als keine. Bei einem Netzfehler bleibt die
+   * bisherige Anzeige stehen (siehe loadUnread im Drawer).
+   */
+  getUnreadMessages: async (): Promise<UnreadSummary> => {
+    const res = await axiosInstance.get<UnreadSummary>("/messages/unread");
+    return res.data;
+  },
+
+  markConversationRead: async (ziel: { receiverId?: string; groupId?: string }): Promise<void> => {
+    await axiosInstance.post("/messages/read", ziel);
   },
 
   // Events

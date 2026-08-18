@@ -343,7 +343,7 @@ async function loadDb() {
     db = JSON.parse(data);
     // Auto-heal collections added after a database file was first written.
     let healed = false;
-    for (const key of ["friendships", "blocks", "reports", "userDrinks"]) {
+  for (const key of ["friendships", "blocks", "reports", "userDrinks", "conversationReads"]) {
       if (!db[key]) {
         db[key] = [];
         healed = true;
@@ -364,6 +364,7 @@ async function loadDb() {
       friendships: [],
       messages: [],
       userDrinks: [],
+      conversationReads: [],
       blocks: [],
       reports: []
     };
@@ -1533,6 +1534,100 @@ module.exports = {
     if (!db.messages) db.messages = [];
     db.messages.push(msg);
     await saveDb();
+  },
+  /**
+   * Lesestände eines Nutzers, als Map `conversationKey -> ISO-Zeitstempel`.
+   *
+   * Ein fehlender Schlüssel bedeutet „nie gelesen" — die Auswertung in
+   * index.js zählt dann alles.
+   */
+  getConversationReads: async (userId) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query(
+        "SELECT conversation_key, last_read_at FROM conversation_reads WHERE user_id = $1",
+        [userId]
+      );
+      const map = {};
+      for (const row of res.rows) {
+        map[row.conversation_key] = row.last_read_at.toISOString
+          ? row.last_read_at.toISOString()
+          : new Date(row.last_read_at).toISOString();
+      }
+      return map;
+    }
+    const map = {};
+    for (const r of db.conversationReads || []) {
+      if (r.userId === userId) map[r.conversationKey] = r.lastReadAt;
+    }
+    return map;
+  },
+
+  /**
+   * Setzt den Lesestand einer Unterhaltung.
+   *
+   * Nie zurückdatieren: zwei Geräte lesen dieselbe Unterhaltung, und das
+   * langsamere darf den Stand des schnelleren nicht überschreiben. Postgres
+   * erledigt das über GREATEST im UPDATE, der JSON-Zweig mit einem Vergleich.
+   */
+  setConversationRead: async (userId, conversationKey, lastReadAt) => {
+    await loadDb();
+    if (pool) {
+      await pool.query(
+        `INSERT INTO conversation_reads (user_id, conversation_key, last_read_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, conversation_key) DO UPDATE
+           SET last_read_at = GREATEST(conversation_reads.last_read_at, $3)`,
+        [userId, conversationKey, lastReadAt]
+      );
+      return;
+    }
+    if (!db.conversationReads) db.conversationReads = [];
+    const vorhanden = db.conversationReads.find(
+      (r) => r.userId === userId && r.conversationKey === conversationKey
+    );
+    if (vorhanden) {
+      if (new Date(lastReadAt).getTime() > new Date(vorhanden.lastReadAt).getTime()) {
+        vorhanden.lastReadAt = lastReadAt;
+      }
+    } else {
+      db.conversationReads.push({ userId, conversationKey, lastReadAt });
+    }
+    await saveDb();
+  },
+
+  /**
+   * Alle Nachrichten, die diesen Nutzer betreffen — Direktnachrichten an ihn
+   * und Nachrichten in seinen Gruppen.
+   *
+   * Bewusst schmal: nur die Felder, die zum Zählen gebraucht werden. Die
+   * Inhalte gehören nicht in eine Ungelesen-Abfrage.
+   */
+  getMessagesForUnread: async (userId, groupIds) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query(
+        `SELECT sender_id, receiver_id, group_id, timestamp
+           FROM messages
+          WHERE receiver_id = $1
+             OR (group_id = ANY($2::text[]) AND sender_id <> $1)`,
+        [userId, groupIds]
+      );
+      return res.rows.map((r) => ({
+        sender_id: r.sender_id,
+        receiver_id: r.receiver_id,
+        group_id: r.group_id,
+        timestamp: r.timestamp.toISOString
+          ? r.timestamp.toISOString()
+          : new Date(r.timestamp).toISOString(),
+      }));
+    }
+    const gruppen = new Set(groupIds);
+    return (db.messages || []).filter(
+      (m) =>
+        m.receiver_id === userId ||
+        (m.group_id && gruppen.has(m.group_id) && m.sender_id !== userId)
+    );
   },
   getCumulativeXpForLevel,
   getUserProgress

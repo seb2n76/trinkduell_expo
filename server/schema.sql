@@ -127,6 +127,26 @@ CREATE TABLE IF NOT EXISTS messages (
   timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
+-- Wie weit jemand eine Unterhaltung gelesen hat.
+--
+-- `conversation_key` ist `dm:<andereNutzerId>` oder `group:<gruppenId>`. Ein
+-- einzelnes Schlüsselfeld statt zweier nullbarer Spalten: das gibt einen
+-- sauberen Primärschlüssel und erspart partielle Unique-Indizes.
+--
+-- Kein Fremdschlüssel auf das Ziel: eine gelöschte Gruppe hinterlässt hier
+-- höchstens einen verwaisten Zeitstempel, und der wird ohnehin nie gelesen
+-- (Ungelesen-Zahlen entstehen nur aus Gruppen, in denen man Mitglied ist).
+--
+-- Fehlt ein Eintrag, gilt die Unterhaltung als NIE gelesen — dann sind alle
+-- Nachrichten darin neu. Das ist die ehrliche Bedeutung; beim ersten Start
+-- nach dem Deploy stehen deshalb einmalig Zahlen an alten Unterhaltungen.
+CREATE TABLE IF NOT EXISTS conversation_reads (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  conversation_key TEXT NOT NULL,
+  last_read_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (user_id, conversation_key)
+);
+
 -- Persönliche Schnellwahl: welche Getränke jemand auf dem Dashboard als
 -- Kachel sieht, und in welcher Reihenfolge.
 --
@@ -176,6 +196,11 @@ CREATE INDEX IF NOT EXISTS idx_group_quests ON group_quests(group_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_users ON friendships(sender_username, receiver_username);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
+-- Für die Ungelesen-Zahlen. Der vorhandene idx_messages_conversation liegt auf
+-- (sender_id, receiver_id) und hilft dabei nicht: gezählt wird nach Empfänger
+-- UND Zeit, bzw. nach Gruppe UND Zeit.
+CREATE INDEX IF NOT EXISTS idx_messages_receiver_time ON messages(receiver_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_group_time ON messages(group_id, timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
 CREATE INDEX IF NOT EXISTS idx_user_drinks_user ON user_drinks(user_id, position);

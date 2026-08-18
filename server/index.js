@@ -1800,6 +1800,83 @@ app.get("/api/scoreboard", authenticate, async (req, res) => {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
 });
+// ─── Ungelesene Nachrichten ───────────────────────────────────────────────────
+//
+// Push gibt es seit `7841c4d`, aber in der App war nirgends zu sehen, WO etwas
+// Neues liegt. Grundlage ist ein Lesestand pro Nutzer und Unterhaltung
+// (`conversation_reads`); ungelesen ist alles, was danach kam.
+
+/** `dm:<andereNutzerId>` bzw. `group:<gruppenId>`. */
+function conversationKey({ otherUserId, groupId }) {
+  return groupId ? `group:${groupId}` : `dm:${otherUserId}`;
+}
+
+// Ungelesen-Zahlen für alle Unterhaltungen auf einmal
+//
+// Ein Aufruf statt einer Abfrage pro Freund/Gruppe: die Liste im Drawer will
+// alle Zahlen gleichzeitig, und der Drawer-Zähler ist ihre Summe.
+app.get("/api/messages/unread", authenticate, async (req, res) => {
+  const groups = await db.getGroups();
+  const meineGruppen = groups.filter((g) => (g.memberIds || []).includes(req.userId));
+  const gruppenIds = meineGruppen.map((g) => g.id);
+
+  const [nachrichten, staende, blockiert] = await Promise.all([
+    db.getMessagesForUnread(req.userId, gruppenIds),
+    db.getConversationReads(req.userId),
+    getBlockedUserIds(req.userId),
+  ]);
+
+  const zaehler = {};
+  for (const m of nachrichten) {
+    // Blockierte zählen nicht. Sonst stünde eine Zahl an einer Gruppe, deren
+    // Nachricht man beim Öffnen gar nicht zu sehen bekommt (der Gruppenchat
+    // filtert Blockierte heraus) — ein Zähler, der sich nie leeren lässt.
+    if (blockiert.has(m.sender_id)) continue;
+
+    const key = m.group_id ? `group:${m.group_id}` : `dm:${m.sender_id}`;
+    const stand = staende[key];
+    if (stand && new Date(m.timestamp).getTime() <= new Date(stand).getTime()) continue;
+
+    zaehler[key] = (zaehler[key] || 0) + 1;
+  }
+
+  const total = Object.values(zaehler).reduce((a, b) => a + b, 0);
+  res.json({ total, conversations: zaehler });
+});
+
+// Unterhaltung als gelesen markieren
+//
+// Der Zeitstempel kommt vom Server, nicht aus dem Body: eine Uhr auf dem Gerät
+// kann falsch stehen, und ein Stand in der Zukunft würde alle künftigen
+// Nachrichten stumm als gelesen verbuchen.
+app.post("/api/messages/read", authenticate, async (req, res) => {
+  const { receiverId, groupId } = req.body;
+  if (!receiverId && !groupId) {
+    return res.status(400).json({ error: "receiverId oder groupId muss angegeben werden." });
+  }
+  if (receiverId && groupId) {
+    return res.status(400).json({ error: "Entweder receiverId oder groupId, nicht beides." });
+  }
+
+  if (groupId) {
+    // Nur für eigene Gruppen. Ohne die Prüfung könnte man beliebige
+    // Gruppen-IDs in die eigene Lesestand-Tabelle schreiben — harmlos, aber
+    // es wäre ein Weg, fremde IDs zu erraten und Müll anzulegen.
+    if (!(await getGroupIfMember(groupId, req.userId))) {
+      return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
+    }
+  } else {
+    const users = await db.getUsers();
+    if (!users.some((u) => u.id === receiverId)) {
+      return res.status(404).json({ error: "Benutzer nicht gefunden." });
+    }
+  }
+
+  const key = conversationKey({ otherUserId: receiverId, groupId });
+  await db.setConversationRead(req.userId, key, new Date().toISOString());
+  res.json({ success: true, conversationKey: key });
+});
+
 
 // ==========================================
 // Groups & Messages Endpoints

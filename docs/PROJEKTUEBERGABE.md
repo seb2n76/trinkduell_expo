@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `9a2c223` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `7ea1c3f` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -235,7 +235,7 @@ Barcode-Scanner mit Community-EAN-Datenbank, XP/Level mit Level-Up-Aufgaben,
 Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge, Rangliste mit Zeitfiltern.
 
 **Social:** Freundschaftsanfragen mit Live-Suche (Instagram-Stil),
-Gruppen mit Mitgliederverwaltung und Einladungscode, Direkt- und Gruppenchat, **getrennte** Freunde-/Gruppen-Feeds,
+Gruppen mit Mitgliederverwaltung und Einladungscode, Direkt- und Gruppenchat mit Ungelesen-Zählern, **getrennte** Freunde-/Gruppen-Feeds,
 Events mit Code, Gruppen-Quests mit Fortschritt, Freunde-Radar (wer ist gerade aktiv), Push-Notifications (Backend fertig).
 
 **Karte:** OpenStreetMap/Leaflet, Standort optional in drei Modi
@@ -319,6 +319,7 @@ alles über Node's eingebauten Test-Runner.
 | `tests/quickpicks.test.js` | Katalog-Sichtbarkeit, persönliche Schnellwahl |
 | `tests/schema.test.js` | Indizes stehen nicht vor ihren `ALTER`-Zeilen |
 | `tests/uploads.test.js` | Presigned URLs, Bildvalidierung, EXIF |
+| `tests/unread.test.js` | Ungelesen-Zähler, Lesestände |
 | `tests/validation.test.js` | Eingabegrenzen, Body-Größe, CORS, Fehlerform |
 
 **Warum die Tests so aussehen, wie sie aussehen:**

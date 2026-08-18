@@ -15,7 +15,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { apiService, GroupMembers } from "@/services/api";
+import { apiService, GroupMembers, UnreadSummary } from "@/services/api";
 import { useAuth } from "../_layout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
@@ -168,6 +168,7 @@ export default function TabsLayout() {
       // zusätzliche Filterung nötig.
       setGroupsList(await apiService.getGroups());
       await loadEvents();
+      await loadUnread();
     } catch (e) {
       console.error("Failed to load friends in layout modal:", e);
     } finally {
@@ -323,6 +324,7 @@ export default function TabsLayout() {
     setChatLoading(true);
     try {
       const msgs = await apiService.getDirectMessages(targetUser.id);
+      markRead({ receiverId: targetUser.id });
       setChatMessages(msgs);
     } catch (e) {
       console.error("Failed to load DMs:", e);
@@ -331,6 +333,54 @@ export default function TabsLayout() {
     }
   };
 
+  // ── Ungelesene Nachrichten ──────────────────────────────────────────────
+  //
+  // Ein Abruf liefert alle Zahlen auf einmal (`total` plus eine Map je
+  // Unterhaltung). Der Zähler am Menü-Symbol ist `total`, die Punkte an
+  // Freunden und Gruppen kommen aus der Map.
+  const [unread, setUnread] = useState<UnreadSummary>({ total: 0, conversations: {} });
+
+  const loadUnread = async () => {
+    try {
+      setUnread(await apiService.getUnreadMessages());
+    } catch (error) {
+      // Bewusst still und ohne Zurücksetzen: bei einem Netzfehler ist die
+      // bisherige Anzeige die bessere Auskunft als eine plötzliche Null.
+      console.warn("Ungelesen-Zahlen konnten nicht geladen werden:", error);
+    }
+  };
+
+  /**
+   * Markiert eine Unterhaltung als gelesen und zieht die Zahlen nach.
+   *
+   * Der Zähler wird zusätzlich sofort lokal abgezogen — auf die Serverantwort
+   * zu warten, bevor der Punkt verschwindet, fühlt sich beim Öffnen eines
+   * Chats träge an.
+   */
+  const markRead = async (ziel: { receiverId?: string; groupId?: string }) => {
+    const key = ziel.groupId ? `group:${ziel.groupId}` : `dm:${ziel.receiverId}`;
+    setUnread((vorher) => {
+      const offen = vorher.conversations[key] || 0;
+      if (!offen) return vorher;
+      const rest = { ...vorher.conversations };
+      delete rest[key];
+      return { total: Math.max(0, vorher.total - offen), conversations: rest };
+    });
+
+    try {
+      await apiService.markConversationRead(ziel);
+    } catch (error) {
+      console.warn("Lesestand konnte nicht gespeichert werden:", error);
+      // Zurückholen, was gerade lokal abgezogen wurde — sonst behauptet die
+      // Anzeige „gelesen", während der Server es anders weiß.
+      await loadUnread();
+    }
+  };
+
+  /** Ungelesene einer Unterhaltung, 0 wenn keine. */
+  const unreadFor = (ziel: { userId?: string; groupId?: string }) =>
+    unread.conversations[ziel.groupId ? `group:${ziel.groupId}` : `dm:${ziel.userId}`] || 0;
+
   const openGroupChat = async (targetGroup: Group) => {
     setChatTargetGroup(targetGroup);
     setChatTargetUser(null);
@@ -338,6 +388,7 @@ export default function TabsLayout() {
     setChatLoading(true);
     try {
       setChatMessages(await apiService.getGroupMessages(targetGroup.id));
+      markRead({ groupId: targetGroup.id });
     } catch (e) {
       // Der Server antwortet mit 403, wenn man nicht (mehr) Mitglied ist —
       // etwa nachdem man aus der Gruppe entfernt wurde, während die Liste
@@ -402,9 +453,17 @@ export default function TabsLayout() {
     }
   };
 
+  // Ein Takt für beide Zähler statt zweier Timer: die Glocke (offene
+  // Beitrittsanfragen) und der Punkt am Menü-Symbol (ungelesene Nachrichten)
+  // wollen dieselbe Aktualität, und zwei Intervalle würden nur doppelt so oft
+  // aufwachen.
   useEffect(() => {
-    loadNotificationCount();
-    const interval = setInterval(loadNotificationCount, 15000);
+    const tick = () => {
+      loadNotificationCount();
+      loadUnread();
+    };
+    tick();
+    const interval = setInterval(tick, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1167,9 +1226,19 @@ export default function TabsLayout() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={toggleDrawer}
-              className="ml-4 p-1.5 active:scale-95"
+              className="ml-4 p-1.5 relative active:scale-95"
             >
               <Ionicons name="menu-outline" size={26} color="#22d3ee" />
+              {/* Ungelesene Nachrichten. Sitzt am Menü-Symbol, weil die Chats im
+                  Drawer liegen — die Glocke rechts steht fuer etwas anderes
+                  (offene Beitrittsanfragen). */}
+              {unread.total > 0 && (
+                <View className="absolute top-0 right-0 bg-cyan-400 min-w-[18px] h-[18px] rounded-full items-center justify-center border border-slate-950 px-1">
+                  <Text className="text-[10px] font-black text-slate-950 text-center">
+                    {unread.total > 99 ? "99+" : unread.total}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           ),
           headerRight: () => (
@@ -1860,12 +1929,19 @@ export default function TabsLayout() {
                           openGroupChat(group);
                         }}
                         accessibilityLabel={`Gruppenchat ${group.name} öffnen`}
-                        className="bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl flex-row items-center"
+                        className="bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl relative flex-row items-center"
                       >
                         <Ionicons name="chatbubble-ellipses-outline" size={14} color="#c084fc" />
                         <Text className="text-purple-300 text-[10px] font-black uppercase ml-1">
                           Chat
                         </Text>
+                        {unreadFor({ groupId: group.id }) > 0 && (
+                          <View className="absolute -top-1.5 -right-1.5 bg-purple-400 min-w-[16px] h-[16px] rounded-full items-center justify-center border border-slate-950 px-1">
+                            <Text className="text-[9px] font-black text-slate-950">
+                              {unreadFor({ groupId: group.id })}
+                            </Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
                     </View>
                   );
@@ -2143,10 +2219,17 @@ export default function TabsLayout() {
                               setShowFriendsModal(false);
                               openDirectChat(friend);
                             }}
-                            className="bg-cyan-400/10 border border-cyan-400/30 px-3 py-1.5 rounded-xl flex-row items-center space-x-1"
+                            className="bg-cyan-400/10 border border-cyan-400/30 px-3 py-1.5 rounded-xl relative flex-row items-center space-x-1"
                           >
                             <Ionicons name="chatbubble-ellipses-outline" size={14} color="#22d3ee" />
                             <Text className="text-cyan-400 text-[10px] font-black uppercase">Chat</Text>
+                            {unreadFor({ userId: friend.id }) > 0 && (
+                              <View className="absolute -top-1.5 -right-1.5 bg-cyan-400 min-w-[16px] h-[16px] rounded-full items-center justify-center border border-slate-950 px-1">
+                                <Text className="text-[9px] font-black text-slate-950">
+                                  {unreadFor({ userId: friend.id })}
+                                </Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
 
                           <TouchableOpacity
