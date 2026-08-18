@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `167ea16` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `311416b` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -193,6 +193,14 @@ Produktionsdatenbank gelandet.
 
   `tests/asyncerrors.test.js` prüft beides über HTTP gegen den echten Server.
 
+- **React Native Web stapelt `<Modal>` in DOM-Reihenfolge**, nicht danach,
+  welches zuletzt geöffnet wurde. Ein Dialog, der aus einem anderen Modal
+  heraus geöffnet wird, muss im JSX **nach** diesem stehen — sonst ist er zwar
+  im DOM und in `innerText` zu finden, liegt aber unsichtbar dahinter.
+  Passiert mit „Gruppe verwalten" (18.08.2026), das aus dem Freunde-Modal
+  geöffnet wird. Ein Test hätte das nicht gefunden: die Zusicherungen liefen
+  alle grün, weil der Text im DOM stand.
+
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
   falschen Schlüssel hat genau den Absturz oben ausgelöst. Den Server die
@@ -213,7 +221,7 @@ Barcode-Scanner mit Community-EAN-Datenbank, XP/Level mit Level-Up-Aufgaben,
 Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge, Rangliste mit Zeitfiltern.
 
 **Social:** Freundschaftsanfragen mit Live-Suche (Instagram-Stil),
-Gruppen, Direkt- und Gruppenchat, **getrennte** Freunde-/Gruppen-Feeds,
+Gruppen mit Mitgliederverwaltung, Direkt- und Gruppenchat, **getrennte** Freunde-/Gruppen-Feeds,
 Freunde-Radar (wer ist gerade aktiv), Push-Notifications (Backend fertig).
 
 **Karte:** OpenStreetMap/Leaflet, Standort optional in drei Modi
@@ -289,6 +297,7 @@ alles über Node's eingebauten Test-Runner.
 | `tests/authorization.test.js` | Wer darf was sehen und ändern |
 | `tests/barcode.test.js` | EAN-Prüfung, Community-Datenbank |
 | `tests/changepassword.test.js` | Passwort ändern, Wirkung auf Sitzungen |
+| `tests/groupmembers.test.js` | Mitglieder hinzufügen/entfernen, Gruppe verlassen |
 | `tests/moderation.test.js` | Blockieren und Melden |
 | `tests/push.test.js` | Push-Versand, Empfängerauswahl |
 | `tests/quickpicks.test.js` | Katalog-Sichtbarkeit, persönliche Schnellwahl |

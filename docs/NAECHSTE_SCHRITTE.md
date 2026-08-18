@@ -117,19 +117,38 @@ Dafür gibt es drei Fehlerinjektions-Routen in `server/index.js`, die nur bei
 gesetztem `TRINKDUELL_ENABLE_FAULT_ROUTE=1` existieren; ein eigener Test
 prüft, dass sie ohne die Variable 404 liefern.
 
-### 1.3 Gruppenmitglieder verwalten — **hoch**
+### ~~1.3 Gruppenmitglieder verwalten~~ — **erledigt**
 
-Die Gruppenliste zeigt seit `a7f12b6` die Mitgliederzahl, aber man kann
-niemanden hinzufügen, entfernen oder die Gruppe verlassen. Eine Gruppe, die
-man nicht verlassen kann, ist ein Problem — besonders zusammen mit der
-Blockierfunktion.
+`POST /api/groups/:id/members` (Admin), `DELETE /api/groups/:id/members/:userId`
+(Admin entfernt; die eigene ID einzusetzen heißt verlassen) und
+`GET /api/groups/:id/members` (Mitgliederliste ohne E-Mails, mit Admin-Markierung).
 
-- `POST /api/groups/:id/members` (Admin fügt hinzu),
-  `DELETE /api/groups/:id/members/:userId` (Admin entfernt; jeder darf sich
-  selbst entfernen = verlassen)
-- Admin kann die Gruppe nicht verlassen, ohne sie aufzulösen oder die
-  Adminrolle zu übergeben — Verhalten bewusst festlegen und dokumentieren
-- UI: in der Gruppenliste im Freunde-Modal (`src/app/(tabs)/_layout.tsx`)
+**Festgelegtes Verhalten beim Admin-Austritt:**
+
+| Lage | Ergebnis |
+|---|---|
+| Admin geht, weitere Mitglieder da | Adminrolle geht automatisch an das dienstälteste verbliebene Mitglied (erstes in `memberIds`), Push an den neuen Admin |
+| Admin ist das letzte Mitglied | Gruppe wird gelöscht, samt Chatverlauf und Quests |
+
+Die Alternative — „Admin darf erst raus, wenn er übergeben hat" — sperrt genau
+die Person ein, die vielleicht wegen eines Konflikts gehen will. Zusammen mit
+der Blockierfunktion wäre das der schlechtere Fehler.
+
+**Blockierung gilt auch hier:** wer blockiert ist (in beide Richtungen), kann
+nicht in eine Gruppe geholt werden. Sonst wäre „in eine Gruppe stecken" der
+Weg, eine Blockierung zu umgehen — Gruppenchat und Gruppen-Feed führen die
+beiden sonst wieder zusammen.
+
+UI: Zahnrad neben „Chat" in der Gruppenliste — Mitglieder mit Admin-Markierung,
+Entfernen-Knopf nur für den Admin, Freunde hinzufügen, offene Beitrittsanfragen
+annehmen/ablehnen (die Route dazu gab es längst, aber ohne Bedienelement) und
+„Gruppe verlassen" mit einer Rückfrage, die die jeweilige Folge nennt.
+
+24 Tests in `tests/groupmembers.test.js`.
+
+**Noch offen bleibt 1.5:** wie man eine Gruppe überhaupt findet, um beizutreten.
+Das Annehmen von Anfragen ist jetzt bedienbar, das Stellen einer Anfrage
+braucht weiterhin die Gruppen-ID.
 
 ### 1.4 Ungelesen-Markierung im Chat — **mittel**
 

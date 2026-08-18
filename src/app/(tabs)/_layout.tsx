@@ -15,7 +15,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { apiService } from "@/services/api";
+import { apiService, GroupMembers } from "@/services/api";
 import { useAuth } from "../_layout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
@@ -606,6 +606,147 @@ export default function TabsLayout() {
       console.error("Failed to delete log:", e);
     }
   };
+
+  // ── Gruppenmitglieder verwalten ─────────────────────────────────────────
+  const [manageGroup, setManageGroup] = useState<Group | null>(null);
+  const [groupMembers, setGroupMembers] = useState<GroupMembers | null>(null);
+  const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+  const [groupBusyUserId, setGroupBusyUserId] = useState<string | null>(null);
+
+  const loadGroupMembers = async (groupId: string) => {
+    setGroupMembersLoading(true);
+    try {
+      setGroupMembers(await apiService.getGroupMembers(groupId));
+    } catch (error) {
+      notify("Fehler", error instanceof Error ? error.message : "Mitglieder konnten nicht geladen werden.");
+      setGroupMembers(null);
+    } finally {
+      setGroupMembersLoading(false);
+    }
+  };
+
+  const openGroupManage = async (group: Group) => {
+    await triggerHaptic("light");
+    setManageGroup(group);
+    setGroupMembers(null);
+    await loadGroupMembers(group.id);
+  };
+
+  const closeGroupManage = () => {
+    setManageGroup(null);
+    setGroupMembers(null);
+    setGroupBusyUserId(null);
+  };
+
+  const handleAddGroupMember = async (user: User) => {
+    if (!manageGroup) return;
+    setGroupBusyUserId(user.id);
+    try {
+      await apiService.addGroupMember(manageGroup.id, user.id);
+      await triggerHaptic("success");
+      await loadGroupMembers(manageGroup.id);
+      setGroupsList(await apiService.getGroups());
+    } catch (error) {
+      await triggerHaptic("error");
+      notify("Fehler", error instanceof Error ? error.message : "Hinzufügen fehlgeschlagen.");
+    } finally {
+      setGroupBusyUserId(null);
+    }
+  };
+
+  const handleRemoveGroupMember = async (member: { id: string; name: string }) => {
+    if (!manageGroup) return;
+    const frage = `${member.name} wirklich aus "${manageGroup.name}" entfernen?`;
+
+    const ausfuehren = async () => {
+      setGroupBusyUserId(member.id);
+      try {
+        await apiService.removeGroupMember(manageGroup.id, member.id);
+        await triggerHaptic("success");
+        await loadGroupMembers(manageGroup.id);
+        setGroupsList(await apiService.getGroups());
+      } catch (error) {
+        await triggerHaptic("error");
+        notify("Fehler", error instanceof Error ? error.message : "Entfernen fehlgeschlagen.");
+      } finally {
+        setGroupBusyUserId(null);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm(frage)) await ausfuehren();
+      return;
+    }
+    Alert.alert("Mitglied entfernen", frage, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Entfernen", style: "destructive", onPress: ausfuehren },
+    ]);
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!manageGroup || !dbUser) return;
+
+    // Die Folgen unterscheiden sich deutlich, also steht in der Rückfrage auch
+    // Verschiedenes: als Letzter löst man die Gruppe samt Chatverlauf auf, als
+    // Admin gibt man die Rolle ab.
+    const anzahl = groupMembers?.members.length ?? 0;
+    const istAdmin = groupMembers?.isAdmin ?? false;
+    const frage =
+      anzahl <= 1
+        ? `Du bist das letzte Mitglied. "${manageGroup.name}" wird mitsamt dem Chatverlauf gelöscht.`
+        : istAdmin
+        ? `Du gibst die Adminrolle an das dienstälteste Mitglied ab und verlässt "${manageGroup.name}".`
+        : `"${manageGroup.name}" wirklich verlassen?`;
+
+    const ausfuehren = async () => {
+      setGroupBusyUserId(dbUser.id);
+      try {
+        const res = await apiService.removeGroupMember(manageGroup.id, dbUser.id);
+        await triggerHaptic("success");
+        closeGroupManage();
+        setGroupsList(await apiService.getGroups());
+        notify(
+          "Erledigt",
+          res.groupDeleted ? "Die Gruppe wurde aufgelöst." : "Du hast die Gruppe verlassen."
+        );
+      } catch (error) {
+        await triggerHaptic("error");
+        notify("Fehler", error instanceof Error ? error.message : "Verlassen fehlgeschlagen.");
+      } finally {
+        setGroupBusyUserId(null);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm(frage)) await ausfuehren();
+      return;
+    }
+    Alert.alert("Gruppe verlassen", frage, [
+      { text: "Abbrechen", style: "cancel" },
+      { text: "Verlassen", style: "destructive", onPress: ausfuehren },
+    ]);
+  };
+
+  const handleGroupRequest = async (userId: string, accept: boolean) => {
+    if (!manageGroup) return;
+    setGroupBusyUserId(userId);
+    try {
+      await apiService.handleJoinRequest(manageGroup.id, userId, accept);
+      await triggerHaptic("success");
+      await loadGroupMembers(manageGroup.id);
+      setGroupsList(await apiService.getGroups());
+    } catch (error) {
+      await triggerHaptic("error");
+      notify("Fehler", error instanceof Error ? error.message : "Anfrage konnte nicht bearbeitet werden.");
+    } finally {
+      setGroupBusyUserId(null);
+    }
+  };
+
+  /** Freunde, die noch nicht in der Gruppe sind — die Kandidaten zum Hinzufügen. */
+  const addableFriends = friendsList.filter(
+    (f) => !(groupMembers?.members || []).some((m) => m.id === f.id)
+  );
 
   const handleLogout = async () => {
     const performLogout = async () => {
@@ -1447,6 +1588,14 @@ export default function TabsLayout() {
                       </View>
 
                       <TouchableOpacity
+                        onPress={() => openGroupManage(group)}
+                        accessibilityLabel={`Gruppe ${group.name} verwalten`}
+                        className="bg-slate-900 border border-white/10 px-2.5 py-1.5 rounded-xl mr-1.5"
+                      >
+                        <Ionicons name="settings-outline" size={14} color="#94a3b8" />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
                         onPress={() => {
                           setShowFriendsModal(false);
                           openGroupChat(group);
@@ -1673,6 +1822,172 @@ export default function TabsLayout() {
                 </>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gruppe verwalten */}
+      {/* Bewusst NACH dem Freunde-Modal: React Native Web stapelt Modals in
+          DOM-Reihenfolge. Weiter oben lag dieser Dialog hinter dem Modal,
+          aus dem er geöffnet wird — sichtbar war nur das Freunde-Modal. */}
+      <Modal
+        visible={manageGroup !== null}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closeGroupManage}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-purple-500/30 rounded-t-3xl p-6 pb-8 max-h-[88%]">
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white text-base font-black uppercase tracking-wider flex-1 mr-2" numberOfLines={1}>
+                {manageGroup?.name}
+              </Text>
+              <TouchableOpacity onPress={closeGroupManage} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-slate-500 text-[10px] font-semibold mb-4">
+              {groupMembers?.isAdmin
+                ? "Du bist Admin — du kannst Mitglieder hinzufügen und entfernen."
+                : "Du bist Mitglied dieser Gruppe."}
+            </Text>
+
+            {groupMembersLoading && !groupMembers ? (
+              <View className="py-10 items-center">
+                <ActivityIndicator color="#c084fc" />
+              </View>
+            ) : (
+              <ScrollView className="mb-4" showsVerticalScrollIndicator={false}>
+                {/* Offene Beitrittsanfragen — nur der Admin sieht sie */}
+                {groupMembers?.isAdmin && (groupMembers?.pending.length ?? 0) > 0 && (
+                  <View className="mb-5">
+                    <Text className="text-amber-400 text-[10px] font-black uppercase tracking-wider mb-2.5">
+                      Offene Anfragen ({groupMembers?.pending.length})
+                    </Text>
+                    {groupMembers?.pending.map((p) => (
+                      <View
+                        key={p.id}
+                        className="flex-row items-center bg-amber-500/5 border border-amber-500/20 rounded-2xl px-3.5 py-2.5 mb-2"
+                      >
+                        <Text className="text-white text-xs font-black flex-1" numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        {groupBusyUserId === p.id ? (
+                          <ActivityIndicator size="small" color="#fbbf24" />
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              onPress={() => handleGroupRequest(p.id, false)}
+                              accessibilityLabel={`${p.name} ablehnen`}
+                              className="px-2.5 py-1.5"
+                            >
+                              <Text className="text-slate-400 text-[10px] font-black uppercase">Nein</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleGroupRequest(p.id, true)}
+                              accessibilityLabel={`${p.name} aufnehmen`}
+                              className="bg-amber-400 px-3 py-1.5 rounded-xl"
+                            >
+                              <Text className="text-slate-950 text-[10px] font-black uppercase">Aufnehmen</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Mitglieder */}
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2.5">
+                  Mitglieder ({groupMembers?.members.length ?? 0})
+                </Text>
+                {groupMembers?.members.map((m) => {
+                  const binIch = m.id === dbUser?.id;
+                  // Sich selbst entfernt man über "Gruppe verlassen" unten —
+                  // das erklärt die Folgen, dieser Knopf täte es wortlos.
+                  const darfEntfernen = (groupMembers?.isAdmin ?? false) && !binIch;
+                  return (
+                    <View
+                      key={m.id}
+                      className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-3.5 py-3 mb-2"
+                    >
+                      <View className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
+                        <Ionicons name="person" size={14} color="#c084fc" />
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text className="text-white text-xs font-black" numberOfLines={1}>
+                          {m.name}
+                          {binIch ? " (du)" : ""}
+                        </Text>
+                        {m.isAdmin && (
+                          <Text className="text-purple-400 text-[9px] font-black uppercase mt-0.5">Admin</Text>
+                        )}
+                      </View>
+                      {groupBusyUserId === m.id ? (
+                        <ActivityIndicator size="small" color="#f43f5e" />
+                      ) : darfEntfernen ? (
+                        <TouchableOpacity
+                          onPress={() => handleRemoveGroupMember(m)}
+                          accessibilityLabel={`${m.name} aus der Gruppe entfernen`}
+                          className="p-2"
+                        >
+                          <Ionicons name="person-remove-outline" size={16} color="#f43f5e" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  );
+                })}
+
+                {/* Freunde hinzufügen — nur der Admin */}
+                {groupMembers?.isAdmin && (
+                  <View className="mt-5">
+                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2.5">
+                      Freunde hinzufügen
+                    </Text>
+                    {addableFriends.length === 0 ? (
+                      <Text className="text-slate-600 text-[11px] font-medium py-2">
+                        {friendsList.length === 0
+                          ? "Du hast noch keine Freunde hinzugefügt."
+                          : "Alle deine Freunde sind schon in dieser Gruppe."}
+                      </Text>
+                    ) : (
+                      addableFriends.map((f) => (
+                        <TouchableOpacity
+                          key={f.id}
+                          onPress={() => handleAddGroupMember(f)}
+                          disabled={groupBusyUserId === f.id}
+                          accessibilityLabel={`${f.name} zur Gruppe hinzufügen`}
+                          className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-3.5 py-3 mb-2"
+                        >
+                          <View className="w-8 h-8 rounded-xl bg-slate-950 border border-white/10 items-center justify-center">
+                            <Ionicons name="person-outline" size={14} color="#64748b" />
+                          </View>
+                          <Text className="text-white text-xs font-black flex-1 ml-3" numberOfLines={1}>
+                            {f.name}
+                          </Text>
+                          {groupBusyUserId === f.id ? (
+                            <ActivityIndicator size="small" color="#c084fc" />
+                          ) : (
+                            <Ionicons name="add-circle-outline" size={18} color="#c084fc" />
+                          )}
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity
+              onPress={handleLeaveGroup}
+              accessibilityLabel="Gruppe verlassen"
+              className="bg-rose-500/10 border border-rose-500/30 rounded-2xl py-3.5 items-center flex-row justify-center"
+            >
+              <Ionicons name="exit-outline" size={16} color="#f43f5e" />
+              <Text className="text-rose-400 text-xs font-black uppercase tracking-wider ml-2">
+                {(groupMembers?.members.length ?? 0) <= 1 ? "Gruppe auflösen" : "Gruppe verlassen"}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

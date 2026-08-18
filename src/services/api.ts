@@ -87,6 +87,22 @@ let isServerOffline = false;
 let lastServerCheckTime = 0;
 const SERVER_CHECK_INTERVAL = 5000; // 5 seconds
 
+/** Antwort von GET /groups/:id/members. */
+export interface GroupMember {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  isAdmin: boolean;
+}
+
+export interface GroupMembers {
+  members: GroupMember[];
+  pending: { id: string; name: string; avatar?: string | null }[];
+  adminId: string;
+  /** Ob der ABRUFENDE Nutzer Admin ist — spart den Vergleich in jeder Ansicht. */
+  isAdmin: boolean;
+}
+
 const JWT_TOKEN_KEY = "trinkduell_v2_jwt_token";
 const CACHED_USER_KEY = "trinkduell_v2_cached_user";
 
@@ -360,6 +376,38 @@ export const apiService = {
       () => axiosInstance.post<void>(`/groups/${groupId}/requests`, { targetUserId, accept }),
       () => db.handleJoinRequest(groupId, targetUserId, accept)
     ),
+
+
+  /**
+   * Mitglieder einer Gruppe. Bewusst ohne Offline-Fallback: die lokale
+   * Mock-DB kennt weder Adminrolle noch offene Anfragen, und eine erfundene
+   * Mitgliederliste wäre schlimmer als eine ehrliche Fehlermeldung.
+   */
+  getGroupMembers: async (groupId: string): Promise<GroupMembers> => {
+    const res = await axiosInstance.get<GroupMembers>(`/groups/${groupId}/members`);
+    return res.data;
+  },
+
+  addGroupMember: async (groupId: string, userId: string): Promise<db.Group> => {
+    const res = await axiosInstance.post<db.Group>(`/groups/${groupId}/members`, { userId });
+    return res.data;
+  },
+
+  /**
+   * Entfernt jemanden. Die eigene ID einzusetzen heißt „Gruppe verlassen".
+   *
+   * `groupDeleted` meldet, dass man das letzte Mitglied war und die Gruppe
+   * damit aufgelöst wurde; `adminId` nennt den (womöglich neuen) Admin.
+   */
+  removeGroupMember: async (
+    groupId: string,
+    userId: string
+  ): Promise<{ groupDeleted: boolean; adminId?: string }> => {
+    const res = await axiosInstance.delete<{ groupDeleted: boolean; adminId?: string }>(
+      `/groups/${groupId}/members/${userId}`
+    );
+    return res.data;
+  },
 
   // Events
   getEvents: (): Promise<db.Event[]> =>

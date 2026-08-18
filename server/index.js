@@ -1911,6 +1911,10 @@ const MESSAGE_PREVIEW_LENGTH = 120;
 
 /** Obergrenze für Empfänger einer Gruppennachricht, damit eine große Gruppe
  *  keine unbegrenzte Zahl paralleler Push-Requests auslöst. */
+// Obergrenze fuer die Gruppengroesse. Dieselbe Zahl, die die Anlege-Route
+// schon fuer die Startliste verwendet.
+const MAX_GROUP_MEMBERS = 100;
+
 const MAX_GROUP_PUSH_RECIPIENTS = 50;
 
 /**
@@ -1991,8 +1995,10 @@ app.post("/api/groups", authenticate, async (req, res) => {
   // arbitrary strings would otherwise land in the group record as-is.
   let initialMembers = [req.userId];
   if (Array.isArray(memberIds)) {
-    if (memberIds.length > 100) {
-      return res.status(400).json({ error: "Zu viele Mitglieder auf einmal." });
+    // Die Startliste kommt ohne den Ersteller — deshalb einer weniger, sonst
+    // waere die frisch angelegte Gruppe sofort ueber der Grenze.
+    if (memberIds.length > MAX_GROUP_MEMBERS - 1) {
+      return res.status(400).json({ error: `Eine Gruppe fasst höchstens ${MAX_GROUP_MEMBERS} Mitglieder.` });
     }
     const allUsers = await db.getUsers();
     const knownIds = new Set(allUsers.map((u) => u.id));
@@ -2061,6 +2067,160 @@ app.post("/api/groups/:id/requests", authenticate, async (req, res) => {
   await db.saveGroup(group);
   res.json({ success: true });
 });
+// Mitglied hinzufügen (nur Admin)
+app.post("/api/groups/:id/members", authenticate, async (req, res) => {
+  const { userId } = req.body;
+  if (typeof userId !== "string" || !userId) {
+    return res.status(400).json({ error: "userId fehlt." });
+  }
+
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.id === req.params.id);
+  if (!group) {
+    return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  }
+  if (group.adminId !== req.userId) {
+    return res.status(403).json({ error: "Nur Administratoren können Mitglieder hinzufügen." });
+  }
+
+  const users = await db.getUsers();
+  const target = users.find((u) => u.id === userId);
+  if (!target) {
+    return res.status(404).json({ error: "Benutzer nicht gefunden." });
+  }
+  if ((group.memberIds || []).includes(userId)) {
+    return res.status(409).json({ error: `${target.name} ist bereits Mitglied.` });
+  }
+  if ((group.memberIds || []).length >= MAX_GROUP_MEMBERS) {
+    return res.status(400).json({
+      error: `Eine Gruppe fasst höchstens ${MAX_GROUP_MEMBERS} Mitglieder.`,
+    });
+  }
+
+  // Blockierung gilt in beide Richtungen. Ohne diese Prüfung wäre "in eine
+  // Gruppe stecken" der Weg, eine Blockierung zu umgehen: Gruppenchat und
+  // Gruppen-Feed führen die beiden sonst wieder zusammen.
+  const blocked = await getBlockedUserIds(req.userId);
+  if (blocked.has(userId)) {
+    return res.status(403).json({ error: "Zwischen euch besteht eine Blockierung." });
+  }
+
+  group.memberIds.push(userId);
+  // Eine offene Beitrittsanfrage ist damit erledigt.
+  group.pendingUserIds = (group.pendingUserIds || []).filter((id) => id !== userId);
+  await db.saveGroup(group);
+
+  sendPushNotification(
+    userId,
+    "Zu einer Gruppe hinzugefügt",
+    `${req.user.name} hat dich zu "${group.name}" hinzugefügt.`,
+    { type: "group_added", groupId: group.id }
+  ).catch(() => {});
+
+  res.json(group);
+});
+
+// Mitglied entfernen — und der Weg, eine Gruppe zu verlassen
+//
+// Wer die eigene ID einsetzt, verlässt die Gruppe. Das muss IMMER möglich
+// sein: eine Gruppe, aus der man nicht herauskommt, ist zusammen mit der
+// Blockierfunktion ein echtes Problem — man säße mit jemandem im selben Chat,
+// den man gerade blockiert hat.
+//
+// Der Admin ist der interessante Fall, und das Verhalten ist bewusst so
+// gewählt:
+//
+//   - Verlässt der Admin eine Gruppe mit weiteren Mitgliedern, geht die
+//     Adminrolle automatisch an das dienstälteste verbliebene Mitglied
+//     (das erste in `memberIds`). Die Alternative — "Admin darf nicht raus,
+//     bevor er übergeben hat" — sperrt genau die Person ein, die vielleicht
+//     gerade wegen eines Konflikts gehen will.
+//   - Ist der Admin das letzte Mitglied, wird die Gruppe gelöscht. Eine
+//     mitgliederlose Gruppe wäre für niemanden mehr sichtbar, läge aber samt
+//     Chatverlauf für immer in der Datenbank.
+app.delete("/api/groups/:id/members/:userId", authenticate, async (req, res) => {
+  const targetId = req.params.userId;
+
+  const groups = await db.getGroups();
+  const group = groups.find((g) => g.id === req.params.id);
+  if (!group) {
+    return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  }
+
+  const selbst = targetId === req.userId;
+  if (!selbst && group.adminId !== req.userId) {
+    return res.status(403).json({ error: "Nur Administratoren können Mitglieder entfernen." });
+  }
+  if (!(group.memberIds || []).includes(targetId)) {
+    return res.status(404).json({ error: "Diese Person ist kein Mitglied dieser Gruppe." });
+  }
+
+  group.memberIds = group.memberIds.filter((id) => id !== targetId);
+  group.pendingUserIds = (group.pendingUserIds || []).filter((id) => id !== targetId);
+
+  if (group.memberIds.length === 0) {
+    await db.deleteGroup(group.id);
+    return res.json({ success: true, groupDeleted: true });
+  }
+
+  let newAdminId = null;
+  if (group.adminId === targetId) {
+    newAdminId = group.memberIds[0];
+    group.adminId = newAdminId;
+  }
+
+  await db.saveGroup(group);
+
+  if (newAdminId) {
+    sendPushNotification(
+      newAdminId,
+      "Du bist jetzt Gruppen-Admin",
+      `Du verwaltest ab sofort "${group.name}".`,
+      { type: "group_admin", groupId: group.id }
+    ).catch(() => {});
+  }
+  if (!selbst) {
+    sendPushNotification(
+      targetId,
+      "Aus einer Gruppe entfernt",
+      `Du bist nicht mehr Mitglied von "${group.name}".`,
+      { type: "group_removed", groupId: group.id }
+    ).catch(() => {});
+  }
+
+  res.json({ success: true, groupDeleted: false, adminId: group.adminId });
+});
+
+// Mitglieder einer Gruppe — nur für Mitglieder, und nur das Nötige.
+//
+// Ohne diese Route müsste der Client die Namen aus `/api/users` zusammensuchen,
+// was die vollständige Nutzerliste ans Gerät gäbe.
+app.get("/api/groups/:id/members", authenticate, async (req, res) => {
+  const group = await getGroupIfMember(req.params.id, req.userId);
+  if (!group) {
+    return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  }
+
+  const users = await db.getUsers();
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const members = (group.memberIds || [])
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar,
+      isAdmin: u.id === group.adminId,
+    }));
+
+  const pending = (group.pendingUserIds || [])
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((u) => ({ id: u.id, name: u.name, avatar: u.avatar }));
+
+  res.json({ members, pending, adminId: group.adminId, isAdmin: group.adminId === req.userId });
+});
+
 
 // ==========================================
 // Events Endpoints

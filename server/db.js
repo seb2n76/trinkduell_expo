@@ -898,6 +898,31 @@ module.exports = {
     }
     await saveDb();
   },
+  /**
+   * Löscht eine Gruppe samt allem, was an ihr hängt.
+   *
+   * Gebraucht für genau einen Fall: das letzte Mitglied verlässt die Gruppe.
+   * Ohne das bliebe eine mitgliederlose Gruppe für immer in der Datenbank
+   * stehen — unsichtbar (GET /api/groups filtert auf Mitgliedschaft), aber mit
+   * ihrem gesamten Chatverlauf.
+   *
+   * In Postgres erledigen die FK-Kaskaden (`ON DELETE CASCADE` auf
+   * `messages.group_id` und `group_quests.group_id`) den Rest. Der JSON-Modus
+   * hat keine Fremdschlüssel, dort muss dasselbe von Hand passieren — sonst
+   * driften die beiden Modi auseinander, was in diesem Projekt schon mehrfach
+   * passiert ist.
+   */
+  deleteGroup: async (groupId) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("DELETE FROM groups WHERE id = $1", [groupId]);
+      return;
+    }
+    db.groups = db.groups.filter((g) => g.id !== groupId);
+    db.messages = (db.messages || []).filter((m) => m.groupId !== groupId);
+    db.groupQuests = (db.groupQuests || []).filter((q) => q.groupId !== groupId);
+    await saveDb();
+  },
   getEvents: async () => {
     await loadDb();
     if (pool) {
