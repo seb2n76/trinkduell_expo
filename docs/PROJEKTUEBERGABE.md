@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `d1fee54` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `9a2c223` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -201,6 +201,20 @@ Produktionsdatenbank gelandet.
   geöffnet wird. Ein Test hätte das nicht gefunden: die Zusicherungen liefen
   alle grün, weil der Text im DOM stand.
 
+- **Die beiden DB-Modi dürfen sich nicht unterschiedlich VERHALTEN**, nicht
+  nur beide vorhanden sein. `saveEvent` hatte in Postgres ein Upsert
+  (`ON CONFLICT DO UPDATE`) und im JSON-Zweig ein blindes `push`. Jeder
+  Event-Beitritt legte damit im JSON-Modus eine **zweite Kopie** des Events
+  an — in der App als „Meine Events (2)“ mit zweimal demselben Namen sichtbar
+  (18.08.2026). Produktion läuft auf Postgres und war nicht betroffen, der
+  automatische Fallback schon.
+
+  Wer eine `save*`-Funktion anfasst: der JSON-Zweig muss dieselbe Semantik
+  haben wie das SQL darüber. Bei `ON CONFLICT ... DO UPDATE` heißt das
+  `findIndex` + Ersetzen, nicht `push`. Bewusst anhängend sind nur die
+  Funktionen ohne Upsert (`saveLog`, `savePost`, `saveReport`, `saveMessage`)
+  — dort erzeugt jeder Aufruf naturgemäß einen neuen Eintrag.
+
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
   falschen Schlüssel hat genau den Absturz oben ausgelöst. Den Server die
@@ -222,7 +236,7 @@ Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge, Rangliste mit Zeitfiltern.
 
 **Social:** Freundschaftsanfragen mit Live-Suche (Instagram-Stil),
 Gruppen mit Mitgliederverwaltung und Einladungscode, Direkt- und Gruppenchat, **getrennte** Freunde-/Gruppen-Feeds,
-Freunde-Radar (wer ist gerade aktiv), Push-Notifications (Backend fertig).
+Events mit Code, Gruppen-Quests mit Fortschritt, Freunde-Radar (wer ist gerade aktiv), Push-Notifications (Backend fertig).
 
 **Karte:** OpenStreetMap/Leaflet, Standort optional in drei Modi
 (automatisch / nur Check-in / aus, Standard **aus**), sichtbar nur für
@@ -297,6 +311,7 @@ alles über Node's eingebauten Test-Runner.
 | `tests/authorization.test.js` | Wer darf was sehen und ändern |
 | `tests/barcode.test.js` | EAN-Prüfung, Community-Datenbank |
 | `tests/changepassword.test.js` | Passwort ändern, Wirkung auf Sitzungen |
+| `tests/eventsquests.test.js` | Events, Beitritt per Code, Quest-Fortschritt |
 | `tests/groupinvite.test.js` | Einladungscode, Beitritt, Rotation |
 | `tests/groupmembers.test.js` | Mitglieder hinzufügen/entfernen, Gruppe verlassen |
 | `tests/moderation.test.js` | Blockieren und Melden |

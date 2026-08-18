@@ -724,7 +724,13 @@ module.exports = {
       );
       return;
     }
-    db.drinks.push(drink);
+    // Ersetzen statt anhängen, wie der Postgres-Zweig darueber (ON CONFLICT
+    // DO UPDATE). Beide Aufrufstellen legen heute nur neue Getränke an, aber
+    // die Zweige duerfen sich nicht unterschiedlich verhalten - genau daran
+    // ist saveEvent aufgelaufen (18.08.2026).
+    const idx = db.drinks.findIndex((e) => e.id === drink.id);
+    if (idx !== -1) db.drinks[idx] = drink;
+    else db.drinks.push(drink);
     await saveDb();
   },
   deleteDrink: async (drinkId) => {
@@ -962,7 +968,13 @@ module.exports = {
       );
       return;
     }
-    db.events.push(event);
+    // Ersetzen statt anhängen. Der Postgres-Zweig darueber macht ein Upsert;
+    // hier wurde blind gepusht, wodurch jeder Event-Beitritt im JSON-Modus das
+    // Event DOPPELT in die Liste legte. Gefunden beim Bauen der Event-Ansicht
+    // (18.08.2026), sichtbar als "Meine Events (2)" mit zweimal demselben Namen.
+    const idx = db.events.findIndex((e) => e.id === event.id);
+    if (idx !== -1) db.events[idx] = event;
+    else db.events.push(event);
     await saveDb();
   },
   getPosts: async () => {

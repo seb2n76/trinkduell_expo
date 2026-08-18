@@ -199,13 +199,33 @@ UI: Knopf neben „Neue Gruppe erstellen“ öffnet die Code-Eingabe; der Code s
 > eine Abhängigkeit für acht Zeichen lohnt nicht. Der Code steht groß und
 > markierbar da.
 
-### 1.6 Events und Gruppen-Quests erreichbar machen — **mittel**
+### ~~1.6 Events und Gruppen-Quests erreichbar machen~~ — **erledigt**
 
-Beide Backends sind **vollständig** inklusive Invite-Codes, Mitgliedschaft,
-Fortschrittsberechnung und Erfolgs-Post im Feed. Kein Screen ruft sie auf:
-`getEvents`, `createEvent`, `joinEventWithCode`, `getGroupQuests`,
-`createGroupQuest`. Viel fertige Substanz für vergleichsweise wenig
-UI-Arbeit — aber für eine Freundes-Beta verzichtbar, deshalb nicht oben.
+Beide Backends waren vollständig, nur rief sie kein Screen auf. Jetzt:
+
+- **Events** als eigener Abschnitt im Freunde-Dialog: Liste mit Restzeit und
+  Teilnehmerzahl, „Event starten“ (Name + Dauer 4/6/12/24 Std, danach wird
+  der Code angezeigt) und Beitritt per Code. Abgelaufene Events bleiben
+  sichtbar, aber ausgegraut — der Server filtert sie nicht heraus, und das
+  ist richtig so: man will sehen, woran man teilgenommen hat.
+- **Quests** über den Gruppen-Verwaltungsdialog: laufende Quests mit
+  Fortschrittsbalken und Status, darunter ein Formular (Titel, Typ
+  Getränke/Volumen/Wasser, Ziel, Dauer). Die Einheit im Formular wechselt
+  mit dem Typ (Stück / Liter / Gläser).
+
+Der Code-Dialog ist jetzt einer für Gruppen **und** Events (`codeModalMode`)
+— die beiden unterscheiden sich nur im Text und in der Route.
+
+**Dabei einen echten Fehler gefunden:** `saveEvent` machte im Postgres-Zweig
+ein Upsert, im JSON-Zweig ein blindes `push`. Jeder Event-Beitritt legte damit
+im JSON-Modus eine **zweite Kopie** des Events an — in der App als
+„Meine Events (2)“ mit zweimal demselben Namen sichtbar. Produktion läuft auf
+Postgres und war nicht betroffen, der JSON-Fallback schon. `saveDrink` hatte
+dieselbe Abweichung (heute folgenlos, weil beide Aufrufstellen neu anlegen).
+Beide angeglichen.
+
+26 Tests in `tests/eventsquests.test.js` — beide Backends waren bis dahin
+völlig ungetestet.
 
 ### 1.7 Moderations-Ansicht für Meldungen — **mittel**
 

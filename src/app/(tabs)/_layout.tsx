@@ -25,6 +25,8 @@ import {
   DrinkLog,
   DirectMessage,
   Group,
+  Event,
+  GroupQuest,
   BlockedUser,
   ReportReason,
   REPORT_REASON_LABELS,
@@ -165,6 +167,7 @@ export default function TabsLayout() {
       // Autorisierungsrunde nur noch die eigenen, es ist also keine
       // zusätzliche Filterung nötig.
       setGroupsList(await apiService.getGroups());
+      await loadEvents();
     } catch (e) {
       console.error("Failed to load friends in layout modal:", e);
     } finally {
@@ -625,10 +628,157 @@ export default function TabsLayout() {
     }
   };
 
+  // ── Gruppen-Quests ──────────────────────────────────────────────────────
+  //
+  // Der Fortschritt wird nicht gespeichert, sondern bei jedem GET /api/quests
+  // aus den Trink-Logs der Gruppenmitglieder neu berechnet. Ein Abruf ist
+  // deshalb immer aktuell — und ein Neuladen nach jeder Aktion nötig.
+  const [showQuestModal, setShowQuestModal] = useState(false);
+  const [questList, setQuestList] = useState<GroupQuest[]>([]);
+  const [questLoading, setQuestLoading] = useState(false);
+  const [questBusy, setQuestBusy] = useState(false);
+  const [questError, setQuestError] = useState("");
+  const [newQuestTitle, setNewQuestTitle] = useState("");
+  const [newQuestType, setNewQuestType] = useState<"drinks" | "volume" | "water">("drinks");
+  const [newQuestTarget, setNewQuestTarget] = useState("10");
+  const [newQuestHours, setNewQuestHours] = useState("6");
+
+  const QUEST_TYPEN = [
+    { key: "drinks" as const, label: "Getränke", einheit: "Stück", icon: "beer-outline" },
+    { key: "volume" as const, label: "Volumen", einheit: "Liter", icon: "water-outline" },
+    { key: "water" as const, label: "Wasser", einheit: "Gläser", icon: "fitness-outline" },
+  ];
+
+  const questEinheit = (typ: string) =>
+    QUEST_TYPEN.find((t) => t.key === typ)?.einheit ?? "";
+
+  const loadQuests = async (groupId: string) => {
+    setQuestLoading(true);
+    try {
+      const alle = await apiService.getGroupQuests();
+      setQuestList(alle.filter((q) => q.groupId === groupId));
+    } catch (error) {
+      notify("Fehler", error instanceof Error ? error.message : "Quests konnten nicht geladen werden.");
+      setQuestList([]);
+    } finally {
+      setQuestLoading(false);
+    }
+  };
+
+  const openQuests = async () => {
+    if (!manageGroup) return;
+    await triggerHaptic("light");
+    setQuestError("");
+    setShowQuestModal(true);
+    await loadQuests(manageGroup.id);
+  };
+
+  const handleCreateQuest = async () => {
+    if (!manageGroup) return;
+    setQuestError("");
+
+    const titel = newQuestTitle.trim();
+    if (titel.length < 2) {
+      setQuestError("Der Titel braucht mindestens 2 Zeichen.");
+      return;
+    }
+    const ziel = parseFloat(newQuestTarget.replace(",", "."));
+    if (!Number.isFinite(ziel) || ziel <= 0) {
+      setQuestError("Das Ziel muss eine Zahl größer als 0 sein.");
+      return;
+    }
+    const stunden = parseInt(newQuestHours, 10);
+    if (!Number.isFinite(stunden) || stunden < 1 || stunden > 168) {
+      setQuestError("Die Dauer muss zwischen 1 und 168 Stunden liegen.");
+      return;
+    }
+
+    setQuestBusy(true);
+    try {
+      await apiService.createGroupQuest(manageGroup.id, titel, newQuestType, ziel, stunden);
+      await triggerHaptic("success");
+      setNewQuestTitle("");
+      await loadQuests(manageGroup.id);
+    } catch (error) {
+      await triggerHaptic("error");
+      setQuestError(error instanceof Error ? error.message : "Quest konnte nicht angelegt werden.");
+    } finally {
+      setQuestBusy(false);
+    }
+  };
+
+  // ── Events ──────────────────────────────────────────────────────────────
+  const [eventsList, setEventsList] = useState<Event[]>([]);
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [newEventName, setNewEventName] = useState("");
+  const [newEventHours, setNewEventHours] = useState("6");
+  const [eventBusy, setEventBusy] = useState(false);
+  const [eventError, setEventError] = useState("");
+  const [eventInviteCode, setEventInviteCode] = useState<string | null>(null);
+
+  const loadEvents = async () => {
+    try {
+      setEventsList(await apiService.getEvents());
+    } catch (error) {
+      console.warn("Events konnten nicht geladen werden:", error);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    setEventError("");
+    const name = newEventName.trim();
+    if (name.length < 2) {
+      setEventError("Der Eventname braucht mindestens 2 Zeichen.");
+      return;
+    }
+    const hours = parseInt(newEventHours, 10);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
+      setEventError("Die Dauer muss zwischen 1 und 168 Stunden liegen.");
+      return;
+    }
+
+    setEventBusy(true);
+    try {
+      const event = await apiService.createEvent(name, hours);
+      await triggerHaptic("success");
+      await loadEvents();
+      setNewEventName("");
+      setNewEventHours("6");
+      // Der Code ist der einzige Weg, jemanden dazuzuholen — deshalb bleibt der
+      // Dialog offen und zeigt ihn, statt sich wortlos zu schließen.
+      setEventInviteCode(event.inviteCode);
+    } catch (error) {
+      await triggerHaptic("error");
+      setEventError(error instanceof Error ? error.message : "Event konnte nicht erstellt werden.");
+    } finally {
+      setEventBusy(false);
+    }
+  };
+
+  /**
+   * Verbleibende Zeit als kurzer Text, plus ob das Event schon vorbei ist.
+   *
+   * Der Server filtert abgelaufene Events nicht heraus — sie bleiben in der
+   * Liste, damit man sieht, woran man teilgenommen hat. Die Unterscheidung
+   * passiert hier.
+   */
+  const eventRestzeit = (endTimestamp: string) => {
+    const rest = new Date(endTimestamp).getTime() - Date.now();
+    if (rest <= 0) return { vorbei: true, text: "beendet" };
+    const stunden = Math.floor(rest / 3600000);
+    const minuten = Math.floor((rest % 3600000) / 60000);
+    return {
+      vorbei: false,
+      text: stunden > 0 ? `noch ${stunden} Std ${minuten} Min` : `noch ${minuten} Min`,
+    };
+  };
+
   // ── Einladungscode ──────────────────────────────────────────────────────
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false);
+  // Ein Dialog für beide Codes. Gruppen und Events unterscheiden sich hier nur
+  // im Text und in der aufgerufenen Route, also lohnt kein zweiter Dialog.
+  const [codeModalMode, setCodeModalMode] = useState<"group" | "event" | null>(null);
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinError, setJoinError] = useState("");
@@ -685,9 +835,22 @@ export default function TabsLayout() {
 
     setJoinBusy(true);
     try {
+      if (codeModalMode === "event") {
+        const event = await apiService.joinEventWithCode(code);
+        // Der Offline-Fallback der Client-Bibliothek kann hier null liefern;
+        // das ist kein Erfolg, auch wenn keine Ausnahme fliegt.
+        if (!event) throw new Error("Ungültiger Code. Event nicht gefunden.");
+        await triggerHaptic("success");
+        setCodeModalMode(null);
+        setJoinCodeInput("");
+        await loadEvents();
+        notify("Willkommen", `Du bist jetzt bei "${event.name}" dabei.`);
+        return;
+      }
+
       const group = await apiService.joinGroupByCode(code);
       await triggerHaptic("success");
-      setShowJoinModal(false);
+      setCodeModalMode(null);
       setJoinCodeInput("");
       setGroupsList(await apiService.getGroups());
       notify("Willkommen", `Du bist jetzt Mitglied von "${group.name}".`);
@@ -1642,7 +1805,7 @@ export default function TabsLayout() {
                   triggerHaptic("light");
                   setJoinError("");
                   setJoinCodeInput("");
-                  setShowJoinModal(true);
+                  setCodeModalMode("group");
                 }}
                 accessibilityLabel="Gruppe per Code beitreten"
                 className="bg-slate-950 border border-white/10 px-4 rounded-2xl items-center justify-center"
@@ -1709,6 +1872,107 @@ export default function TabsLayout() {
                 })}
               </View>
             )}
+
+            {/* Meine Events.
+                Wie der Gruppenchat davor war das Backend vollständig gebaut —
+                Invite-Code, Mitgliedschaft, Ablaufzeit — nur rief es kein
+                Screen auf. Events sind die Ad-hoc-Variante einer Gruppe: eine
+                Party, die nach n Stunden von selbst endet. */}
+            <View className="mb-4">
+              <View className="flex-row items-center justify-between mb-3">
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                  Meine Events ({eventsList.length})
+                </Text>
+                <View className="flex-row" style={{ gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic("light");
+                      setCodeModalMode("event");
+                      setJoinCodeInput("");
+                      setJoinError("");
+                    }}
+                    accessibilityLabel="Event per Code beitreten"
+                    className="bg-slate-950 border border-white/10 px-2.5 py-1.5 rounded-xl"
+                  >
+                    <Ionicons name="enter-outline" size={14} color="#94a3b8" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic("light");
+                      setEventError("");
+                      setEventInviteCode(null);
+                      setShowCreateEventModal(true);
+                    }}
+                    accessibilityLabel="Event starten"
+                    className="bg-amber-500/10 border border-amber-500/30 px-2.5 py-1.5 rounded-xl"
+                  >
+                    <Ionicons name="add" size={14} color="#fbbf24" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {eventsList.length === 0 ? (
+                <Text className="text-slate-600 text-[10px] font-medium mb-1">
+                  Noch kein Event. Starte eins für den Abend — die Teilnehmer kommen
+                  über einen Code dazu.
+                </Text>
+              ) : (
+                eventsList.map((ev) => {
+                  const rest = eventRestzeit(ev.endTimestamp);
+                  return (
+                    <View
+                      key={ev.id}
+                      className={`border rounded-2xl p-3.5 flex-row items-center mb-2.5 ${
+                        rest.vorbei
+                          ? "bg-slate-950/40 border-white/5"
+                          : "bg-slate-950/60 border-amber-500/20"
+                      }`}
+                    >
+                      <View
+                        className={`w-9 h-9 rounded-xl items-center justify-center border ${
+                          rest.vorbei
+                            ? "bg-slate-900 border-white/10"
+                            : "bg-amber-500/10 border-amber-500/25"
+                        }`}
+                      >
+                        <Ionicons
+                          name={rest.vorbei ? "time-outline" : "flame"}
+                          size={16}
+                          color={rest.vorbei ? "#64748b" : "#fbbf24"}
+                        />
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text
+                          className={`text-xs font-black ${rest.vorbei ? "text-slate-500" : "text-white"}`}
+                          numberOfLines={1}
+                        >
+                          {ev.name}
+                        </Text>
+                        <Text
+                          className={`text-[9px] font-bold mt-0.5 ${
+                            rest.vorbei ? "text-slate-600" : "text-amber-400"
+                          }`}
+                        >
+                          {(ev.memberIds || []).length}{" "}
+                          {(ev.memberIds || []).length === 1 ? "Teilnehmer" : "Teilnehmer"} · {rest.text}
+                        </Text>
+                      </View>
+                      {ev.creatorId === dbUser?.id && !rest.vorbei && (
+                        <View className="bg-slate-900 border border-white/10 px-2.5 py-1 rounded-lg">
+                          <Text
+                            selectable
+                            accessibilityLabel={`Einladungscode ${ev.inviteCode}`}
+                            className="text-slate-300 text-[10px] font-black tracking-widest"
+                          >
+                            {ev.inviteCode}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </View>
 
             {/* Friend Request & Live User Search Input */}
             <View className="bg-slate-950/80 border border-white/5 rounded-2xl p-4 mb-4">
@@ -2114,6 +2378,17 @@ export default function TabsLayout() {
             )}
 
             <TouchableOpacity
+              onPress={openQuests}
+              accessibilityLabel="Quests dieser Gruppe"
+              className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl py-3.5 items-center flex-row justify-center mb-2.5"
+            >
+              <Ionicons name="trophy-outline" size={16} color="#34d399" />
+              <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider ml-2">
+                Quests
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               onPress={handleLeaveGroup}
               accessibilityLabel="Gruppe verlassen"
               className="bg-rose-500/10 border border-rose-500/30 rounded-2xl py-3.5 items-center flex-row justify-center"
@@ -2131,20 +2406,20 @@ export default function TabsLayout() {
           Steht wie „Gruppe verwalten" NACH dem Freunde-Modal — sonst läge es
           dahinter (siehe Falle zur Modal-Stapelung in der Projektübergabe). */}
       <Modal
-        visible={showJoinModal}
+        visible={codeModalMode !== null}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowJoinModal(false)}
+        onRequestClose={() => setCodeModalMode(null)}
       >
         <View className="flex-1 bg-black/85 justify-end">
           <View className="bg-slate-950 border-t border-purple-500/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-2">
               <Text className="text-white text-base font-black uppercase tracking-wider">
-                Gruppe beitreten
+                {codeModalMode === "event" ? "Event beitreten" : "Gruppe beitreten"}
               </Text>
               <TouchableOpacity
                 onPress={() => {
-                  setShowJoinModal(false);
+                  setCodeModalMode(null);
                   setJoinCodeInput("");
                   setJoinError("");
                 }}
@@ -2155,8 +2430,9 @@ export default function TabsLayout() {
             </View>
 
             <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
-              Gib den Einladungscode ein, den du vom Gruppen-Admin bekommen hast.
-              Gruppen lassen sich bewusst nicht durchsuchen.
+              {codeModalMode === "event"
+                ? "Gib den Code ein, den du vom Gastgeber bekommen hast."
+                : "Gib den Einladungscode ein, den du vom Gruppen-Admin bekommen hast. Gruppen lassen sich bewusst nicht durchsuchen."}
             </Text>
 
             <TextInput
@@ -2199,6 +2475,317 @@ export default function TabsLayout() {
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Event starten. Wie die anderen aus dem Freunde-Modal geöffneten
+          Dialoge steht dieser NACH ihm im JSX (Modal-Stapelung, siehe
+          Projektübergabe). */}
+      <Modal
+        visible={showCreateEventModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCreateEventModal(false)}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-amber-500/30 rounded-t-3xl p-6 pb-8">
+            <View className="flex-row justify-between items-center mb-2">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                {eventInviteCode ? "Event läuft 🔥" : "Event starten 🔥"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCreateEventModal(false);
+                  setEventInviteCode(null);
+                  setEventError("");
+                }}
+                className="p-1"
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {eventInviteCode ? (
+              <>
+                <Text className="text-slate-400 text-[11px] leading-relaxed mb-4">
+                  Gib diesen Code weiter — damit kommen deine Leute dazu.
+                </Text>
+                <View className="bg-amber-500/5 border border-amber-500/25 rounded-2xl p-4 mb-5 items-center">
+                  <Text
+                    selectable
+                    accessibilityLabel={`Event-Code ${eventInviteCode}`}
+                    className="text-white text-2xl font-black tracking-[6px]"
+                  >
+                    {eventInviteCode}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowCreateEventModal(false);
+                    setEventInviteCode(null);
+                  }}
+                  className="bg-amber-400 rounded-2xl py-3.5 items-center"
+                >
+                  <Text className="text-slate-950 text-xs font-black uppercase tracking-wider">
+                    Fertig
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+                  Ein Event ist ein Abend mit festem Ende. Danach läuft es von selbst aus.
+                </Text>
+
+                <TextInput
+                  value={newEventName}
+                  onChangeText={setNewEventName}
+                  placeholder="Name, z. B. Geburtstag Lisa"
+                  placeholderTextColor="#475569"
+                  maxLength={60}
+                  accessibilityLabel="Eventname"
+                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-3"
+                />
+
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                  Dauer
+                </Text>
+                <View className="flex-row mb-3" style={{ gap: 8 }}>
+                  {["4", "6", "12", "24"].map((h) => {
+                    const aktiv = newEventHours === h;
+                    return (
+                      <TouchableOpacity
+                        key={h}
+                        onPress={() => setNewEventHours(h)}
+                        accessibilityLabel={`${h} Stunden`}
+                        className={`flex-1 py-2.5 rounded-xl border items-center ${
+                          aktiv
+                            ? "bg-amber-500/10 border-amber-500/40"
+                            : "bg-slate-900 border-white/5"
+                        }`}
+                      >
+                        <Text
+                          className={`text-[11px] font-black ${
+                            aktiv ? "text-amber-400" : "text-slate-400"
+                          }`}
+                        >
+                          {h} Std
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {eventError ? (
+                  <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                    <Ionicons name="alert-circle" size={15} color="#f43f5e" />
+                    <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{eventError}</Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={handleCreateEvent}
+                  disabled={eventBusy || !newEventName.trim()}
+                  accessibilityLabel="Event anlegen"
+                  className={`rounded-2xl py-3.5 items-center ${
+                    eventBusy || !newEventName.trim() ? "bg-slate-800" : "bg-amber-400"
+                  }`}
+                >
+                  {eventBusy ? (
+                    <ActivityIndicator size="small" color="#0f172a" />
+                  ) : (
+                    <Text
+                      className={`text-xs font-black uppercase tracking-wider ${
+                        !newEventName.trim() ? "text-slate-600" : "text-slate-950"
+                      }`}
+                    >
+                      Event starten
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gruppen-Quests. Öffnet aus dem Verwaltungsdialog, steht deshalb im
+          JSX dahinter (Modal-Stapelung). */}
+      <Modal
+        visible={showQuestModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowQuestModal(false)}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-emerald-500/30 rounded-t-3xl p-6 pb-8 max-h-[88%]">
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white text-base font-black uppercase tracking-wider flex-1 mr-2" numberOfLines={1}>
+                Quests 🏆
+              </Text>
+              <TouchableOpacity onPress={() => setShowQuestModal(false)} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-slate-500 text-[10px] font-semibold mb-4">
+              Gemeinsames Ziel für {manageGroup?.name}. Zählt alles, was Mitglieder im
+              Zeitraum eintragen.
+            </Text>
+
+            <ScrollView className="mb-4" showsVerticalScrollIndicator={false}>
+              {questLoading ? (
+                <View className="py-8 items-center">
+                  <ActivityIndicator color="#34d399" />
+                </View>
+              ) : questList.length === 0 ? (
+                <Text className="text-slate-600 text-[11px] font-medium py-2 mb-2">
+                  Noch keine Quest. Leg unten eine an.
+                </Text>
+              ) : (
+                questList.map((q) => {
+                  const anteil = q.targetValue > 0
+                    ? Math.min(100, (q.currentValue / q.targetValue) * 100)
+                    : 0;
+                  const farbe =
+                    q.status === "completed" ? "#34d399" : q.status === "failed" ? "#f43f5e" : "#22d3ee";
+                  return (
+                    <View
+                      key={q.id}
+                      className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 mb-2.5"
+                    >
+                      <View className="flex-row items-center mb-2">
+                        <Text className="text-white text-xs font-black flex-1 mr-2" numberOfLines={1}>
+                          {q.title}
+                        </Text>
+                        <Text
+                          className="text-[9px] font-black uppercase tracking-wider"
+                          style={{ color: farbe }}
+                        >
+                          {q.status === "completed"
+                            ? "geschafft"
+                            : q.status === "failed"
+                            ? "verpasst"
+                            : "läuft"}
+                        </Text>
+                      </View>
+                      <View className="h-2 w-full bg-slate-950 rounded-full overflow-hidden mb-1.5">
+                        <View
+                          style={{ width: `${anteil}%`, backgroundColor: farbe }}
+                          className="h-full rounded-full"
+                        />
+                      </View>
+                      <Text className="text-slate-500 text-[9px] font-bold">
+                        {q.currentValue} / {q.targetValue} {questEinheit(q.type)}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+
+              {/* Neue Quest */}
+              <View className="mt-3 border-t border-white/5 pt-4">
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2.5">
+                  Neue Quest
+                </Text>
+
+                <TextInput
+                  value={newQuestTitle}
+                  onChangeText={setNewQuestTitle}
+                  placeholder="Titel, z. B. 50 Getränke zusammen"
+                  placeholderTextColor="#475569"
+                  maxLength={80}
+                  accessibilityLabel="Quest-Titel"
+                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3 text-white text-sm mb-2.5"
+                />
+
+                <View className="flex-row mb-2.5" style={{ gap: 8 }}>
+                  {QUEST_TYPEN.map((t) => {
+                    const aktiv = newQuestType === t.key;
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        onPress={() => setNewQuestType(t.key)}
+                        accessibilityLabel={`Quest-Typ ${t.label}`}
+                        className={`flex-1 py-2.5 rounded-xl border items-center ${
+                          aktiv
+                            ? "bg-emerald-500/10 border-emerald-500/40"
+                            : "bg-slate-900 border-white/5"
+                        }`}
+                      >
+                        <Ionicons
+                          name={t.icon as any}
+                          size={14}
+                          color={aktiv ? "#34d399" : "#64748b"}
+                        />
+                        <Text
+                          className={`text-[9px] font-black uppercase mt-1 ${
+                            aktiv ? "text-emerald-400" : "text-slate-500"
+                          }`}
+                        >
+                          {t.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View className="flex-row mb-2.5" style={{ gap: 8 }}>
+                  <View className="flex-1">
+                    <Text className="text-slate-500 text-[9px] font-black uppercase mb-1.5">
+                      Ziel ({questEinheit(newQuestType)})
+                    </Text>
+                    <TextInput
+                      value={newQuestTarget}
+                      onChangeText={setNewQuestTarget}
+                      keyboardType="numeric"
+                      accessibilityLabel="Zielwert"
+                      className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-slate-500 text-[9px] font-black uppercase mb-1.5">
+                      Dauer (Std)
+                    </Text>
+                    <TextInput
+                      value={newQuestHours}
+                      onChangeText={setNewQuestHours}
+                      keyboardType="numeric"
+                      accessibilityLabel="Dauer in Stunden"
+                      className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm"
+                    />
+                  </View>
+                </View>
+
+                {questError ? (
+                  <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-2.5 flex-row items-start">
+                    <Ionicons name="alert-circle" size={15} color="#f43f5e" />
+                    <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{questError}</Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={handleCreateQuest}
+                  disabled={questBusy || !newQuestTitle.trim()}
+                  accessibilityLabel="Quest anlegen"
+                  className={`rounded-2xl py-3 items-center ${
+                    questBusy || !newQuestTitle.trim() ? "bg-slate-800" : "bg-emerald-500"
+                  }`}
+                >
+                  {questBusy ? (
+                    <ActivityIndicator size="small" color="#0f172a" />
+                  ) : (
+                    <Text
+                      className={`text-[11px] font-black uppercase tracking-wider ${
+                        !newQuestTitle.trim() ? "text-slate-600" : "text-slate-950"
+                      }`}
+                    >
+                      Quest anlegen
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
