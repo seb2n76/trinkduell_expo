@@ -30,6 +30,8 @@ export interface User {
   isLevelLocked?: boolean;
   resetCode?: string | null;
   resetCodeExpiresAt?: string | null;
+  /** Nur im eigenen Profil gesetzt: darf dieser Nutzer Meldungen sehen? */
+  isModerator?: boolean;
 }
 
 

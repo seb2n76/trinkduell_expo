@@ -263,19 +263,39 @@ Beide angeglichen.
 26 Tests in `tests/eventsquests.test.js` — beide Backends waren bis dahin
 völlig ungetestet.
 
-### 1.7 Moderations-Ansicht für Meldungen — **mittel**
+### ~~1.7 Moderations-Ansicht für Meldungen~~ — **erledigt (Code), Betreiber muss noch etwas setzen**
 
-Meldungen landen in der Tabelle `reports` und im Server-Log
-(`docker compose logs backend | grep MELDUNG`). Es gibt **keine** Route, sie
-auszulesen. Die Stores erwarten Reaktion binnen 24 Stunden; Log-Grepping
-skaliert nicht.
+```
+GET   /api/reports[?status=open]   Meldungen ansehen (nur Moderator)
+PATCH /api/reports/:id             Status setzen (open/resolved/dismissed)
+```
 
-- Entweder ein CLI-Skript (Muster: `server/migrate-avatars.js`)
-- Oder `GET /api/reports` mit einer Admin-Prüfung — **es gibt bisher kein
-  Rollenkonzept**, das müsste erst entstehen (einfachster Weg: eine
-  `ADMIN_USER_IDS`-Umgebungsvariable)
-- Offene Entscheidung des Betreibers: sollen Meldungen zusätzlich per E-Mail
-  kommen? Resend ist eingerichtet, das wären wenige Zeilen in `server/email.js`
+**Rollenkonzept: eine Umgebungsvariable, keine Spalte.** `ADMIN_USER_IDS`
+(kommagetrennte Nutzer-IDs). Für einen Betreiber und eine Freundes-Beta wäre
+eine `role`-Spalte samt Verwaltung mehr Apparat als Nutzen — und eine Rolle,
+die man in der App vergeben kann, ist auch eine, die man sich über eine
+Lücke selbst geben kann. Wer die Variable setzen kann, hat ohnehin
+Server-Zugriff.
+
+**Leer bedeutet: niemand ist Moderator.** Eine vergessene Variable sperrt zu,
+statt aufzumachen. Die Routen antworten dann mit **404** statt 403 — dass es
+die Ansicht überhaupt gibt, muss ein normaler Nutzer nicht erfahren.
+
+`isModerator` kommt im eigenen Profil mit (Login, Registrierung, `/users/me`),
+damit der Client den Zugang einblenden kann. Reine Anzeigehilfe: die Routen
+prüfen unabhängig davon.
+
+UI: Eintrag „Meldungen" im Drawer bei den Kontoeinstellungen, Dialog mit
+Filter (Offen/Erledigt/Verworfen samt Zahlen), Melder, Grund, Zeitpunkt,
+Beschreibung und dem gespeicherten Textauszug — Letzterer ist eine Kopie aus
+dem Meldezeitpunkt, das Original kann längst gelöscht sein.
+
+15 Tests in `tests/moderationview.test.js`.
+
+> **Offen bleibt die Entscheidung des Betreibers:** sollen Meldungen
+> zusätzlich per E-Mail kommen? Resend ist eingerichtet, das wären wenige
+> Zeilen in `server/email.js`. Bis dahin ist der Weg: Variable setzen, in der
+> App nachsehen. Der Log-Eintrag (`grep MELDUNG`) bleibt zusätzlich bestehen.
 
 ### 1.8 Verwaiste R2-Objekte aufräumen — **niedrig**
 
@@ -320,7 +340,8 @@ Zugangsdaten, Hardware oder rechtliche Entscheidungen.
 | **Datenschutz/AGB** | 6 Platzhalter in `src/app/legal/privacy.tsx` ausfüllen (`[Name/Firma des Betreibers]`, `[Anschrift]`, `[Kontakt-E-Mail-Adresse]`, `[E-Mail-Adresse für Datenschutzanfragen]`, `[Proxmox-Server-Standort]`, `[Name/Adresse]`), öffentlich hosten (in-app reicht den Stores nicht), anwaltlich prüfen lassen |
 | **Splash-Grafik** | `assets/images/splash-icon.png` ist **byte-identisch mit `expo-logo.png`** — der Startbildschirm zeigt das Expo-Logo und würde so in die Stores gehen |
 | **Schnellwahl-Migration** | Einmalig `docker compose -f server/docker-compose.yml exec backend node server/migrate-quickpicks.js --dry-run`, dann ohne `--dry-run`. Ohne diesen Lauf bekommen Bestandskonten die generische Startauswahl statt ihrer eigenen Gewohnheiten. Setzt drei Favoriten, passend zu den drei Dashboard-Slots. Wiederholbar: wer schon selbst gewählt hat, wird übersprungen |
-| **Entscheidungen** | Gruppenbeitritt-Modus (1.5), Meldungen per E-Mail (1.7), `StatsCharts` (1.10), bleibt Netlify neben Cloudflare bestehen |
+| **Moderation freischalten** | `ADMIN_USER_IDS` in `server/.env` auf die eigene Nutzer-ID setzen und den Container neu starten. Ohne diese Variable ist **niemand** Moderator und `/api/reports` antwortet für alle mit 404. ID herausfinden: `docker compose -f server/docker-compose.yml exec db psql -U trinkduell_user -d trinkduell -c "SELECT id, name FROM users ORDER BY name"` |
+| **Entscheidungen** | Meldungen zusätzlich per E-Mail (1.7)? `StatsCharts` (1.10)? Bleibt Netlify neben Cloudflare bestehen? |
 
 ---
 

@@ -110,6 +110,26 @@ export interface UnreadSummary {
   conversations: Record<string, number>;
 }
 
+export type ReportStatus = "open" | "resolved" | "dismissed";
+
+/** Eine Meldung, wie die Moderationsansicht sie bekommt. */
+export interface ModerationReport {
+  id: string;
+  reporterName: string;
+  reportedName: string;
+  contentType: "user" | "post" | "message";
+  contentExcerpt?: string | null;
+  reason: string;
+  details?: string | null;
+  status: ReportStatus;
+  timestamp: string;
+}
+
+export interface ModerationInbox {
+  counts: Record<ReportStatus, number>;
+  reports: ModerationReport[];
+}
+
 const JWT_TOKEN_KEY = "trinkduell_v2_jwt_token";
 const CACHED_USER_KEY = "trinkduell_v2_cached_user";
 
@@ -453,6 +473,24 @@ export const apiService = {
 
   markConversationRead: async (ziel: { receiverId?: string; groupId?: string }): Promise<void> => {
     await axiosInstance.post("/messages/read", ziel);
+  },
+
+  /**
+   * Meldungen für die Moderationsansicht.
+   *
+   * Ohne Offline-Fallback und ohne Fehlerunterdrückung: wer moderiert, muss
+   * merken, wenn die Liste nicht kommt. Antwortet mit 404, wenn der Aufrufer
+   * kein Moderator ist (siehe ADMIN_USER_IDS auf dem Server).
+   */
+  getReports: async (status?: ReportStatus): Promise<ModerationInbox> => {
+    const res = await axiosInstance.get<ModerationInbox>(
+      status ? `/reports?status=${status}` : "/reports"
+    );
+    return res.data;
+  },
+
+  setReportStatus: async (id: string, status: ReportStatus): Promise<void> => {
+    await axiosInstance.patch(`/reports/${id}`, { status });
   },
 
   // Events

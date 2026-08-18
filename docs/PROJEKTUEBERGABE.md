@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `7ea1c3f` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `c179f73` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -215,6 +215,17 @@ Produktionsdatenbank gelandet.
   Funktionen ohne Upsert (`saveLog`, `savePost`, `saveReport`, `saveMessage`)
   — dort erzeugt jeder Aufruf naturgemäß einen neuen Eintrag.
 
+- **Es gibt keine Rollen in der Datenbank.** Wer moderieren darf, steht in
+  `ADMIN_USER_IDS` (Umgebungsvariable, kommagetrennte Nutzer-IDs). Das ist
+  Absicht: eine Rolle, die man in der App vergeben kann, ist auch eine, die
+  man sich über eine Lücke selbst geben kann.
+
+  Konsequenzen, die man kennen muss: **leer heisst niemand** (eine vergessene
+  Variable sperrt zu, statt aufzumachen), die Liste wird **beim Start**
+  gelesen (eine Änderung braucht einen Neustart des Containers), und die Routen
+  antworten Nichtberechtigten mit **404 statt 403** — dass es eine
+  Moderationsansicht gibt, muss ein normaler Nutzer nicht erfahren.
+
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
   falschen Schlüssel hat genau den Absturz oben ausgelöst. Den Server die
@@ -315,6 +326,7 @@ alles über Node's eingebauten Test-Runner.
 | `tests/groupinvite.test.js` | Einladungscode, Beitritt, Rotation |
 | `tests/groupmembers.test.js` | Mitglieder hinzufügen/entfernen, Gruppe verlassen |
 | `tests/moderation.test.js` | Blockieren und Melden |
+| `tests/moderationview.test.js` | Zugriffsschutz der Meldungsansicht, Statuswechsel |
 | `tests/push.test.js` | Push-Versand, Empfängerauswahl |
 | `tests/quickpicks.test.js` | Katalog-Sichtbarkeit, persönliche Schnellwahl |
 | `tests/schema.test.js` | Indizes stehen nicht vor ihren `ALTER`-Zeilen |

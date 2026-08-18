@@ -191,7 +191,16 @@ function enrichUserProgress(user, { includeEmail = false } = {}) {
 }
 
 // Shorthand for "this record is the requester's own profile".
-const enrichOwnProfile = (user) => enrichUserProgress(user, { includeEmail: true });
+// Das eigene Profil trägt zusätzlich `isModerator`. Der Client braucht das,
+// um den Zugang zur Moderationsansicht überhaupt anzuzeigen — und es kommt
+// bei Login, Registrierung und /users/me mit, also ohne extra Abfrage.
+//
+// Das ist reine Anzeigehilfe: die Routen selbst prüfen unabhängig davon
+// (requireModerator), ein manipulierter Client gewinnt damit nichts.
+const enrichOwnProfile = (user) => ({
+  ...enrichUserProgress(user, { includeEmail: true }),
+  isModerator: isModerator(user.id),
+});
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // An allow-list instead of the previous wide-open cors(), which let any web
@@ -3338,6 +3347,100 @@ if (process.env.TRINKDUELL_ENABLE_FAULT_ROUTE === "1") {
     res.json({ ok: true });
   });
 }
+// ─── Moderation ──────────────────────────────────────────────────────────────
+//
+// Es gibt bewusst kein Rollenkonzept in der Datenbank. Für genau einen
+// Betreiber und eine Freundes-Beta wäre eine `role`-Spalte samt Verwaltung
+// mehr Apparat als Nutzen — und eine Rolle, die man in der App vergeben kann,
+// ist auch eine Rolle, die man sich über eine Lücke selbst geben kann.
+//
+// Stattdessen eine Umgebungsvariable: wer sie setzen kann, hat ohnehin Zugriff
+// auf den Server. Leer bedeutet „niemand ist Moderator" — der sichere
+// Ausgangszustand, denn eine vergessene Variable sperrt zu, statt aufzumachen.
+const ADMIN_USER_IDS = new Set(
+  (process.env.ADMIN_USER_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+);
+
+function isModerator(userId) {
+  return ADMIN_USER_IDS.has(userId);
+}
+
+/** Middleware für alles, was nur Moderatoren dürfen. */
+function requireModerator(req, res, next) {
+  if (!isModerator(req.userId)) {
+    // Bewusst 404 statt 403: dass es eine Moderationsansicht gibt, muss ein
+    // normaler Nutzer nicht erfahren.
+    return res.status(404).json({ error: "Nicht gefunden." });
+  }
+  next();
+}
+
+const REPORT_STATUS = ["open", "resolved", "dismissed"];
+
+// Meldungen ansehen
+//
+// Vorher gab es dafür KEINE Route — Meldungen landeten in der Tabelle und im
+// Server-Log, und `docker compose logs backend | grep MELDUNG` war der
+// Posteingang. Die Stores erwarten Reaktion binnen 24 Stunden; das skaliert
+// nicht und übersteht keinen Log-Rotationslauf.
+app.get("/api/reports", authenticate, requireModerator, async (req, res) => {
+  const { status } = req.query;
+  if (status !== undefined && !REPORT_STATUS.includes(status)) {
+    return res.status(400).json({ error: "Unbekannter Status." });
+  }
+
+  const [reports, users] = await Promise.all([db.getReports(), db.getUsers()]);
+  const namen = new Map(users.map((u) => [u.id, u.name]));
+
+  const gefiltert = status ? reports.filter((r) => r.status === status) : reports;
+
+  res.json({
+    // Zahlen über ALLE Meldungen, nicht nur die gefilterten: der Zähler in der
+    // Oberfläche soll sich nicht ändern, wenn man den Filter umstellt.
+    counts: {
+      open: reports.filter((r) => r.status === "open").length,
+      resolved: reports.filter((r) => r.status === "resolved").length,
+      dismissed: reports.filter((r) => r.status === "dismissed").length,
+    },
+    reports: gefiltert.map((r) => ({
+      ...r,
+      // Der Melder wird über die ID aufgelöst; steht sie auf NULL, wurde das
+      // Konto gelöscht (ON DELETE SET NULL) — die Meldung bleibt trotzdem.
+      reporterName: r.reporterId ? namen.get(r.reporterId) || "Gelöschtes Konto" : "Gelöschtes Konto",
+      reportedName: r.reportedUserId
+        ? namen.get(r.reportedUserId) || r.reportedUsername || "Gelöschtes Konto"
+        : r.reportedUsername || "Gelöschtes Konto",
+    })),
+  });
+});
+
+// Status einer Meldung setzen
+app.patch("/api/reports/:id", authenticate, requireModerator, async (req, res) => {
+  const { status } = req.body;
+  if (!REPORT_STATUS.includes(status)) {
+    return res.status(400).json({ error: "Unbekannter Status." });
+  }
+
+  const reports = await db.getReports();
+  const report = reports.find((r) => r.id === req.params.id);
+  if (!report) {
+    return res.status(404).json({ error: "Meldung nicht gefunden." });
+  }
+
+  await db.setReportStatus(report.id, status);
+
+  // Ins Log, weil eine Moderationsentscheidung nachvollziehbar bleiben soll —
+  // die Tabelle merkt sich nur den Endzustand, nicht wer wann entschieden hat.
+  console.log(
+    `[TrinkDuell] MODERATION: ${req.user.name} setzt Meldung ${report.id} auf "${status}".`
+  );
+
+  res.json({ success: true, id: report.id, status });
+});
+
 
 
 // ==========================================

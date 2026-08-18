@@ -1328,6 +1328,25 @@ module.exports = {
     await saveDb();
   },
   /**
+   * Setzt den Status einer Meldung (open / resolved / dismissed).
+   *
+   * Eigene Funktion statt saveReport: der Melde-Eintrag ist ein Beleg und
+   * darf nachträglich nicht als Ganzes überschrieben werden — sonst könnte
+   * ein Fehler im Client Grund, Auszug oder Melder verlieren.
+   */
+  setReportStatus: async (reportId, status) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("UPDATE reports SET status = $1 WHERE id = $2", [status, reportId]);
+      return;
+    }
+    const report = (db.reports || []).find((r) => r.id === reportId);
+    if (report) {
+      report.status = status;
+      await saveDb();
+    }
+  },
+  /**
    * Carries a rename over to the friendship table.
    *
    * Friendships have no foreign key — they store usernames (see the friends

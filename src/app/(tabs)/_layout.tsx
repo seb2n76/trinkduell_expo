@@ -15,7 +15,13 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { apiService, GroupMembers, UnreadSummary } from "@/services/api";
+import {
+  apiService,
+  GroupMembers,
+  UnreadSummary,
+  ModerationInbox,
+  ReportStatus,
+} from "@/services/api";
 import { useAuth } from "../_layout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
@@ -330,6 +336,58 @@ export default function TabsLayout() {
       console.error("Failed to load DMs:", e);
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  // ── Moderation ──────────────────────────────────────────────────────────
+  //
+  // Der Zugang erscheint nur, wenn der Server `isModerator` im eigenen Profil
+  // meldet (gesteuert über ADMIN_USER_IDS). Das ist reine Anzeigehilfe — die
+  // Routen prüfen unabhängig davon, ein manipulierter Client gewinnt nichts.
+  const [showModerationModal, setShowModerationModal] = useState(false);
+  const [moderationInbox, setModerationInbox] = useState<ModerationInbox | null>(null);
+  const [moderationFilter, setModerationFilter] = useState<ReportStatus>("open");
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const [moderationBusyId, setModerationBusyId] = useState<string | null>(null);
+
+  const REPORT_GRUENDE: Record<string, string> = {
+    belaestigung: "Belästigung",
+    spam: "Spam",
+    unangemessen: "Unangemessen",
+    fake: "Fake-Profil",
+    sonstiges: "Sonstiges",
+  };
+
+  const loadReports = async (status: ReportStatus) => {
+    setModerationLoading(true);
+    try {
+      setModerationInbox(await apiService.getReports(status));
+    } catch (error) {
+      notify("Fehler", error instanceof Error ? error.message : "Meldungen konnten nicht geladen werden.");
+      setModerationInbox(null);
+    } finally {
+      setModerationLoading(false);
+    }
+  };
+
+  const openModeration = async () => {
+    await triggerHaptic("light");
+    setModerationFilter("open");
+    setShowModerationModal(true);
+    await loadReports("open");
+  };
+
+  const handleReportStatus = async (id: string, status: ReportStatus) => {
+    setModerationBusyId(id);
+    try {
+      await apiService.setReportStatus(id, status);
+      await triggerHaptic("success");
+      await loadReports(moderationFilter);
+    } catch (error) {
+      await triggerHaptic("error");
+      notify("Fehler", error instanceof Error ? error.message : "Status konnte nicht gesetzt werden.");
+    } finally {
+      setModerationBusyId(null);
     }
   };
 
@@ -1544,6 +1602,19 @@ export default function TabsLayout() {
                   <Ionicons name="document-text-outline" size={18} color="#22d3ee" />
                   <Text className="text-white/60 text-xs font-bold">Lizenzen & Open Source</Text>
                 </TouchableOpacity>
+
+                {/* Nur fuer Moderatoren (ADMIN_USER_IDS auf dem Server).
+                    Reine Anzeigehilfe: die Routen pruefen unabhaengig davon. */}
+                {dbUser?.isModerator && (
+                  <TouchableOpacity
+                    onPress={openModeration}
+                    accessibilityLabel="Meldungen moderieren"
+                    className="flex-row items-center space-x-2 mb-3.5 py-1"
+                  >
+                    <Ionicons name="shield-outline" size={18} color="#fbbf24" />
+                    <Text className="text-amber-400 text-xs font-bold">Meldungen</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   onPress={() => {
@@ -3201,6 +3272,162 @@ export default function TabsLayout() {
                 ))}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Moderation */}
+      <Modal
+        visible={showModerationModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowModerationModal(false)}
+      >
+        <View className="flex-1 bg-black/85 justify-end">
+          <View className="bg-slate-950 border-t border-amber-500/30 rounded-t-3xl p-6 pb-8 max-h-[88%]">
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white text-base font-black uppercase tracking-wider">
+                Meldungen 🛡️
+              </Text>
+              <TouchableOpacity onPress={() => setShowModerationModal(false)} className="p-1">
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-slate-500 text-[10px] font-semibold mb-4">
+              Die Stores erwarten eine Reaktion binnen 24 Stunden.
+            </Text>
+
+            {/* Filter. Die Zahlen gelten für alle Meldungen, nicht für die
+                gefilterte Liste — sonst würde der Zähler vom Filter abhängen. */}
+            <View className="flex-row mb-4" style={{ gap: 8 }}>
+              {(
+                [
+                  { key: "open" as const, label: "Offen", farbe: "#fbbf24" },
+                  { key: "resolved" as const, label: "Erledigt", farbe: "#34d399" },
+                  { key: "dismissed" as const, label: "Verworfen", farbe: "#64748b" },
+                ]
+              ).map((f) => {
+                const aktiv = moderationFilter === f.key;
+                const anzahl = moderationInbox?.counts?.[f.key] ?? 0;
+                return (
+                  <TouchableOpacity
+                    key={f.key}
+                    onPress={() => {
+                      triggerHaptic("light");
+                      setModerationFilter(f.key);
+                      loadReports(f.key);
+                    }}
+                    accessibilityLabel={`Filter ${f.label}`}
+                    style={{
+                      backgroundColor: aktiv ? `${f.farbe}1A` : "#0f172a",
+                      borderColor: aktiv ? `${f.farbe}66` : "#1e293b",
+                    }}
+                    className="flex-1 border rounded-xl py-2.5 items-center"
+                  >
+                    <Text
+                      className="text-[10px] font-black uppercase tracking-wider"
+                      style={{ color: aktiv ? f.farbe : "#64748b" }}
+                    >
+                      {f.label}
+                    </Text>
+                    <Text className="text-[9px] font-black mt-0.5" style={{ color: aktiv ? f.farbe : "#475569" }}>
+                      {anzahl}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {moderationLoading ? (
+                <View className="py-10 items-center">
+                  <ActivityIndicator color="#fbbf24" />
+                </View>
+              ) : !moderationInbox || moderationInbox.reports.length === 0 ? (
+                <View className="py-10 items-center">
+                  <Ionicons name="checkmark-done-outline" size={26} color="#334155" />
+                  <Text className="text-slate-600 text-[11px] font-bold mt-2">
+                    Nichts hier. Gut so.
+                  </Text>
+                </View>
+              ) : (
+                moderationInbox.reports.map((r) => (
+                  <View
+                    key={r.id}
+                    className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 mb-2.5"
+                  >
+                    <View className="flex-row items-center mb-1.5">
+                      <Text className="text-white text-xs font-black flex-1 mr-2" numberOfLines={1}>
+                        {r.reportedName}
+                      </Text>
+                      <Text className="text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                        {REPORT_GRUENDE[r.reason] || r.reason}
+                      </Text>
+                    </View>
+
+                    <Text className="text-slate-500 text-[9px] font-bold mb-2">
+                      gemeldet von {r.reporterName} ·{" "}
+                      {new Date(r.timestamp).toLocaleString("de-DE", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      · {r.contentType}
+                    </Text>
+
+                    {r.details ? (
+                      <Text className="text-slate-300 text-[11px] leading-4 mb-2">{r.details}</Text>
+                    ) : null}
+
+                    {/* Der Auszug ist eine Kopie aus dem Meldezeitpunkt — das
+                        Original kann längst gelöscht sein. */}
+                    {r.contentExcerpt ? (
+                      <View className="bg-slate-950 border border-white/5 rounded-xl p-2.5 mb-2">
+                        <Text className="text-slate-400 text-[10px] leading-4 italic" numberOfLines={4}>
+                          „{r.contentExcerpt}“
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {moderationBusyId === r.id ? (
+                      <ActivityIndicator size="small" color="#fbbf24" />
+                    ) : r.status === "open" ? (
+                      <View className="flex-row" style={{ gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => handleReportStatus(r.id, "dismissed")}
+                          accessibilityLabel={`Meldung gegen ${r.reportedName} verwerfen`}
+                          className="flex-1 bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center"
+                        >
+                          <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                            Verwerfen
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleReportStatus(r.id, "resolved")}
+                          accessibilityLabel={`Meldung gegen ${r.reportedName} als erledigt markieren`}
+                          className="flex-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl py-2.5 items-center"
+                        >
+                          <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                            Erledigt
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handleReportStatus(r.id, "open")}
+                        accessibilityLabel={`Meldung gegen ${r.reportedName} wieder öffnen`}
+                        className="bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center"
+                      >
+                        <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                          Wieder öffnen
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
