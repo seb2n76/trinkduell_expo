@@ -40,14 +40,14 @@ const DEFAULT_DRINKS = [
   { id: "drink-water-soft", name: "Softdrink", category: "Alkoholfrei", volume: 330, abv: 0.0, calories: 140 },
 ];
 
-/** Startauswahl für ein neues Konto — sechs Getränke, die die üblichen Fälle abdecken. */
+// Startbelegung der drei Schnellwahl-Slots. Bewusst je ein Getränk aus drei
+// der vier Kategorien: so ist beim ersten Start jeder Reiter schon einmal
+// vertreten, und Wasser steht direkt bereit — der Kater-Schutz hängt daran.
+// Cocktails fehlen absichtlich, die sind einen Reiter entfernt.
 const DEFAULT_QUICK_PICKS = [
   "drink-beer-helles",
-  "drink-beer-pils",
-  "drink-shot",
   "drink-wine-white",
   "drink-water-glass",
-  "drink-cocktail-aperol",
 ];
 
 const calculateAlcoholGrams = (volumeMl, abv) => {

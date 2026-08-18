@@ -7,7 +7,7 @@ import {
   Modal,
   TextInput,
   Alert,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   Platform,
 } from "react-native";
@@ -25,7 +25,39 @@ import { getCoordinatesForDrinkLog } from "@/services/location";
 // "Scannen", and it has no business in the bundle everyone loads first.
 const BarcodeScanner = React.lazy(() => import("@/components/BarcodeScanner"));
 
-const { width: screenWidth } = Dimensions.get("window");
+/** Kartenhintergrund. Etwas heller als der Seitenhintergrund (slate-950),
+  * damit Karten ohne kräftigen Rahmen auskommen. */
+/** Seitenhintergrund: tiefes Navy statt reinem Schwarz. */
+const PAGE_BG = "#0B111E";
+
+const CARD_BG = "#161F30";
+
+/**
+ * Vier Reiter statt sechs Kategorien.
+ *
+ * Der Datentyp kennt sechs (`Drink["category"]`), die Oberfläche zeigt vier —
+ * Sekt geht zu den Weinen, Schnaps zu den Mischgetränken. Sonst hätte man
+ * zwei Reiter mit je zwei Einträgen, und genau diese Zersplitterung war der
+ * Grund, die Kategorie-Reiter beim letzten Umbau ganz zu streichen.
+ */
+const CATEGORY_TABS = [
+  { key: "bier", label: "Biere", plural: "Biere", icon: "🍺", accent: "#F59E0B", matches: ["Bier"] },
+  { key: "wein", label: "Weine", plural: "Weine und Sekt", icon: "🍷", accent: "#E11D48", matches: ["Wein", "Sekt"] },
+  { key: "mix", label: "Cocktails", plural: "Cocktails und Shots", icon: "🍹", accent: "#06B6D4", matches: ["Mischgetränk", "Schnaps"] },
+  { key: "frei", label: "Alkoholfrei", plural: "alkoholfreien Getränke", icon: "💧", accent: "#10B981", matches: ["Alkoholfrei"] },
+] as const;
+
+type CategoryKey = (typeof CATEGORY_TABS)[number]["key"];
+
+/** Wie viele Karten ein Reiter zeigt, bevor auf die Suche verwiesen wird. */
+const CARDS_PER_CATEGORY = 3;
+
+/** Slots in der persönlichen Schnellwahl. */
+const QUICK_PICK_SLOTS = 3;
+
+const accentForCategory = (category: string) =>
+  CATEGORY_TABS.find((t) => (t.matches as readonly string[]).includes(category))?.accent ?? "#94a3b8";
+
 
 const getRankBadgeStyles = (rank: User["rank"]) => {
   switch (rank) {
@@ -48,6 +80,12 @@ export default function DashboardScreen() {
   const { user: authUser, updateUserContext } = useAuth();
   const user = authUser;
 
+  // useWindowDimensions statt Dimensions.get(): letzteres liest genau einmal
+  // beim Laden des Moduls. Im Browser bliebe das Layout danach auf der
+  // Startbreite stehen, auch wenn das Fenster gezogen wird.
+  const { width: screenWidth } = useWindowDimensions();
+  const isDesktop = screenWidth >= 1024;
+
   // GPS/Location deactivated for cross-platform stability (no expo-location)
 
   // Der geteilte Katalog (alles, was dieser Nutzer sehen darf).
@@ -65,6 +103,12 @@ export default function DashboardScreen() {
   // Gerade gescanntes Getränk, das noch nicht in der Schnellwahl ist — wird
   // als Angebot eingeblendet statt ungefragt hinzugefügt.
   const [pendingQuickPick, setPendingQuickPick] = useState<Drink | null>(null);
+  // Aktiver Kategorie-Reiter unter der Schnellwahl.
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>("bier");
+  // Auf welche Kategorie die Auswahl-Ansicht beim öffnen eingeschränkt ist.
+  // null = ganzer Katalog (so kommt man über einen leeren Favoriten-Slot rein),
+  // gesetzt beim Weg über "Alle ... anzeigen".
+  const [pickerCategory, setPickerCategory] = useState<CategoryKey | null>(null);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -188,25 +232,71 @@ export default function DashboardScreen() {
   const katerSchutz = getKaterSchutzStatus();
 
   /**
-   * Der Katalog für die Auswahl-Ansicht, nach Suchbegriff gefiltert.
+   * Der Katalog für die Auswahl-Ansicht.
    *
-   * Die Kategorie-Reiter auf dem Dashboard sind entfallen: dort stehen jetzt
-   * nur noch die selbst gewählten Getränke. Der vollständige Katalog lebt
-   * hinter "Getränke wählen" und wird über die Suche erschlossen — bei
-   * inzwischen 25 Standardgetränken plus allen gescannten Produkten ist
-   * Suchen schneller als Blättern.
+   * Zwei Filter, in dieser Reihenfolge: ein Suchbegriff schlägt den
+   * Kategorie-Vorfilter. Wer tippt, sucht im ganzen Katalog — sonst fände man
+   * ein Bier nicht, nur weil die Ansicht über den Wein-Reiter geöffnet wurde.
    */
   const catalogSearchResults = useMemo(() => {
     const query = drinkSearch.trim().toLowerCase();
+    const tab = pickerCategory ? CATEGORY_TABS.find((t) => t.key === pickerCategory) : null;
+    const matches = tab ? (tab.matches as readonly string[]) : null;
+
+    // Der Vorfilter gilt nur, solange nicht gesucht wird: wer tippt, sucht im
+    // ganzen Katalog — sonst findet man ein Bier nicht, weil gerade der
+    // Wein-Reiter offen war.
     const list = query
       ? drinks.filter((d) => d.name.toLowerCase().includes(query))
+      : matches
+      ? drinks.filter((d) => matches.includes(d.category))
       : drinks;
 
     // Alphabetisch innerhalb der Kategorie, damit die Liste vorhersehbar ist.
     return [...list].sort(
       (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
     );
-  }, [drinks, drinkSearch]);
+  }, [drinks, drinkSearch, pickerCategory]);
+
+  /** Wie oft dieser Nutzer welches Getränk geloggt hat. */
+  const logCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const log of logs) counts.set(log.drinkId, (counts.get(log.drinkId) || 0) + 1);
+    return counts;
+  }, [logs]);
+
+  /**
+   * Die drei Karten des aktiven Reiters — nach eigener Trinkhistorie sortiert,
+   * bei Gleichstand alphabetisch.
+   *
+   * Ohne Historie ist das schlicht der Katalog von oben; sobald jemand die App
+   * benutzt, stehen dort seine tatsächlichen Getränke. Das ist der Unterschied
+   * zwischen drei beliebigen und drei brauchbaren Karten.
+   */
+  const categoryCards = useMemo(() => {
+    const tab = CATEGORY_TABS.find((t) => t.key === activeCategory);
+    if (!tab) return [];
+    const matches = tab.matches as readonly string[];
+    return drinks
+      .filter((d) => matches.includes(d.category))
+      .sort(
+        (a, b) =>
+          (logCounts.get(b.id) || 0) - (logCounts.get(a.id) || 0) ||
+          a.name.localeCompare(b.name)
+      )
+      .slice(0, CARDS_PER_CATEGORY);
+  }, [drinks, activeCategory, logCounts]);
+
+  /** Wie viele Getränke der aktive Reiter insgesamt hätte. */
+  const categoryTotal = useMemo(() => {
+    const tab = CATEGORY_TABS.find((t) => t.key === activeCategory);
+    if (!tab) return 0;
+    const matches = tab.matches as readonly string[];
+    return drinks.filter((d) => matches.includes(d.category)).length;
+  }, [drinks, activeCategory]);
+
+  const activeCategoryLabel =
+    CATEGORY_TABS.find((t) => t.key === activeCategory)?.plural ?? "Getränke";
 
   // Extract exactly last 3 logs
   const lastThreeLogs = useMemo(() => {
@@ -371,7 +461,7 @@ export default function DashboardScreen() {
       // Wer ein Getränk selbst anlegt, will es benutzen — also direkt in die
       // eigene Schnellwahl. Bei ALLEN anderen taucht es nicht auf; genau das
       // war vorher das Problem.
-      if (!myDrinks.some((d) => d.id === created.id) && myDrinks.length < MAX_QUICK_PICKS) {
+      if (!myDrinks.some((d) => d.id === created.id) && myDrinks.length < QUICK_PICK_SLOTS) {
         try {
           await apiService.setMyDrinks([...myDrinks.map((d) => d.id), created.id]);
         } catch (e) {
@@ -402,7 +492,10 @@ export default function DashboardScreen() {
   };
 
   // ── Schnellwahl bearbeiten ────────────────────────────────────────────────
-  const MAX_QUICK_PICKS = 12;
+  // Drei Slots in der Oberfläche. Das Serverlimit bleibt bei 12: Konten aus
+  // der Migration haben sechs, und ein hartes Kappen würde ihnen beim ersten
+  // Speichern die Hälfte wegnehmen. Sie sehen ihre sechs weiter und können
+  // im Bearbeiten-Modus selbst auf drei gehen.
 
   /** Speichert die Reihenfolge; bei einem Fehler bleibt der alte Stand stehen. */
   const persistPicks = async (next: Drink[]) => {
@@ -429,10 +522,11 @@ export default function DashboardScreen() {
       await persistPicks(myDrinks.filter((d) => d.id !== drink.id));
       return;
     }
-    if (myDrinks.length >= MAX_QUICK_PICKS) {
+    if (myDrinks.length >= QUICK_PICK_SLOTS) {
       notify(
         "Schnellwahl voll",
-        `Mehr als ${MAX_QUICK_PICKS} Getränke wären keine Schnellwahl mehr. Nimm zuerst eines heraus.`
+        `Die Schnellwahl hat ${QUICK_PICK_SLOTS} Plätze. Nimm zuerst eines heraus ` +
+          "oder such das Getränk über die Kategorien."
       );
       return;
     }
@@ -468,7 +562,7 @@ export default function DashboardScreen() {
         // Geloggt ist es — aber eine Kachel wird es nur, wenn man das will.
         // Automatisch hinzuzufügen hieße, dass die Schnellwahl bei jeder
         // fremden Flasche zuwächst, und genau das soll sie nicht.
-        if (!myDrinks.some((d) => d.id === drink.id) && myDrinks.length < MAX_QUICK_PICKS) {
+        if (!myDrinks.some((d) => d.id === drink.id) && myDrinks.length < QUICK_PICK_SLOTS) {
           setPendingQuickPick(drink);
         }
         return;
@@ -504,6 +598,8 @@ export default function DashboardScreen() {
     switch (category) {
       case "Bier": return "🍺";
       case "Wein": return "🍷";
+      case "Sekt": return "🥂";
+      case "Schnaps": return "🥃";
       case "Mischgetränk": return "🍸";
       default: return "🥤";
     }
@@ -526,18 +622,21 @@ export default function DashboardScreen() {
     ]);
   };
 
-  // Dynamic layout calculations for responsive columns (3 or 4 columns)
-  const numColumns = screenWidth >= 420 ? 4 : 3;
-  const gap = 8;
-  const totalPadding = 40; // px-5 is 20px on left & right
-  const tileWidth = (screenWidth - totalPadding - (numColumns - 1) * gap) / numColumns;
+  // Drei Spalten, feste Breite — sowohl die Schnellwahl-Slots als auch die
+  // Kategorie-Karten liegen im selben Raster.
+  const contentWidth = Math.min(screenWidth, 896) - (isDesktop ? 48 : 32);
+  const gap = isDesktop ? 16 : 8;
+  const tileWidth = (contentWidth - 2 * gap) / 3;
+  // Auf breiten Fenstern würde eine Kachel sonst fast quadratisch — 288 px breit
+  // und 259 hoch. Gedeckelt bleibt sie eine breite, flache Karte.
+  const tileHeight = Math.min(tileWidth * 0.9, 132);
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1" style={{ backgroundColor: PAGE_BG }}>
       
       {/* Toast Success Banner */}
       {successBanner && (
-        <View className="absolute top-4 left-5 right-5 bg-slate-900/95 border border-cyan-400/40 rounded-2xl p-4 flex-row items-center space-x-3 shadow-2xl z-50">
+        <View className="absolute top-4 left-4 right-4 bg-slate-900/95 border border-cyan-400/40 rounded-2xl p-4 flex-row items-center space-x-3 shadow-2xl z-50">
           <View className="bg-cyan-400/20 p-2 rounded-full">
             <Ionicons name="checkmark-circle" size={20} color="#22d3ee" />
           </View>
@@ -557,98 +656,112 @@ export default function DashboardScreen() {
         />
       ))}
 
-      <ScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false}>
-        
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName={isDesktop ? "px-6 pt-6 pb-4" : "px-4 pt-4 pb-2"}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Auf breiten Fenstern zentriert und begrenzt: eine Dashboard-Spalte,
+            die sich über 2000 px zieht, liest sich nicht besser, nur weiter. */}
+        <View className="w-full self-center" style={{ maxWidth: 896 }}>
+
         {/* ==========================================
-            1. USER HEADER SECTION
-            ========================================== */}
+            1. HERO — Stats kompakt in einer Leiste
+            ==========================================
+            Vorher: Begrüßung, Rang-Badge, XP-Karte und Hydrations-Karte als
+            vier gestapelte Blöcke. Zusammen füllten sie den ersten Bildschirm,
+            bevor man ein einziges Getränk loggen konnte. */}
         {user && (() => {
           const currentLevel = user.currentLevel || user.level || 1;
           const xpProgress = user.xpProgressInCurrentLevel !== undefined ? user.xpProgressInCurrentLevel : 0;
           const xpNeeded = user.xpForNextLevel || 100;
-          const isLevelLocked = user.isLevelLocked || (user.points >= getCumulativeXpForLevel(currentLevel) + Math.floor(Math.pow(currentLevel, 1.5) * 100));
-
-          // Füll-Logik (0% bis 100%)
-          const fillPercentage = xpNeeded > 0 ? (xpProgress / xpNeeded) * 100 : 0;
+          const fillPercentage = xpNeeded > 0 ? Math.min(100, (xpProgress / xpNeeded) * 100) : 0;
+          const rank = getRankBadgeStyles(user.rank);
 
           return (
-            <View className="mb-6 mt-2">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Willkommen zurück,</Text>
-                  <Text className="text-white text-xl font-black tracking-wide">{user.name || "Dein Benutzername"}</Text>
-                  <Text className="text-cyan-400/80 text-[10px] font-extrabold uppercase mt-0.5 tracking-wider">
-                    {user.title || "Neuling"}
+            <View className="mb-4 rounded-2xl border border-slate-800 p-4" style={{ backgroundColor: CARD_BG }}>
+              <View className="flex-row items-center">
+                <View className="flex-1 pr-3">
+                  <Text className="text-white text-base font-black tracking-wide" numberOfLines={1}>
+                    {user.name || "Dein Benutzername"}
                   </Text>
+                  <View className="flex-row items-center mt-1">
+                    <Ionicons name="ribbon" size={12} color={rank.color} />
+                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider ml-1">
+                      {rank.label} · Lv. {currentLevel}
+                    </Text>
+                  </View>
                 </View>
 
-                {/* Rank Badge */}
-                <View className={`px-4 py-2 border rounded-2xl items-center flex-row space-x-1.5 ${getRankBadgeStyles(user.rank).bg}`}>
-                  <Ionicons name="ribbon" size={16} color={getRankBadgeStyles(user.rank).color} />
-                  <Text className="text-white text-xs font-black uppercase tracking-wider">
-                    {getRankBadgeStyles(user.rank).label}
+                {/* Hydration als Abzeichen statt als eigene Karte. Der aktive
+                    Kater-Schutz ist zeitkritisch, deshalb steht die Restzeit
+                    direkt darin. */}
+                <View
+                  className={`flex-row items-center px-2.5 py-1.5 rounded-xl border mr-2 ${
+                    katerSchutz.active
+                      ? "bg-emerald-500/10 border-emerald-400/30"
+                      : "bg-slate-950 border-slate-800"
+                  }`}
+                >
+                  <Ionicons
+                    name={katerSchutz.active ? "shield-checkmark" : "water-outline"}
+                    size={13}
+                    color={katerSchutz.active ? "#10B981" : "#38bdf8"}
+                  />
+                  <Text
+                    className={`text-[10px] font-black ml-1 ${
+                      katerSchutz.active ? "text-emerald-400" : "text-sky-400"
+                    }`}
+                  >
+                    {katerSchutz.active ? `${katerSchutz.minutesLeft} Min` : "Wasser?"}
                   </Text>
                 </View>
               </View>
 
-              {/* XP progress bar */}
-              <View className="mt-4 bg-slate-900/60 border border-white/5 rounded-2xl p-3">
+              <View className="mt-3">
                 <View className="flex-row justify-between items-center mb-1.5">
-                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
-                    Lv. {currentLevel}
+                  <Text className="text-slate-500 text-[9px] font-black uppercase tracking-wider">
+                    {xpProgress}/{xpNeeded} XP
                   </Text>
-                  <Text className="text-cyan-400 text-[10px] font-black">
-                    {user.points} XP gesamt • {xpProgress}/{xpNeeded} XP
-                  </Text>
+                  <Text className="text-slate-500 text-[9px] font-black">{user.points} gesamt</Text>
                 </View>
-                <View className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-white/5">
-                  <View
-                    style={{ width: `${fillPercentage}%` }}
-                    className="h-full bg-cyan-400 rounded-full"
-                  />
+                <View className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                  <View style={{ width: `${fillPercentage}%` }} className="h-full bg-cyan-400 rounded-full" />
                 </View>
               </View>
             </View>
           );
         })()}
 
-        {/* ==========================================
-            LEVEL-UP HERAUSFORDERUNG CARD
-            ========================================== */}
+        {/* Level-Up bleibt eine eigene Karte: sie erscheint selten, ist dann
+            aber die wichtigste Sache auf dem Bildschirm. */}
         {user && (user.isLevelLocked || (user.points >= getCumulativeXpForLevel(user.level || 1) + Math.floor(Math.pow(user.level || 1, 1.5) * 100))) && user.active_quest && (
-          <View className="mb-6 bg-slate-900 border border-amber-500/40 rounded-3xl p-5 relative overflow-hidden shadow-xl shadow-amber-500/5">
-            <View className="flex-row items-center space-x-3 mb-3">
-              <View className="bg-amber-400/20 p-2.5 rounded-2xl">
-                <Ionicons name="flame" size={24} color="#fbbf24" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-amber-400 text-[9px] font-black uppercase tracking-widest">Bereit für Level {(user.level || 1) + 1}? ⭐</Text>
-                <Text className="text-white text-base font-black tracking-wide">Level-Up-Herausforderung</Text>
-              </View>
+          <View className="mb-4 bg-slate-900 border border-amber-500/40 rounded-2xl p-4">
+            <View className="flex-row items-center mb-2.5">
+              <Ionicons name="flame" size={18} color="#fbbf24" />
+              <Text className="text-white text-sm font-black tracking-wide ml-2 flex-1">
+                Bereit für Level {(user.level || 1) + 1}?
+              </Text>
             </View>
-            
-            <Text className="text-slate-400 text-xs leading-relaxed mb-4">
-              Deine XP sind am Limit eingefroren. Erfülle diese Pflichtaufgabe, um das nächste Level freizuschalten:
-            </Text>
-            
-            <View className="bg-slate-950 border border-white/5 p-4 rounded-2xl mb-5">
-              <Text className="text-cyan-400 text-xs font-black text-center italic">
+            <View className="bg-slate-950 border border-slate-800 p-3 rounded-xl mb-3">
+              <Text className="text-amber-400 text-[11px] font-black text-center italic">
                 &quot;{user.active_quest}&quot;
               </Text>
             </View>
-            
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={handleLevelUp}
               disabled={isLevelingUp}
-              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center flex-row justify-center space-x-2 shadow-lg shadow-amber-400/20 active:scale-95 disabled:opacity-50"
+              className="w-full bg-amber-400 py-3 rounded-xl items-center flex-row justify-center disabled:opacity-50"
             >
               {isLevelingUp ? (
                 <ActivityIndicator size="small" color="#020617" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-done" size={18} color="#020617" />
-                  <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Quest abschließen & Aufsteigen</Text>
+                  <Ionicons name="checkmark-done" size={15} color="#020617" />
+                  <Text className="text-slate-950 font-black text-[11px] uppercase tracking-wider ml-1.5">
+                    Quest abschließen
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -656,45 +769,39 @@ export default function DashboardScreen() {
         )}
 
         {/* ==========================================
-            2. HYDRATION STATUS / KATER-SCHUTZ
-            ========================================== */}
-        <View className="mb-6">
-          {katerSchutz.active ? (
-            <View className="bg-emerald-500/10 border border-emerald-400/30 rounded-3xl p-4 flex-row items-center space-x-3.5 shadow-lg shadow-emerald-500/5">
-              <View className="bg-emerald-400 p-2.5 rounded-2xl">
-                <Ionicons name="shield-checkmark" size={22} color="#020617" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider">Kater-Schutz AKTIV 🛡️</Text>
-                <Text className="text-white text-[11px] font-bold mt-0.5 leading-normal">
-                  +25% Bonus-XP auf dein nächstes alkoholisches Getränk! (Noch {katerSchutz.minutesLeft} Min.)
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View className="bg-slate-900/40 border border-white/5 rounded-3xl p-4 flex-row items-center space-x-3.5">
-              <View className="bg-slate-950 border border-white/10 p-2.5 rounded-2xl">
-                <Ionicons name="help-buoy-outline" size={22} color="#38bdf8" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sky-400 text-xs font-black uppercase tracking-wider">Hydration Tipp 💡</Text>
-                <Text className="text-slate-400 text-[11px] font-bold mt-0.5 leading-normal">
-                  Trinke ein Wasser (0,0% Alk), um den Kater-Schutz zu aktivieren und Extrapunkte zu sammeln!
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
+            2. PRIMÄRER CTA — Scannen
+            ==========================================
+            Der schnellste Weg zu einem Log führt über den Barcode, also steht
+            er oben und nicht als einer von zwei gleich großen Knöpfen unten. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            triggerHaptic("light");
+            setShowScanner(true);
+          }}
+          accessibilityLabel="Getränk scannen"
+          className="mb-5 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 flex-row items-center px-4 py-4"
+        >
+          <View className="bg-cyan-400 rounded-xl p-2.5">
+            <Ionicons name="barcode-outline" size={22} color="#020617" />
+          </View>
+          <View className="flex-1 ml-3.5">
+            <Text className="text-cyan-300 text-sm font-black uppercase tracking-wider">
+              Getränk scannen
+            </Text>
+            <Text className="text-cyan-400/60 text-[10px] font-bold mt-0.5">
+              Barcode einlesen und sofort eintragen
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#22d3ee" />
+        </TouchableOpacity>
 
         {/* ==========================================
-            3. SCHNELLWAHL — nur die selbst gewählten Getränke
-            ==========================================
-            Hier standen Kategorie-Reiter über dem gesamten Katalog. Jedes
-            angelegte oder gescannte Getränk wurde damit bei ALLEN zur
-            Kachel. Der Katalog lebt jetzt hinter "Getränke wählen". */}
-        <View className="flex-row items-center justify-between mb-3">
+            3. SCHNELLWAHL — drei Slots, ein Tipp
+            ========================================== */}
+        <View className="flex-row items-center justify-between mb-2.5">
           <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
-            Schnellwahl ({myDrinks.length})
+            Deine Favoriten
           </Text>
           <View className="flex-row items-center">
             {savingPicks && <ActivityIndicator color="#22d3ee" size="small" className="mr-3" />}
@@ -704,11 +811,9 @@ export default function DashboardScreen() {
                   triggerHaptic("light");
                   setEditMode((on) => !on);
                 }}
-                accessibilityLabel={editMode ? "Bearbeiten beenden" : "Schnellwahl bearbeiten"}
+                accessibilityLabel={editMode ? "Bearbeiten beenden" : "Favoriten bearbeiten"}
                 className={`px-3 py-1.5 rounded-xl border ${
-                  editMode
-                    ? "bg-cyan-400/10 border-cyan-400/40"
-                    : "bg-slate-900 border-white/10"
+                  editMode ? "bg-cyan-400/10 border-cyan-400/40" : "bg-slate-950 border-slate-800"
                 }`}
               >
                 <Text
@@ -723,42 +828,27 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* ==========================================
-            4. DRINKS GRID (3-4 COLUMNS - COMPACT)
-            ========================================== */}
-        <View className="flex-row flex-wrap mb-4" style={{ gap }}>
-          {myDrinks.length === 0 ? (
-            <View className="w-full py-12 items-center justify-center bg-slate-900/20 border border-white/5 rounded-3xl">
-              <Ionicons name="beer-outline" size={32} color="#475569" className="mb-2" />
-              <Text className="text-slate-500 text-xs font-black uppercase tracking-wider text-center">
-                Noch keine Schnellwahl
-              </Text>
-              <Text className="text-slate-600 text-[10px] font-medium text-center mt-1 px-8">
-                Wähle unten die Getränke aus, die du am häufigsten trinkst — oder scanne einfach eine Flasche.
-              </Text>
-            </View>
-          ) : (
-            myDrinks.map((item, index) => (
+        <View className="flex-row flex-wrap mb-5" style={{ gap }}>
+          {myDrinks.map((item, index) => {
+            const accent = accentForCategory(item.category);
+            return (
               <View key={item.id} style={{ width: tileWidth }}>
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  // Im Bearbeiten-Modus nicht loggen: wer gerade sortiert,
-                  // will keine Getränke eintragen.
                   onPress={(e) =>
-                    editMode
-                      ? undefined
-                      : handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)
+                    editMode ? undefined : handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)
                   }
                   disabled={editMode}
-                  style={{ height: tileWidth * 0.95 }}
-                  className="bg-slate-900 border border-white/5 rounded-2xl p-2 items-center justify-center mb-1 shadow"
+                  accessibilityLabel={`${item.name} eintragen`}
+                  style={{ height: tileHeight, backgroundColor: CARD_BG, borderColor: `${accent}40` }}
+                  className="border rounded-2xl p-2 items-center justify-center mb-1"
                 >
-                  <Text className="text-xl mb-0.5">{getCategoryIconChar(item.category, item.name)}</Text>
-                  <Text className="text-white text-[10px] font-black text-center" numberOfLines={1}>
+                  <Text className="text-2xl mb-1">{getCategoryIconChar(item.category, item.name)}</Text>
+                  <Text className="text-white text-[11px] font-black text-center" numberOfLines={1}>
                     {item.name}
                   </Text>
-                  <Text className="text-slate-500 text-[8px] font-bold mt-0.5">
-                    {(item.volume / 1000).toFixed(2)}l • {item.abv}%
+                  <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                    {(item.volume / 1000).toFixed(2)}l · {item.abv}%
                   </Text>
                 </TouchableOpacity>
 
@@ -768,13 +858,13 @@ export default function DashboardScreen() {
                       onPress={() => moveQuickPick(index, -1)}
                       disabled={index === 0}
                       accessibilityLabel={`${item.name} nach vorne`}
-                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-900 border border-white/10 mr-0.5 disabled:opacity-30"
+                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-950 border border-slate-800 mr-0.5 disabled:opacity-30"
                     >
                       <Ionicons name="chevron-back" size={12} color="#94a3b8" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => toggleQuickPick(item)}
-                      accessibilityLabel={`${item.name} aus der Schnellwahl entfernen`}
+                      accessibilityLabel={`${item.name} aus den Favoriten entfernen`}
                       className="flex-1 py-1.5 items-center rounded-lg bg-rose-500/10 border border-rose-500/30 mx-0.5"
                     >
                       <Ionicons name="close" size={12} color="#f43f5e" />
@@ -783,24 +873,47 @@ export default function DashboardScreen() {
                       onPress={() => moveQuickPick(index, 1)}
                       disabled={index === myDrinks.length - 1}
                       accessibilityLabel={`${item.name} nach hinten`}
-                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-900 border border-white/10 ml-0.5 disabled:opacity-30"
+                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-950 border border-slate-800 ml-0.5 disabled:opacity-30"
                     >
                       <Ionicons name="chevron-forward" size={12} color="#94a3b8" />
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
-            ))
-          )}
+            );
+          })}
+
+          {/* Leere Slots auffüllen, damit die Reihe immer drei Plätze zeigt —
+              ein einzelner Favorit soll nicht wie ein Fehler aussehen. */}
+          {Array.from({ length: Math.max(0, QUICK_PICK_SLOTS - myDrinks.length) }).map((_, idx) => (
+            <TouchableOpacity
+              key={`slot-${idx}`}
+              activeOpacity={0.8}
+              onPress={() => {
+                triggerHaptic("light");
+                setDrinkSearch("");
+                setPickerCategory(null);
+                setShowPickerModal(true);
+              }}
+              accessibilityLabel="Favorit hinzufügen"
+              style={{ width: tileWidth, height: tileHeight }}
+              className="border border-dashed border-slate-700 rounded-2xl items-center justify-center mb-1"
+            >
+              <Ionicons name="add" size={20} color="#475569" />
+              <Text className="text-slate-600 text-[9px] font-black uppercase tracking-wider mt-1 text-center px-1">
+                Favorit
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Angebot nach einem Scan. Bewusst ein Streifen und kein Dialog: das
             Getränk ist schon geloggt, die Frage darf niemanden aufhalten. */}
         {pendingQuickPick && (
-          <View className="mb-4 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-3.5 flex-row items-center">
+          <View className="mb-5 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-3.5 flex-row items-center">
             <Ionicons name="add-circle-outline" size={18} color="#22d3ee" />
             <Text className="text-cyan-300/90 text-[11px] leading-4 ml-2.5 flex-1">
-              „{pendingQuickPick.name}“ zur Schnellwahl hinzufügen?
+              „{pendingQuickPick.name}“ zu den Favoriten?
             </Text>
             <TouchableOpacity
               onPress={() => setPendingQuickPick(null)}
@@ -815,7 +928,7 @@ export default function DashboardScreen() {
                 setPendingQuickPick(null);
                 await toggleQuickPick(drink);
               }}
-              accessibilityLabel={`${pendingQuickPick.name} zur Schnellwahl hinzufügen`}
+              accessibilityLabel={`${pendingQuickPick.name} zu den Favoriten hinzufügen`}
               className="bg-cyan-400 px-3 py-1.5 rounded-xl"
             >
               <Text className="text-slate-950 text-[10px] font-black uppercase">Ja</Text>
@@ -824,42 +937,104 @@ export default function DashboardScreen() {
         )}
 
         {/* ==========================================
-            5. CUSTOM DRINK CREATOR BUTTON
-            ========================================== */}
-        <View className="mb-8 flex-row space-x-3">
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              triggerHaptic("light");
-              setShowScanner(true);
-            }}
-            className="flex-1 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl py-4 flex-row items-center justify-center active:scale-95 shadow-md"
-          >
-            <Ionicons name="barcode-outline" size={16} color="#22d3ee" />
-            <Text className="text-cyan-400 text-xs font-black uppercase tracking-wider ml-2">Scannen</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              triggerHaptic("light");
-              setDrinkSearch("");
-              setShowPickerModal(true);
-            }}
-            className="flex-1 ml-3 bg-slate-900 border border-white/5 rounded-2xl py-4 flex-row items-center justify-center active:scale-95 shadow-md"
-          >
-            <Ionicons name="apps-outline" size={16} color="#94a3b8" />
-            <Text className="text-slate-300 text-xs font-black uppercase tracking-wider ml-2">
-              Wählen
-            </Text>
-          </TouchableOpacity>
+            4. KATEGORIEN — vier Reiter, drei Karten
+            ==========================================
+            Ersetzt die Kachelwand über den gesamten Katalog. Was hier steht,
+            sind die drei Getränke der Kategorie, die dieser Nutzer am
+            häufigsten trinkt; alles Weitere liegt hinter der Suche. */}
+        <View className="flex-row mb-3" style={{ gap: 6 }}>
+          {CATEGORY_TABS.map((tab) => {
+            const active = activeCategory === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                activeOpacity={0.8}
+                onPress={() => {
+                  triggerHaptic("light");
+                  setActiveCategory(tab.key);
+                }}
+                accessibilityLabel={`Kategorie ${tab.label}`}
+                style={{
+                  backgroundColor: active ? `${tab.accent}1A` : CARD_BG,
+                  borderColor: active ? `${tab.accent}66` : "#1e293b",
+                }}
+                className="flex-1 border rounded-xl py-2.5 items-center"
+              >
+                <Text className="text-base">{tab.icon}</Text>
+                <Text
+                  className="text-[9px] font-black uppercase tracking-wider mt-0.5"
+                  style={{ color: active ? tab.accent : "#64748b" }}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+
+        {categoryCards.length === 0 ? (
+          <View className="py-8 items-center rounded-2xl border border-slate-800" style={{ backgroundColor: CARD_BG }}>
+            <Text className="text-slate-500 text-[11px] font-bold">Hier ist noch nichts hinterlegt.</Text>
+          </View>
+        ) : (
+          <View className={isDesktop ? "flex-row" : ""} style={isDesktop ? { gap } : undefined}>
+            {categoryCards.map((item) => {
+              const accent = accentForCategory(item.category);
+              const chosen = myDrinks.some((d) => d.id === item.id);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  activeOpacity={0.8}
+                  onPress={(e) => handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                  accessibilityLabel={`${item.name} eintragen`}
+                  style={{ backgroundColor: CARD_BG, borderColor: `${accent}33` }}
+                  className={`border rounded-2xl px-3.5 py-3 flex-row items-center mb-2 ${isDesktop ? "flex-1" : ""}`}
+                >
+                  <Text className="text-xl">{getCategoryIconChar(item.category, item.name)}</Text>
+                  <View className="flex-1 ml-3">
+                    <Text className="text-white text-xs font-black" numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                      {(item.volume / 1000).toFixed(2)}l · {item.abv}% Vol.
+                    </Text>
+                  </View>
+                  {chosen ? (
+                    <Ionicons name="star" size={14} color={accent} />
+                  ) : (
+                    <View style={{ backgroundColor: `${accent}1A` }} className="p-1.5 rounded-lg">
+                      <Ionicons name="add" size={14} color={accent} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            triggerHaptic("light");
+            setDrinkSearch("");
+            setPickerCategory(activeCategory);
+            setShowPickerModal(true);
+          }}
+          accessibilityLabel={`Alle ${activeCategoryLabel} anzeigen und suchen`}
+          className="mt-1 mb-8 flex-row items-center justify-center py-3"
+        >
+          <Ionicons name="search-outline" size={13} color="#64748b" />
+          <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider ml-1.5">
+            Alle {activeCategoryLabel} anzeigen ({categoryTotal})
+          </Text>
+        </TouchableOpacity>
 
         {/* ==========================================
             6. RECENT LOGS SECTION (LAST 3 + UNDO)
             ========================================== */}
         <View className="mb-12">
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">Letzte 3 Drinks</Text>
+          <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-3">Letzte 3 Drinks</Text>
           
           {lastThreeLogs.length === 0 ? (
             <View className="bg-slate-900/10 border border-dashed border-slate-800 rounded-3xl p-6 items-center">
@@ -875,7 +1050,8 @@ export default function DashboardScreen() {
               return (
                 <View
                   key={log.id}
-                  className="flex-row items-center justify-between bg-slate-900/40 border border-white/5 rounded-2xl p-3.5 mb-2 shadow-sm"
+                  style={{ backgroundColor: CARD_BG }}
+                  className="flex-row items-center justify-between border border-slate-800 rounded-2xl p-3.5 mb-2"
                 >
                   <View className="flex-1 pr-4">
                     <Text className="text-white text-xs font-black">{details.name}</Text>
@@ -896,6 +1072,7 @@ export default function DashboardScreen() {
           )}
         </View>
 
+        </View>
       </ScrollView>
 
       {/* ==========================================
@@ -914,20 +1091,20 @@ export default function DashboardScreen() {
           <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[85%]">
             <View className="flex-row justify-between items-center mb-1">
               <Text className="text-white text-base font-black uppercase tracking-wider">
-                Getränke wählen
+                {pickerCategory ? activeCategoryLabel : "Alle Getränke"}
               </Text>
               <TouchableOpacity onPress={() => setShowPickerModal(false)} className="p-1">
                 <Ionicons name="close" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
             <Text className="text-slate-500 text-[10px] font-semibold mb-4">
-              Angetippte Getränke erscheinen auf dem Dashboard ({myDrinks.length}/{MAX_QUICK_PICKS})
+              Antippen trägt ein · Stern macht zum Favoriten ({myDrinks.length}/{QUICK_PICK_SLOTS})
             </Text>
 
             <View className="bg-slate-900 border border-white/5 rounded-2xl flex-row items-center px-4 py-3 mb-4">
               <Ionicons name="search" size={16} color="#475569" />
               <TextInput
-                placeholder="Getränk suchen…"
+                placeholder={pickerCategory ? "Im ganzen Katalog suchen…" : "Getränk suchen…"}
                 placeholderTextColor="#475569"
                 value={drinkSearch}
                 onChangeText={setDrinkSearch}
@@ -950,34 +1127,57 @@ export default function DashboardScreen() {
               ) : (
                 catalogSearchResults.map((item) => {
                   const chosen = myDrinks.some((d) => d.id === item.id);
+                  const accent = accentForCategory(item.category);
                   return (
-                    <TouchableOpacity
+                    <View
                       key={item.id}
-                      onPress={() => toggleQuickPick(item)}
-                      accessibilityLabel={`${item.name} ${chosen ? "aus der Schnellwahl entfernen" : "zur Schnellwahl hinzufügen"}`}
-                      className={`flex-row items-center px-4 py-3 rounded-2xl mb-2 border ${
-                        chosen
-                          ? "bg-cyan-400/10 border-cyan-400/40"
-                          : "bg-slate-900 border-white/5"
-                      }`}
+                      className="flex-row items-center rounded-2xl mb-2 border pr-2"
+                      style={{
+                        backgroundColor: chosen ? `${accent}14` : CARD_BG,
+                        borderColor: chosen ? `${accent}66` : "#1e293b",
+                      }}
                     >
-                      <Text className="text-lg mr-3">
-                        {getCategoryIconChar(item.category, item.name)}
-                      </Text>
-                      <View className="flex-1">
-                        <Text className="text-white text-xs font-black" numberOfLines={1}>
-                          {item.name}
+                      {/* Antippen trägt ein. Das ist der häufigere Wunsch: wer
+                          die Liste öffnet, will meistens etwas trinken, nicht
+                          seine Favoriten umbauen. */}
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          setShowPickerModal(false);
+                          handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY);
+                        }}
+                        accessibilityLabel={`${item.name} eintragen`}
+                        className="flex-1 flex-row items-center px-4 py-3"
+                      >
+                        <Text className="text-lg mr-3">
+                          {getCategoryIconChar(item.category, item.name)}
                         </Text>
-                        <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
-                          {(item.volume / 1000).toFixed(2)}l • {item.abv}% • {item.category}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name={chosen ? "checkmark-circle" : "add-circle-outline"}
-                        size={20}
-                        color={chosen ? "#22d3ee" : "#475569"}
-                      />
-                    </TouchableOpacity>
+                        <View className="flex-1">
+                          <Text className="text-white text-xs font-black" numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                            {(item.volume / 1000).toFixed(2)}l · {item.abv}% · {item.category}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Favorisieren ist die zweite, seltenere Handlung und
+                          bekommt deshalb einen eigenen Knopf statt der ganzen
+                          Zeile. */}
+                      <TouchableOpacity
+                        onPress={() => toggleQuickPick(item)}
+                        accessibilityLabel={`${item.name} ${
+                          chosen ? "aus den Favoriten entfernen" : "zu den Favoriten hinzufügen"
+                        }`}
+                        className="p-2.5"
+                      >
+                        <Ionicons
+                          name={chosen ? "star" : "star-outline"}
+                          size={18}
+                          color={chosen ? accent : "#475569"}
+                        />
+                      </TouchableOpacity>
+                    </View>
                   );
                 })
               )}

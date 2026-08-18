@@ -153,6 +153,16 @@ Produktionsdatenbank gelandet.
   dafür; wer eine neue Katalog-Route baut, muss sie benutzen. Ein Scan loggt
   und **bietet** die Kachel an, er setzt sie nicht.
 
+- **Das Dashboard hat drei Slots, nicht zwölf.** Die Zahlen hängen an drei
+  Stellen zusammen und müssen es bleiben: `QUICK_PICK_SLOTS` (Oberfläche,
+  `src/app/(tabs)/index.tsx`), `DEFAULT_QUICK_PICKS` (Startbelegung,
+  `server/db.js`) und `PICK_COUNT` (`server/migrate-quickpicks.js`).
+
+  Das Serverlimit in `server/index.js` steht bewusst höher (12) — es ist eine
+  Missbrauchsgrenze, keine Design-Vorgabe. Konten, die über eine ältere
+  Startbelegung mehr als drei haben, verlieren dadurch nichts; die Reihe
+  bricht einfach um, bis sie selbst kürzen.
+
 - **Ein `async`-Handler ohne `try/catch` kann den ganzen Server beenden.**
   Das Projekt läuft auf Express **4**, und Express 4 leitet eine abgelehnte
   Promise aus einem `async`-Handler **nicht** an die Fehler-Middleware weiter.
@@ -180,7 +190,7 @@ eingeloggten Zustand (beendet alle anderen Sitzungen), Passwort-Reset per E-Mail
 (Resend), Session überlebt Reload auch bei Serverausfall, Kontolöschung
 in-app (Store-Pflicht), 18+-Alters-Gate, Datenschutz/AGB-Screens.
 
-**Kern:** Getränke loggen (inkl. eigener Drinks), persönliche Schnellwahl
+**Kern:** Getränke loggen (inkl. eigener Drinks), persönliche Schnellwahl (drei Slots)
 (eigene Kachelauswahl und -reihenfolge, getrennt vom geteilten Katalog),
 Barcode-Scanner mit Community-EAN-Datenbank, XP/Level mit Level-Up-Aufgaben,
 Kater-Schutz (+25 % XP nach Wasser), 11 Erfolge, Rangliste mit Zeitfiltern.

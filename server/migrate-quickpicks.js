@@ -8,6 +8,9 @@
  * Lauf bekämen Bestandsnutzer die generische Startauswahl statt ihrer eigenen
  * Gewohnheiten.
  *
+ * Drei Plätze, passend zu den drei Slots im Dashboard. Wer mehr geloggt hat,
+ * bekommt seine drei häufigsten.
+ *
  * Aufruf auf dem Server:
  *
  *     docker compose -f server/docker-compose.yml exec backend \
@@ -21,16 +24,13 @@
 const db = require("./db");
 
 const DRY_RUN = process.argv.includes("--dry-run");
-const PICK_COUNT = 6;
+const PICK_COUNT = 3;
 
 /** Fallback, wenn jemand noch nie etwas geloggt hat. */
 const FALLBACK = [
   "drink-beer-helles",
-  "drink-beer-pils",
-  "drink-shot",
   "drink-wine-white",
   "drink-water-glass",
-  "drink-cocktail-aperol",
 ];
 
 async function main() {

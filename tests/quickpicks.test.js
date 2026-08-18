@@ -74,7 +74,10 @@ test("Schnellwahl & Katalog-Sichtbarkeit", async (t) => {
       const res = await call("GET", "/users/me/drinks", undefined, user.token);
 
       assert.equal(res.status, 200);
-      assert.equal(res.json.length, 6, "Sechs Getränke zum Start");
+      // Drei, weil das Dashboard genau drei Slots hat. Wäre die Startauswahl
+      // größer, stände ein neues Konto sofort über dem Limit und der erste
+      // Eindruck wäre eine volle Schnellwahl statt einer einladenden.
+      assert.equal(res.json.length, 3, "Drei Getränke zum Start");
       // Muss echte Katalogeinträge liefern, keine losen IDs.
       assert.ok(res.json.every((d) => d.id && d.name && d.volume > 0));
     });
@@ -110,7 +113,7 @@ test("Schnellwahl & Katalog-Sichtbarkeit", async (t) => {
       await call("PUT", "/users/me/drinks", { drinkIds: ["drink-shot"] }, a.token);
 
       const forB = await call("GET", "/users/me/drinks", undefined, b.token);
-      assert.equal(forB.json.length, 6, "B behält seine Startauswahl");
+      assert.equal(forB.json.length, 3, "B behält seine Startauswahl");
       assert.ok(forB.json.some((d) => d.id !== "drink-shot"));
     });
 

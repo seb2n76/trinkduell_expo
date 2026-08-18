@@ -60,13 +60,21 @@ Bild wird aus R2 mitgelöscht. Systembeiträge (Level-Ups) gehören niemandem
 und sind nicht löschbar. Eine bestehende Meldung überlebt das Löschen, weil
 sie einen eigenen Textauszug speichert.
 
-### ~~1.1b Persönliche Schnellwahl~~ — **erledigt** (Commit nach `152e822`)
+### ~~1.1b Persönliche Schnellwahl + Dashboard-Redesign~~ — **erledigt**
 
-Der Katalog ist geteilt, die Kachelauswahl nicht mehr. Neu: `user_drinks`,
-`GET/PUT /api/users/me/drinks`, Auswahl-Dialog mit Suche, Bearbeiten-Modus
-mit Reihenfolge. Frei angelegte Getränke sieht nur ihr Urheber, gescannte
-bleiben geteilt (Community-Datenbank). **Auf dem Server einmalig
-`node server/migrate-quickpicks.js` laufen lassen** — siehe Abschnitt 2.
+Der Katalog ist geteilt, die Kachelauswahl nicht: `user_drinks`,
+`GET/PUT /api/users/me/drinks`, Auswahl-Ansicht mit Suche, Bearbeiten-Modus.
+Frei angelegte Getränke sieht nur ihr Urheber, gescannte bleiben geteilt.
+
+Darauf aufgesetzt das Dashboard-Redesign: kompakte Stats-Leiste mit
+Hydrations-Abzeichen, prominenter Scan-Knopf, **drei** Favoriten-Slots statt
+einer Kachelwand, darunter vier Kategorie-Reiter mit je drei Karten (nach
+eigener Trinkhistorie sortiert) und dahinter die Suche über den ganzen
+Katalog. Ab 1024 px zentrierte 896-px-Spalte mit waagerechten Karten.
+
+**Auf dem Server einmalig `node server/migrate-quickpicks.js` laufen lassen**
+— siehe Abschnitt 2. Das Skript setzt drei Favoriten, passend zu den drei
+Slots.
 
 ### ~~1.2 Passwort ändern im eingeloggten Zustand~~ — **erledigt** (Commit nach `32a5cf6`)
 
@@ -201,7 +209,7 @@ Zugangsdaten, Hardware oder rechtliche Entscheidungen.
 | **Hardware-Test** | APK installieren und Push, GPS, Barcode-Scanner, Avatar- und Beweisfoto-Upload prüfen. **Nichts davon lief je auf einem Gerät** |
 | **Datenschutz/AGB** | 6 Platzhalter in `src/app/legal/privacy.tsx` ausfüllen (`[Name/Firma des Betreibers]`, `[Anschrift]`, `[Kontakt-E-Mail-Adresse]`, `[E-Mail-Adresse für Datenschutzanfragen]`, `[Proxmox-Server-Standort]`, `[Name/Adresse]`), öffentlich hosten (in-app reicht den Stores nicht), anwaltlich prüfen lassen |
 | **Splash-Grafik** | `assets/images/splash-icon.png` ist **byte-identisch mit `expo-logo.png`** — der Startbildschirm zeigt das Expo-Logo und würde so in die Stores gehen |
-| **Schnellwahl-Migration** | Einmalig `docker compose -f server/docker-compose.yml exec backend node server/migrate-quickpicks.js --dry-run`, dann ohne `--dry-run`. Ohne diesen Lauf bekommen Bestandskonten die generische Startauswahl statt ihrer eigenen Gewohnheiten. Wiederholbar: wer schon selbst gewählt hat, wird übersprungen |
+| **Schnellwahl-Migration** | Einmalig `docker compose -f server/docker-compose.yml exec backend node server/migrate-quickpicks.js --dry-run`, dann ohne `--dry-run`. Ohne diesen Lauf bekommen Bestandskonten die generische Startauswahl statt ihrer eigenen Gewohnheiten. Setzt drei Favoriten, passend zu den drei Dashboard-Slots. Wiederholbar: wer schon selbst gewählt hat, wird übersprungen |
 | **Entscheidungen** | Gruppenbeitritt-Modus (1.5), Meldungen per E-Mail (1.7), `StatsCharts` (1.10), bleibt Netlify neben Cloudflare bestehen |
 
 ---
