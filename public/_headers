@@ -24,14 +24,36 @@
 
 # Basis-Absicherung für alle Seiten.
 #
-# Bewusst OHNE Content-Security-Policy: react-native-web erzeugt Inline-Styles,
-# die Karte läuft in einem srcDoc-iframe und lädt Leaflet von einem CDN. Eine
-# CSP müsste all das erfassen und würde bei einem Fehler die App lahmlegen —
-# das gehört gemessen und einzeln geprüft, nicht blind hinzugefügt.
+# Content-Security-Policy: erst messen, dann scharf schalten.
 #
-# Ebenso ohne Permissions-Policy: Kamera (Barcode-Scanner) und Standort
-# brauchen die Erlaubnis, und ein zu strenger Wert würde beide abschalten.
+# Blind gesetzt legt eine CSP diese App lahm — react-native-web erzeugt
+# Inline-Styles, die Karte läuft in einem srcDoc-iframe und lädt Leaflet von
+# unpkg, die Kacheln kommen von CARTO. Deshalb steht sie unten als
+# **Report-Only**: der Browser meldet Verstöße in der Konsole und blockiert
+# nichts. Kaputtgehen kann dadurch nichts.
+#
+# So wird daraus eine echte CSP:
+#   1. Deployen, die App auf allen Screens benutzen — besonders Karte,
+#      Barcode-Scanner und Bild-Uploads.
+#   2. Browser-Konsole lesen. Meldungen beginnen mit
+#      "Content-Security-Policy-Report-Only".
+#   3. Fehlende Quellen unten ergänzen, bis nichts mehr gemeldet wird.
+#   4. Erst dann `-Report-Only` aus dem Header-Namen streichen.
+#
+# Ohne Schritt 2-3 NICHT scharf schalten. Eine ungetestete CSP ist ein
+# Totalausfall, kein Sicherheitsgewinn.
+#
+# Die Quellen im Einzelnen (Stand 18.08.2026):
+#   unpkg.com          Leaflet (CSS + JS) im Karten-iframe
+#   *.basemaps.cartocdn.com  Kartenkacheln
+#   api.trinkduell.com Das Backend
+#   cdn.trinkduell.com Avatare und Beweisfotos aus R2
+#   'unsafe-inline'    react-native-web schreibt Stile direkt ins Element;
+#                      ohne das ist die App unbenutzbar. Das ist die
+#                      teuerste Zeile hier und der Grund, warum die CSP
+#                      allein kein XSS-Schutz ist.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://cdn.trinkduell.com https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' https://api.trinkduell.com; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'

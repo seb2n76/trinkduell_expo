@@ -20,7 +20,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { FloatingPointItem, FloatingPointItemType } from "@/components/FloatingPoints";
 import { AchievementModal } from "@/components/AchievementModal";
 import { useAuth } from "../_layout";
-import { getCoordinatesForDrinkLog } from "@/services/location";
+import {
+  getCoordinatesForDrinkLog,
+  getCurrentCoordinates,
+  getLocationMode,
+  DEFAULT_LOCATION_MODE,
+  type LocationMode,
+  type Coordinates,
+} from "@/services/location";
 // Lazy on purpose: the camera module is only needed once someone taps
 // "Scannen", and it has no business in the bundle everyone loads first.
 const BarcodeScanner = React.lazy(() => import("@/components/BarcodeScanner"));
@@ -178,6 +185,9 @@ export default function DashboardScreen() {
       const userLogs = allLogs.filter((l) => l.userId === currentUser.id);
       const sortedLogs = userLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setLogs(sortedLogs);
+
+      // Der Modus steuert, ob unten der Check-in-Streifen erscheint.
+      setLocationMode(await getLocationMode());
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     }
@@ -303,14 +313,57 @@ export default function DashboardScreen() {
     return logs.slice(0, 3);
   }, [logs]);
 
+  // ── Check-in ────────────────────────────────────────────────────────────
+  //
+  // Der Standort-Modus „Nur bei Check-in" gab es seit jeher, aber ohne
+  // Auslöser: `getCoordinatesForDrinkLog()` liefert in diesem Modus immer
+  // null, die Einstellung verhielt sich also wie „Aus" und versprach etwas,
+  // das nicht passierte.
+  //
+  // Ein Check-in merkt sich den Ort EINMAL und hängt ihn an das nächste
+  // geloggte Getränk. Bewusst nicht dauerhaft gespeichert: nach einem Neustart
+  // der App ist er weg, und das ist bei Standortdaten die richtige
+  // Voreinstellung.
+  const [locationMode, setLocationMode] = useState<LocationMode>(DEFAULT_LOCATION_MODE);
+  const [checkIn, setCheckIn] = useState<{ coords: Coordinates; at: number } | null>(null);
+  const [checkInBusy, setCheckInBusy] = useState(false);
+
+  // Ein Ort von vor Stunden ist kein Ort mehr, an dem man ist.
+  const CHECKIN_GUELTIG_MS = 4 * 60 * 60 * 1000;
+  const checkInAktiv =
+    checkIn !== null && Date.now() - checkIn.at < CHECKIN_GUELTIG_MS;
+
+  const handleCheckIn = async () => {
+    setCheckInBusy(true);
+    try {
+      const coords = await getCurrentCoordinates();
+      if (!coords) {
+        await triggerHaptic("error");
+        notify(
+          "Kein Standort",
+          "Der Ort konnte nicht bestimmt werden. Prüfe die Standort-Freigabe deines Geräts — im Browser braucht es außerdem eine HTTPS-Verbindung."
+        );
+        return;
+      }
+      await triggerHaptic("success");
+      setCheckIn({ coords, at: Date.now() });
+    } finally {
+      setCheckInBusy(false);
+    }
+  };
+
   const handleLogDrink = async (item: { id: string; name: string; volume: number; abv: number; category: Drink["category"] }, pageX?: number, pageY?: number) => {
     const isWater = item.abv === 0;
     const grams = calculateAlcoholGrams(item.volume, item.abv);
 
-    // Only attaches coordinates when the user picked the "auto" location
-    // mode; returns null in every other case (manual/off, permission
-    // denied, GPS unavailable) so logging never depends on it.
-    const coords = await getCoordinatesForDrinkLog();
+    // Zwei Wege zum Ort, in dieser Reihenfolge:
+    //   1. ein aktiver Check-in — der Nutzer hat ausdrücklich gesagt "hier bin ich"
+    //   2. der Automatik-Modus, der bei "manual"/"off" null liefert
+    // Beides scheitert leise: ein Getränk zu loggen darf nie am GPS hängen.
+    const coords = checkInAktiv && checkIn ? checkIn.coords : await getCoordinatesForDrinkLog();
+    // Ein Check-in gilt fuer genau ein Getraenk. Sonst wuerde er unbemerkt
+    // an jedem weiteren haengen bleiben, auch Stunden spaeter woanders.
+    if (checkInAktiv) setCheckIn(null);
     const latitude: number | null = coords ? coords.latitude : null;
     const longitude: number | null = coords ? coords.longitude : null;
 
@@ -796,6 +849,62 @@ export default function DashboardScreen() {
           <Ionicons name="chevron-forward" size={18} color="#22d3ee" />
         </TouchableOpacity>
 
+        {/* Check-in. Nur im Modus „Nur bei Check-in" — bei „Automatisch"
+            passiert es von selbst, bei „Aus" soll es gar nicht angeboten
+            werden. */}
+        {locationMode === "manual" && (
+          <View
+            className={`mb-5 rounded-2xl border p-3.5 flex-row items-center ${
+              checkInAktiv
+                ? "bg-emerald-500/10 border-emerald-400/30"
+                : "border-slate-800"
+            }`}
+            style={checkInAktiv ? undefined : { backgroundColor: CARD_BG }}
+          >
+            <Ionicons
+              name={checkInAktiv ? "location" : "location-outline"}
+              size={18}
+              color={checkInAktiv ? "#10B981" : "#64748b"}
+            />
+            <View className="flex-1 ml-3">
+              <Text
+                className={`text-[11px] font-black uppercase tracking-wider ${
+                  checkInAktiv ? "text-emerald-400" : "text-slate-400"
+                }`}
+              >
+                {checkInAktiv ? "Eingecheckt" : "Check-in"}
+              </Text>
+              <Text className="text-slate-500 text-[10px] font-bold mt-0.5 leading-3.5">
+                {checkInAktiv
+                  ? "Dein nächstes Getränk bekommt diesen Ort."
+                  : "Ort einmalig festhalten — nur für dein nächstes Getränk."}
+              </Text>
+            </View>
+
+            {checkInBusy ? (
+              <ActivityIndicator size="small" color="#10B981" />
+            ) : checkInAktiv ? (
+              <TouchableOpacity
+                onPress={() => {
+                  triggerHaptic("light");
+                  setCheckIn(null);
+                }}
+                accessibilityLabel="Check-in verwerfen"
+                className="px-3 py-1.5"
+              >
+                <Text className="text-slate-400 text-[10px] font-black uppercase">Verwerfen</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleCheckIn}
+                accessibilityLabel="Jetzt einchecken"
+                className="bg-emerald-500/15 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl"
+              >
+                <Text className="text-emerald-400 text-[10px] font-black uppercase">Einchecken</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
         {/* ==========================================
             3. SCHNELLWAHL — drei Slots, ein Tipp
             ========================================== */}

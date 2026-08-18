@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `c179f73` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `17fc233` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -426,11 +426,15 @@ der Allow-List steht. Zwei Stellen:
 Aktuell live: `webapp.trinkduell.com` (Netlify) und `cloud.trinkduell.com`
 (Cloudflare Workers, Worker-Name `trinkduell-expo`).
 
-Ohne `Content-Security-Policy` in `_headers`, bewusst: react-native-web
-erzeugt Inline-Styles, die Karte läuft in einem srcDoc-iframe und lädt Leaflet
-von einem CDN. Eine CSP müsste all das erfassen und würde bei einem Fehler die
-App lahmlegen — das gehört einzeln gemessen, nicht blind gesetzt. Ebenso keine
-`Permissions-Policy`: Kamera und Standort brauchen die Erlaubnis.
+`public/_headers` liefert seit 18.08.2026 eine **Report-Only**-CSP: der
+Browser meldet Verstösse in der Konsole und blockiert nichts. Sie blind
+scharf zu schalten legt die App lahm — react-native-web erzeugt Inline-Styles,
+die Karte läuft in einem srcDoc-iframe und lädt Leaflet von unpkg, die
+Kacheln kommen von CARTO. Das Vorgehen zum Scharfschalten steht als
+Kommentar in der Datei.
+
+Weiterhin **keine** `Permissions-Policy`: Kamera (Barcode) und Standort
+brauchen die Erlaubnis, ein zu strenger Wert schaltet beide ab.
 
 > **Randnotiz zum statischen Rendern:** 17 der 19 erzeugten Routen-HTMLs sind
 > byte-identisch. AgeGate und AuthProvider rendern serverseitig nichts, also

@@ -297,33 +297,69 @@ dem Meldezeitpunkt, das Original kann längst gelöscht sein.
 > Zeilen in `server/email.js`. Bis dahin ist der Weg: Variable setzen, in der
 > App nachsehen. Der Log-Eintrag (`grep MELDUNG`) bleibt zusätzlich bestehen.
 
-### 1.8 Verwaiste R2-Objekte aufräumen — **niedrig**
+### ~~1.8 Verwaiste R2-Objekte aufräumen~~ — **erledigt (Skript), Betreiber muss es laufen lassen**
 
-Wer eine Upload-URL signieren lässt und dann abbricht, hinterlässt ein Objekt,
-auf das nichts zeigt. Entweder eine R2-Lebenszyklus-Regel im Cloudflare-
-Dashboard (einfachster Weg) oder ein Aufräum-Skript, das `proof/`-Objekte ohne
-Beitrag löscht.
+`server/cleanup-r2.js`. **Löscht nichts ohne `--delete`** — bei einem
+Löschskript ist der Probelauf die richtige Voreinstellung, deshalb umgekehrt
+zu den anderen Skripten hier (die haben `--dry-run` als Schalter).
 
-### 1.9 Check-in-Auslöser — **niedrig**
+Zwei Sicherheitsnetze, weil ein Fehler fremde Bilder kostet:
 
-Der Standort-Modus „Nur bei Check-in" existiert in
-`src/services/location.ts`, hat aber keinen Auslöser und verhält sich dadurch
-wie „Aus". Entweder einen Check-in-Knopf bauen oder den Modus entfernen —
-aktuell verspricht die Einstellung etwas, das nicht passiert.
+1. **Schonfrist von 24 h.** Jüngere Objekte werden nie angefasst — zwischen
+   Upload und gespeichertem Beitrag kann Zeit liegen.
+2. **Erst Referenzen sammeln, dann den Bucket listen.** Andersherum gälte ein
+   Objekt als verwaist, das während des Laufs verknüpft wird.
 
-### 1.10 `StatsCharts.tsx` — **niedrig, braucht eine Entscheidung**
+> **Ungetestet gegen echtes R2** — dem Agenten fehlten die Zugangsdaten.
+> Geprüft ist nur der Schutzpfad ohne Konfiguration (Abbruch mit Exit 1).
+> Deshalb: **erst ohne `--delete` laufen lassen** und die Liste ansehen.
 
-230 Zeilen, von **keiner** Datei importiert, landen aber im Bundle. Entweder
-im Profil einbauen oder löschen. Der Betreiber wurde dreimal gefragt und hat
-nicht geantwortet — im Zweifel löschen, `git` erinnert sich.
+### ~~1.9 Check-in-Auslöser~~ — **erledigt**
 
-### 1.11 Content-Security-Policy — **niedrig**
+Der Modus „Nur bei Check-in" verhielt sich wie „Aus": `getCoordinatesForDrinkLog()`
+lieferte dort immer null, es gab keinen Auslöser.
 
-`public/_headers` setzt bewusst **keine** CSP. Wer sie will, muss sie messen:
-react-native-web erzeugt Inline-Styles, die Karte läuft in einem
-srcDoc-iframe und lädt Leaflet von einem CDN. Blind gesetzt legt sie die App
-lahm. Vorgehen: `Content-Security-Policy-Report-Only` deployen, Verstöße
-sammeln, dann scharf schalten.
+Jetzt ein Streifen im Dashboard, **nur in diesem Modus sichtbar**. Ein
+Check-in hält den Ort einmalig fest und hängt ihn an das **nächste** geloggte
+Getränk — danach ist er verbraucht, nach vier Stunden verfällt er ohnehin.
+Bewusst nicht dauerhaft gespeichert: nach einem App-Neustart ist er weg, und
+das ist bei Standortdaten die richtige Voreinstellung.
+
+Im Browser belegt: erstes Getränk bekommt die Koordinaten, zweites nicht.
+
+### ~~1.10 `StatsCharts.tsx`~~ — **gelöscht**
+
+**Korrektur zur alten Notiz:** die Datei landete **nicht** im Bundle. Metro
+bündelt nur, was vom Einstiegspunkt erreichbar ist — geprüft, indem im
+gebauten `dist/` nach ihren Texten gesucht wurde (nicht gefunden). Sie kostete
+also zur Laufzeit nichts, war aber 230 Zeilen toter Code.
+
+Der Betreiber wurde dreimal gefragt und hat nicht geantwortet; die
+dokumentierte Vorgabe war „im Zweifel löschen". Zurückholen:
+
+```bash
+git checkout 0e01217 -- src/components/StatsCharts.tsx
+```
+
+### ~~1.11 Content-Security-Policy~~ — **als Report-Only ausgeliefert**
+
+`public/_headers` setzt jetzt `Content-Security-Policy-Report-Only`. Der
+Browser **meldet** Verstösse in der Konsole und blockiert nichts — kaputtgehen
+kann dadurch nichts.
+
+Lokal gegen einen echten Build (`wrangler dev`) durchgespielt: Login,
+Dashboard, Feed und **die Karte** ergaben **keinen einzigen** Verstoss ausser
+auf `localhost:5000`, und der ist ein Artefakt des lokalen Builds (produktiv
+steht `api.trinkduell.com` in der Liste). Leaflet lud aus unpkg, vier
+CARTO-Kacheln waren im DOM.
+
+**Nicht geprüft:** Bilder von `cdn.trinkduell.com` (keine Avatare in den
+Testdaten) und der Barcode-Scanner. Beide stehen in der Richtlinie, sind aber
+unbelegt — genau deshalb geht sie als Report-Only raus.
+
+Scharf schalten: nach dem Deploy die Konsole lesen, fehlende Quellen
+ergänzen, **dann** `-Report-Only` aus dem Header-Namen streichen. Die
+Anleitung dazu steht als Kommentar in `public/_headers`.
 
 ---
 
@@ -341,7 +377,9 @@ Zugangsdaten, Hardware oder rechtliche Entscheidungen.
 | **Splash-Grafik** | `assets/images/splash-icon.png` ist **byte-identisch mit `expo-logo.png`** — der Startbildschirm zeigt das Expo-Logo und würde so in die Stores gehen |
 | **Schnellwahl-Migration** | Einmalig `docker compose -f server/docker-compose.yml exec backend node server/migrate-quickpicks.js --dry-run`, dann ohne `--dry-run`. Ohne diesen Lauf bekommen Bestandskonten die generische Startauswahl statt ihrer eigenen Gewohnheiten. Setzt drei Favoriten, passend zu den drei Dashboard-Slots. Wiederholbar: wer schon selbst gewählt hat, wird übersprungen |
 | **Moderation freischalten** | `ADMIN_USER_IDS` in `server/.env` auf die eigene Nutzer-ID setzen und den Container neu starten. Ohne diese Variable ist **niemand** Moderator und `/api/reports` antwortet für alle mit 404. ID herausfinden: `docker compose -f server/docker-compose.yml exec db psql -U trinkduell_user -d trinkduell -c "SELECT id, name FROM users ORDER BY name"` |
-| **Entscheidungen** | Meldungen zusätzlich per E-Mail (1.7)? `StatsCharts` (1.10)? Bleibt Netlify neben Cloudflare bestehen? |
+| **R2 aufräumen** | `docker compose -f server/docker-compose.yml exec backend node server/cleanup-r2.js` (Probelauf), Liste prüfen, dann mit `--delete`. **Ungetestet gegen echtes R2**, also erst ohne `--delete`. Alternative ohne Skript: eine Lebenszyklus-Regel im Cloudflare-Dashboard |
+| **CSP scharf schalten** | Nach dem Deploy die Browser-Konsole lesen, fehlende Quellen in `public/_headers` ergänzen, dann `-Report-Only` aus dem Header-Namen streichen. Anleitung steht als Kommentar in der Datei |
+| **Entscheidungen** | Meldungen zusätzlich per E-Mail (1.7)? Bleibt Netlify neben Cloudflare bestehen? |
 
 ---
 
