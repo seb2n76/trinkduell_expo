@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { Text, View, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from "react-native";
+import { Text, View, ScrollView, TouchableOpacity, Image, RefreshControl } from "react-native";
 import { useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiService } from "@/services/api";

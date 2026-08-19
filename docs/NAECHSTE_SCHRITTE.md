@@ -53,6 +53,55 @@ Der Zustand war beim Schreiben dieses Dokuments sauber.
 
 Nach Priorität. Die ersten drei sind klein und schließen echte Lücken.
 
+### 1.12 Doppelte Getränke im Katalog — **mittel**
+
+Der Katalog führt zwei Getränke doppelt:
+
+| | |
+|---|---|
+| `drink-beer-500` „Helles Bier“ 500 ml 5,0 % | `drink-beer-helles` „Helles“ 500 ml 4,9 % |
+| `drink-beer-330` „Pils“ 330 ml 4,9 % | `drink-beer-pils` „Pils 0,33“ 330 ml 4,8 % |
+
+Entstanden am 18.08.2026 beim Zusammenlegen: die 14 im Client hartkodierten
+Getränke wanderten in `DEFAULT_DRINKS` (11 → 25), und zwei davon gab es dort
+schon unter anderem Namen. In der Auswahl-Ansicht stehen sie jetzt
+nebeneinander und sind nicht auseinanderzuhalten.
+
+**Nicht einfach löschen.** `drink_logs.drink_id` hat `ON DELETE CASCADE` —
+ein `DELETE FROM drinks` nimmt jeden Eintrag mit, der darauf zeigt. Auf dem
+Produktionsserver haben Nutzer beide Varianten geloggt; das wären echte
+Datenverluste.
+
+Gangbare Wege, in aufsteigender Gründlichkeit:
+
+1. **Umbenennen.** Macht die Dublette wenigstens sichtbar, löst sie aber nicht.
+2. **Ausblenden statt löschen.** Eine Spalte `drinks.hidden BOOLEAN` (per
+   `ALTER TABLE` in `initPgSchema()`, Reihenfolge siehe Falle 3.5).
+   `isDrinkVisibleTo()` filtert sie aus dem Katalog, bestehende Logs lösen
+   weiter auf. Das ist der saubere Weg.
+3. **Zusammenführen.** Logs per `UPDATE drink_logs SET drink_id = ...` auf die
+   Kanon-ID umhängen, dann die verwaiste Zeile löschen. Braucht ein Skript
+   mit Probelauf und ist nur mit Backup zu empfehlen.
+
+Ist-Zustand prüfen (wie viele Logs hängen an welcher ID?):
+
+```bash
+docker compose -f server/docker-compose.yml exec db psql -U trinkduell_user -d trinkduell -c "SELECT d.id, d.name, count(l.id) AS logs FROM drinks d LEFT JOIN drink_logs l ON l.drink_id = d.id GROUP BY d.id, d.name ORDER BY d.name"
+```
+
+> Verwandt, aber harmlos: die Größenvarianten heißen uneinheitlich.
+> „Aperol Spritz“ (200 ml) neben „Aperol Spritz 0,3“ (300 ml), „Rotwein“
+> (150 ml) neben „Rotwein 0,2“ (200 ml) — mal trägt der Name die Menge,
+> mal nicht. Keine Dublette, nur inkonsequent.
+
+---
+
+## Erledigt
+
+Alles darunter ist abgearbeitet. Es steht hier, weil die Begründungen
+erklären, warum etwas so gebaut ist — und weil zwei Punkte noch
+Betreiber-Schritte brauchen (siehe Abschnitt 2).
+
 ### ~~1.1 Beitrag löschen~~ — **erledigt** (Commit nach `152e822`)
 
 `DELETE /api/posts/:id`, Papierkorb-Symbol an eigenen Beiträgen im Feed,

@@ -10,7 +10,6 @@ import {
   Animated,
   TextInput,
   ScrollView,
-  Image,
   ActivityIndicator,
   Alert,
   Platform,
@@ -1225,16 +1224,6 @@ export default function TabsLayout() {
   };
 
   // Helper colors
-  const getCategoryColor = (cat: string) => {
-    switch (cat) {
-      case "Bier": return "bg-cyan-950 text-cyan-400 border-cyan-800";
-      case "Wein": return "bg-purple-950 text-purple-400 border-purple-800";
-      case "Sekt": return "bg-pink-950 text-pink-400 border-pink-800";
-      case "Schnaps": return "bg-rose-950 text-rose-400 border-rose-800";
-      case "Mischgetränk": return "bg-yellow-950 text-yellow-400 border-yellow-800";
-      default: return "bg-emerald-950 text-emerald-400 border-emerald-800";
-    }
-  };
 
   const getCategoryIcon = (cat: string): "beer" | "wine" | "wine-outline" | "flask" | "water" => {
     switch (cat) {

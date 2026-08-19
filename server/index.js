@@ -3449,8 +3449,11 @@ app.patch("/api/reports/:id", authenticate, requireModerator, async (req, res) =
 // Last middleware on purpose. Without it Express answers these cases with its
 // default HTML error page including a stack trace — an API client gets
 // unparseable output, and the response leaks internals.
-// The fourth parameter is what marks this as an error handler for Express.
-app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+// Der vierte Parameter `next` ist ungenutzt und MUSS trotzdem bleiben:
+// Express erkennt eine Fehler-Middleware allein an der Parameterzahl. Mit
+// drei Parametern gilt sie als normale Middleware, und die Fehlerbehandlung
+// ist still abgeschaltet - ohne dass irgendetwas rot wird.
+app.use((err, req, res, next) => {
   if (err && err.message === "CORS_NOT_ALLOWED") {
     return res.status(403).json({ error: "Zugriff von dieser Herkunft ist nicht erlaubt." });
   }

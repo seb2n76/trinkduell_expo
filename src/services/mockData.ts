@@ -214,7 +214,6 @@ export function enrichUserProgress(user: User): User {
 // ==========================================
 // 3. Mock Seeds
 // ==========================================
-const MOCK_USERS: User[] = [];
 
 const MOCK_DRINKS: Drink[] = [
   { id: "drink-beer-500", name: "Helles Bier", category: "Bier", volume: 500, abv: 5.0, calories: 215 },
@@ -229,16 +228,6 @@ const MOCK_DRINKS: Drink[] = [
   { id: "drink-sip-mix", name: "Schluck Mischgetränk", category: "Mischgetränk", volume: 30, abv: 10.0, calories: 20 },
   { id: "drink-sip-water", name: "Zwischenwasser", category: "Alkoholfrei", volume: 30, abv: 0.0, calories: 0 },
 ];
-
-const MOCK_GROUPS: Group[] = [];
-const MOCK_EVENTS: Event[] = [];
-const MOCK_POSTS: Post[] = [];
-const MOCK_DUELS: Duel[] = [];
-const MOCK_QUESTS: GroupQuest[] = [];
-
-const generateSeedLogs = () => {
-  return [];
-};
 
 // ==========================================
 // 4. AsyncStorage Database Initializer

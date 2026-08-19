@@ -637,15 +637,6 @@ export default function DashboardScreen() {
     }
   };
 
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case "Bier": return "Biere";
-      case "Wein": return "Weine";
-      case "Mischgetränk": return "Cocktails";
-      default: return "Alkoholfrei";
-    }
-  };
-
   const getCategoryIconChar = (category: string, name?: string) => {
     if (name?.toLowerCase().includes("wasser")) return "💧";
     switch (category) {

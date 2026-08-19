@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `17fc233` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `a9d3213` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -225,6 +225,14 @@ Produktionsdatenbank gelandet.
   gelesen (eine Änderung braucht einen Neustart des Containers), und die Routen
   antworten Nichtberechtigten mit **404 statt 403** — dass es eine
   Moderationsansicht gibt, muss ein normaler Nutzer nicht erfahren.
+
+- **Ein Getränk aus `drinks` zu löschen löscht Nutzerdaten mit.**
+  `drink_logs.drink_id` hat `ON DELETE CASCADE`. Ein `DELETE FROM drinks`
+  nimmt also jeden Trink-Eintrag mit, der darauf zeigt — bei einem
+  Getränk aus dem Standardkatalog sind das die Einträge aller Nutzer.
+
+  Wer aufräumen will (es gibt zwei echte Dubletten, siehe Aufgabe 1.12),
+  blendet aus statt zu löschen, oder hängt die Logs vorher per `UPDATE` um.
 
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
