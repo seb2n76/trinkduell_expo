@@ -464,7 +464,7 @@ export const apiService = {
    *
    * Ohne Offline-Fallback: die lokale Mock-DB kennt keine Lesestände, und eine
    * erfundene Zahl wäre schlimmer als keine. Bei einem Netzfehler bleibt die
-   * bisherige Anzeige stehen (siehe loadUnread im Drawer).
+   * bisherige Anzeige stehen (siehe refresh in components/UnreadProvider).
    */
   getUnreadMessages: async (): Promise<UnreadSummary> => {
     const res = await axiosInstance.get<UnreadSummary>("/messages/unread");

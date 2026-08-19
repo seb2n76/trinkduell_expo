@@ -61,7 +61,7 @@ export default function InteractiveMap({
             Noch keine Orte
           </Text>
           <Text className="text-slate-500 text-[9px] font-semibold leading-relaxed">
-            Aktiviere den Standort im Menü, um deine Getränke-Orte hier zu sehen.
+            Aktiviere den Standort unter Menü → Einstellungen, um deine Getränke-Orte hier zu sehen.
           </Text>
         </View>
       )}

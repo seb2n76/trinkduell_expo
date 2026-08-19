@@ -38,7 +38,7 @@ const SECTIONS: Section[] = [
     body:
       "Du bist für die Richtigkeit deiner Angaben und die Geheimhaltung deines Passworts verantwortlich. Ein " +
       "Konto ist persönlich und nicht übertragbar. Du kannst dein Konto jederzeit in der App unter Menü → " +
-      "\"Konto endgültig löschen\" dauerhaft entfernen.",
+      "Einstellungen → \"Konto endgültig löschen\" dauerhaft entfernen.",
   },
   {
     title: "5. Nutzerinhalte",

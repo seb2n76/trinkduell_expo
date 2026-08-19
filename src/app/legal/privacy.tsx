@@ -31,7 +31,7 @@ const SECTIONS: Section[] = [
       "Technisch: dein JWT-Sitzungstoken zur Anmeldung (lokal auf deinem Gerät gespeichert).\n\n" +
       "Standort: TrinkDuell kann zu einem Getränke-Eintrag deinen Standort (GPS-Koordinaten) speichern, " +
       "damit du deinen persönlichen Verlauf auf der Karte siehst. Das ist standardmäßig AUS und muss von " +
-      "dir aktiv eingeschaltet werden (Menü → Standort). Du hast dort drei Möglichkeiten: \"Automatisch\" " +
+      "dir aktiv eingeschaltet werden (Menü → Einstellungen → Standort). Du hast dort drei Möglichkeiten: \"Automatisch\" " +
       "(jedes geloggte Getränk speichert den Ort), \"Nur bei Check-in\" (nur wenn du es ausdrücklich " +
       "auslöst) und \"Aus\" (es werden keine Standortdaten erhoben). Du kannst die Einstellung jederzeit " +
       "ändern und die Berechtigung zusätzlich in den Systemeinstellungen deines Geräts widerrufen.",
@@ -74,7 +74,7 @@ const SECTIONS: Section[] = [
     title: "7. Speicherdauer & Löschung",
     body:
       "Deine Daten werden gespeichert, solange dein Konto besteht. Du kannst dein Konto jederzeit direkt in " +
-      "der App unwiderruflich löschen (Menü → \"Konto endgültig löschen\"). Dabei werden dein Profil, deine " +
+      "der App unwiderruflich löschen (Menü → Einstellungen → \"Konto endgültig löschen\"). Dabei werden dein Profil, deine " +
       "Getränke-Einträge, Beiträge, Duelle, Nachrichten und Freundschaften entfernt.",
   },
   {

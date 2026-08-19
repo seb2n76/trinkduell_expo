@@ -88,8 +88,8 @@ function FriendsRadar({
         </View>
       ) : entries.length === 0 ? (
         <Text className="text-slate-400 text-xs leading-relaxed font-medium">
-          Noch keine Freunde hinzugefügt. Füge über das Menü Freunde hinzu, um zu sehen, wer gerade
-          unterwegs ist. 🍻
+          Noch keine Freunde hinzugefügt. Füge unter Menü → Freunde welche hinzu, um zu sehen, wer
+          gerade unterwegs ist. 🍻
         </Text>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">

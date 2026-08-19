@@ -228,10 +228,10 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  // Gehört hierher und nicht in den Drawer: die Änderung entwertet serverseitig
-  // jeden bestehenden Token, auch den in AsyncStorage. Wird der Austausch
-  // vergessen, ist die eigene Sitzung ab dem nächsten Request tot — also
-  // liegt er an derselben Stelle wie bei login/register.
+  // Gehört hierher und nicht in den Passwort-Screen: die Änderung entwertet
+  // serverseitig jeden bestehenden Token, auch den in AsyncStorage. Wird der
+  // Austausch vergessen, ist die eigene Sitzung ab dem nächsten Request tot —
+  // also liegt er an derselben Stelle wie bei login/register.
   const changePassword = async (currentPassword: string, newPassword: string) => {
     const res = await apiService.changePassword(currentPassword, newPassword);
     await AsyncStorage.setItem("trinkduell_v2_jwt_token", res.token);
