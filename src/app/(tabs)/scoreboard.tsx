@@ -8,6 +8,7 @@ import { User, Drink, DrinkLog } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { API_URL } from "@/services/config";
+import { ScoreboardPodiumSkeleton, ScoreboardRowSkeleton } from "@/components/Skeleton";
 
 type PeriodType = "this_month" | "last_month" | "all";
 type SortCriteriaType = "count" | "alcohol";
@@ -360,6 +361,20 @@ export default function ScoreboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Loading Skeletons */}
+        {loading && processedUsers.length === 0 && (
+          <View className="mt-2">
+            <ScoreboardPodiumSkeleton />
+            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+              Ränge ab Platz 4
+            </Text>
+            <ScoreboardRowSkeleton />
+            <ScoreboardRowSkeleton />
+            <ScoreboardRowSkeleton />
+            <ScoreboardRowSkeleton />
+          </View>
+        )}
 
         {/* Empty state when no data exists */}
         {processedUsers.length === 0 && !loading && (

@@ -11,11 +11,11 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
-import { User, Drink, DrinkLog, calculateAlcoholGrams, getCumulativeXpForLevel } from "@/services/mockData";
+import { User, Drink, DrinkLog, Duel, GroupQuest, calculateAlcoholGrams, getCumulativeXpForLevel } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import { FloatingPointItem, FloatingPointItemType } from "@/components/FloatingPoints";
 import { AchievementModal } from "@/components/AchievementModal";
@@ -65,6 +65,79 @@ const QUICK_PICK_SLOTS = 3;
 const accentForCategory = (category: string) =>
   CATEGORY_TABS.find((t) => (t.matches as readonly string[]).includes(category))?.accent ?? "#94a3b8";
 
+/**
+ * Standard-Portionsgrößen pro Kategorie für das Schnellwahl-Options-Sheet.
+ */
+const getVolumePresets = (category: Drink["category"], defaultVolume: number) => {
+  const presets: { label: string; volume: number }[] = [];
+  if (category === "Bier") {
+    presets.push(
+      { label: "0,33 l", volume: 330 },
+      { label: "0,5 l", volume: 500 },
+      { label: "1,0 l (Maß)", volume: 1000 },
+      { label: "Schluck", volume: 30 }
+    );
+  } else if (category === "Wein" || category === "Sekt") {
+    presets.push(
+      { label: "0,1 l", volume: 100 },
+      { label: "0,2 l", volume: 200 },
+      { label: "0,25 l", volume: 250 },
+      { label: "Schluck", volume: 20 }
+    );
+  } else if (category === "Schnaps") {
+    presets.push(
+      { label: "2 cl (Shot)", volume: 20 },
+      { label: "4 cl (Doppelt)", volume: 40 },
+      { label: "1 cl (Mini)", volume: 10 }
+    );
+  } else if (category === "Mischgetränk") {
+    presets.push(
+      { label: "0,2 l", volume: 200 },
+      { label: "0,3 l", volume: 300 },
+      { label: "0,5 l", volume: 500 },
+      { label: "Schluck", volume: 30 }
+    );
+  } else {
+    presets.push(
+      { label: "0,25 l (Glas)", volume: 250 },
+      { label: "0,33 l (Dose/Flasche)", volume: 330 },
+      { label: "0,5 l (Groß)", volume: 500 },
+      { label: "Schluck", volume: 30 }
+    );
+  }
+
+  if (!presets.some((p) => p.volume === defaultVolume)) {
+    presets.unshift({ label: `${(defaultVolume / 1000).toFixed(2)} l`, volume: defaultVolume });
+  }
+  return presets;
+};
+
+/**
+ * Format remaining time until quest or duel end.
+ */
+const formatRemainingTime = (endTimeStr: string | null): string => {
+  if (!endTimeStr) return "";
+  const end = new Date(endTimeStr).getTime();
+  const now = Date.now();
+  const diffMs = end - now;
+  if (diffMs <= 0) return "Beendet";
+  const diffMin = Math.floor(diffMs / (60 * 1000));
+  if (diffMin < 60) return `noch ${diffMin} Min.`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) {
+    const remMin = diffMin % 60;
+    return remMin > 0 ? `noch ${diffHours} Std. ${remMin}m` : `noch ${diffHours} Std.`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `noch ${diffDays} Tg.`;
+};
+
+interface UndoState {
+  logIds: string[];
+  drinkName: string;
+  pointsEarned: number;
+  expiresAt: number;
+}
 
 const getRankBadgeStyles = (rank: User["rank"]) => {
   switch (rank) {
@@ -84,6 +157,7 @@ const getRankBadgeStyles = (rank: User["rank"]) => {
 };
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const { user: authUser, updateUserContext } = useAuth();
   const user = authUser;
 
@@ -101,6 +175,20 @@ export default function DashboardScreen() {
   const [myDrinks, setMyDrinks] = useState<Drink[]>([]);
   const [logs, setLogs] = useState<DrinkLog[]>([]);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  // Duelle & Quests
+  const [duels, setDuels] = useState<Duel[]>([]);
+  const [groupQuests, setGroupQuests] = useState<GroupQuest[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+
+  // Undo-Leiste (5 Sekunden nach dem Loggen aktiv)
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const undoTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Options-Sheet für Long-Press auf Favoriten
+  const [portionOptionsDrink, setPortionOptionsDrink] = useState<Drink | null>(null);
+  const [selectedPortionVolume, setSelectedPortionVolume] = useState<number>(500);
+  const [selectedPortionCount, setSelectedPortionCount] = useState<number>(1);
 
   // Auswahl-Ansicht und Bearbeiten-Modus der Schnellwahl
   const [showPickerModal, setShowPickerModal] = useState(false);
@@ -151,6 +239,23 @@ export default function DashboardScreen() {
     Alert.alert(title, message);
   };
 
+  // Aktive Duelle (aktiv oder offene Herausforderungen an mich)
+  const relevantDuels = useMemo(() => {
+    if (!user) return [];
+    return duels.filter(
+      (d) =>
+        d.status === "active" ||
+        (d.status === "pending" && d.opponentId === user.id)
+    );
+  }, [duels, user]);
+
+  // Aktive Gruppen-Quests
+  const activeQuests = useMemo(() => {
+    return groupQuests.filter((q) => q.status === "active");
+  }, [groupQuests]);
+
+  const hasActiveChallenges = relevantDuels.length > 0 || activeQuests.length > 0;
+
   const handleLevelUp = async () => {
     setIsLevelingUp(true);
     try {
@@ -171,16 +276,22 @@ export default function DashboardScreen() {
 
   const loadData = async () => {
     try {
-      const currentUser = await apiService.getCurrentUser();
-      const [drinkList, myList, allLogs] = await Promise.all([
-        apiService.getDrinks(),
-        apiService.getMyDrinks(),
-        apiService.getDrinkLogs(),
+      const [currentUser, drinkList, myList, allLogs, duelsList, questsList, usersList] = await Promise.all([
+        apiService.getCurrentUser(),
+        apiService.getDrinks().catch(() => []),
+        apiService.getMyDrinks().catch(() => []),
+        apiService.getDrinkLogs().catch(() => []),
+        apiService.getDuels().catch(() => []),
+        apiService.getGroupQuests().catch(() => []),
+        apiService.getUsers().catch(() => []),
       ]);
 
       updateUserContext(currentUser);
       setDrinks(drinkList);
       setMyDrinks(myList);
+      setDuels(duelsList);
+      setGroupQuests(questsList);
+      setAllUsers(usersList);
 
       const userLogs = allLogs.filter((l) => l.userId === currentUser.id);
       const sortedLogs = userLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -355,9 +466,16 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleLogDrink = async (item: { id: string; name: string; volume: number; abv: number; category: Drink["category"] }, pageX?: number, pageY?: number) => {
+  const handleLogDrink = async (
+    item: { id: string; name: string; volume: number; abv: number; category: Drink["category"] },
+    pageX?: number,
+    pageY?: number,
+    options?: { count?: number; customVolume?: number }
+  ) => {
+    const count = Math.max(1, Math.min(10, options?.count || 1));
+    const volume = options?.customVolume || item.volume;
     const isWater = item.abv === 0;
-    const grams = calculateAlcoholGrams(item.volume, item.abv);
+    const grams = calculateAlcoholGrams(volume, item.abv);
 
     // Zwei Wege zum Ort, in dieser Reihenfolge:
     //   1. ein aktiver Check-in — der Nutzer hat ausdrücklich gesagt "hier bin ich"
@@ -373,16 +491,21 @@ export default function DashboardScreen() {
     let resolvedDrinkId = item.id;
 
     try {
-      // Ensure the drink exists first
-      const foundDrink = drinks.find(d => d.id === item.id);
-      if (!foundDrink) {
+      // Ensure the drink exists or resolve variation
+      const foundDrink =
+        drinks.find((d) => d.id === item.id && d.volume === volume) ||
+        drinks.find((d) => d.name.toLowerCase() === item.name.toLowerCase() && d.volume === volume && d.abv === item.abv);
+
+      if (foundDrink) {
+        resolvedDrinkId = foundDrink.id;
+      } else if (volume !== item.volume || !drinks.some((d) => d.id === item.id)) {
         try {
           const created = await apiService.createDrink({
-            name: item.name,
+            name: volume !== item.volume ? `${item.name} ${(volume / 1000).toFixed(2)}l` : item.name,
             category: item.category,
-            volume: item.volume,
+            volume: volume,
             abv: item.abv,
-            calories: isWater ? 0 : Math.round(item.volume * 0.43)
+            calories: isWater ? 0 : Math.round(volume * 0.43),
           });
           resolvedDrinkId = created.id;
         } catch (dbErr) {
@@ -390,40 +513,55 @@ export default function DashboardScreen() {
         }
       }
 
+      let singlePoints = isWater ? 10 : 10 + Math.round(grams * 2);
+      if (!isWater && katerSchutz.active) {
+        singlePoints = Math.round(singlePoints * 1.25);
+      }
+      const totalPointsEarned = singlePoints * count;
+
       // Optimistic XP bar update on success trigger
       if (user) {
-        let pointsEarned = isWater ? 10 : 10 + Math.round(grams * 2);
-        if (!isWater && katerSchutz.active) {
-          pointsEarned = Math.round(pointsEarned * 1.25);
-        }
         updateUserContext({
           ...user,
-          points: user.points + pointsEarned,
+          points: user.points + totalPointsEarned,
         });
       }
 
-      // Log the drink using apiService (manages both server POST and offline queue automatically)
-      await apiService.addDrinkLog(resolvedDrinkId, undefined, latitude, longitude);
+      // Log the drink(s) using apiService (manages both server POST and offline queue automatically)
+      const createdLogs: DrinkLog[] = [];
+      for (let i = 0; i < count; i++) {
+        const logged = await apiService.addDrinkLog(resolvedDrinkId, undefined, latitude, longitude);
+        if (logged && logged.id) {
+          createdLogs.push(logged);
+        }
+      }
 
       await triggerHaptic("medium");
-      setSuccessBanner(
-        isWater
-          ? `Erfolgreich geloggt: ${item.name} 💧 Kater-Schutz active!`
-          : `Erfolgreich geloggt: ${item.name} (${item.volume}ml) 🍻`
-      );
-      setTimeout(() => setSuccessBanner(null), 3500);
 
       const xCoord = pageX || screenWidth / 2;
       const yCoord = pageY || 300;
-      let pointsEarned = isWater ? 10 : 10 + Math.round(grams * 2);
-      if (!isWater && katerSchutz.active) {
-        pointsEarned = Math.round(pointsEarned * 1.25);
-      }
 
       setFloatingPoints((prev) => [
         ...prev,
-        { id: `float-${Date.now()}-${Math.random()}`, x: xCoord, y: yCoord, text: `+${pointsEarned} XP` },
+        { id: `float-${Date.now()}-${Math.random()}`, x: xCoord, y: yCoord, text: `+${totalPointsEarned} XP` },
       ]);
+
+      // Set Undo state for 5 seconds
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+      }
+      const logIds = createdLogs.map((l) => l.id);
+      const displayDrinkName = count > 1 ? `${count}x ${item.name}` : item.name;
+      setUndoState({
+        logIds,
+        drinkName: displayDrinkName,
+        pointsEarned: totalPointsEarned,
+        expiresAt: Date.now() + 5000,
+      });
+
+      undoTimerRef.current = setTimeout(() => {
+        setUndoState(null);
+      }, 5000);
 
       // Reload entire data to keep frontend states synchronized
       await loadData();
@@ -444,6 +582,62 @@ export default function DashboardScreen() {
       console.error("Failed to log drink:", error);
       notify("Fehler beim Loggen", "Das Getränk konnte weder online noch offline geloggt werden. Bitte versuche es erneut.");
     }
+  };
+
+  // Undo feature (Schnell-Rückgängig über Undo-Leiste)
+  const handleUndo = async () => {
+    if (!undoState || undoState.logIds.length === 0) return;
+    const { logIds, drinkName, pointsEarned } = undoState;
+
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    setUndoState(null);
+
+    await triggerHaptic("medium");
+
+    // Optimistic rollback
+    if (user) {
+      updateUserContext({
+        ...user,
+        points: Math.max(0, user.points - pointsEarned),
+      });
+    }
+    setLogs((prev) => prev.filter((l) => !logIds.includes(l.id)));
+
+    setSuccessBanner(`${drinkName} rückgängig gemacht.`);
+    setTimeout(() => setSuccessBanner(null), 3000);
+
+    try {
+      await Promise.all(logIds.map((id) => apiService.deleteDrinkLog(id)));
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete drink log during undo:", err);
+      notify("Fehler beim Rückgängigmachen", "Der Eintrag konnte nicht vollständig entfernt werden.");
+      await loadData();
+    }
+  };
+
+  // Portions-Sheet bestätigen
+  const handleLogWithPortion = async () => {
+    if (!portionOptionsDrink) return;
+    const drink = portionOptionsDrink;
+    const vol = selectedPortionVolume;
+    const count = selectedPortionCount;
+    setPortionOptionsDrink(null);
+
+    await handleLogDrink(
+      {
+        id: drink.id,
+        name: drink.name,
+        volume: vol,
+        abv: drink.abv,
+        category: drink.category,
+      },
+      undefined,
+      undefined,
+      { count, customVolume: vol }
+    );
   };
 
   // Delete log via API (Undo feature)
@@ -816,6 +1010,242 @@ export default function DashboardScreen() {
         )}
 
         {/* ==========================================
+            QUESTS & DUELLE WIDGET
+            ========================================== */}
+        <View className="mb-5">
+          <View className="flex-row items-center justify-between mb-2.5">
+            <View className="flex-row items-center">
+              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mr-2">
+                Duelle & Quests
+              </Text>
+              {hasActiveChallenges && (
+                <View className="bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                  <Text className="text-amber-400 text-[8px] font-black uppercase tracking-wider">
+                    {relevantDuels.length + activeQuests.length} aktiv
+                  </Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic("light");
+                router.push("/games");
+              }}
+              accessibilityLabel="Zu den Spielen und Duellen"
+              className="flex-row items-center"
+            >
+              <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider mr-1">
+                Alle Spiele
+              </Text>
+              <Ionicons name="chevron-forward" size={11} color="#22d3ee" />
+            </TouchableOpacity>
+          </View>
+
+          {hasActiveChallenges ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="-mx-1"
+              contentContainerStyle={{ paddingHorizontal: 4, gap: 10 }}
+            >
+              {/* 1. Duelle Cards */}
+              {relevantDuels.map((duel) => {
+                const isCreator = user && duel.creatorId === user.id;
+                const oppId = isCreator ? duel.opponentId : duel.creatorId;
+                const opponent = allUsers.find((u) => u.id === oppId);
+                const oppName = opponent ? opponent.name : "Freund";
+                const myScore = isCreator ? duel.creatorPoints : duel.opponentPoints;
+                const oppScore = isCreator ? duel.opponentPoints : duel.creatorPoints;
+                const isLeading = myScore > oppScore;
+                const isTie = myScore === oppScore;
+                const isPending = duel.status === "pending";
+                const timeLeft = duel.endTime ? formatRemainingTime(duel.endTime) : `${duel.duration} Min`;
+
+                return (
+                  <TouchableOpacity
+                    key={duel.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      triggerHaptic("light");
+                      router.push("/games");
+                    }}
+                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: CARD_BG }}
+                    className="border border-amber-500/30 rounded-2xl p-3.5 justify-between"
+                  >
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center">
+                        <View className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/30 items-center justify-center mr-2">
+                          <Ionicons name="trophy" size={12} color="#fbbf24" />
+                        </View>
+                        <Text className="text-amber-400 text-[10px] font-black uppercase tracking-wider">
+                          {isPending ? "Herausforderung" : "1v1 Duell"}
+                        </Text>
+                      </View>
+                      <View className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md">
+                        <Text className="text-slate-400 text-[9px] font-bold">
+                          {timeLeft}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View className="mb-2.5">
+                      <Text className="text-white text-xs font-black" numberOfLines={1}>
+                        vs. {oppName}
+                      </Text>
+                      {isPending ? (
+                        <Text className="text-cyan-400 text-[10px] font-bold mt-0.5">
+                          Tippe zum Annehmen ⚔️
+                        </Text>
+                      ) : (
+                        <View className="flex-row items-center justify-between mt-1">
+                          <Text className="text-amber-300 text-sm font-black tracking-wider">
+                            Du {myScore} : {oppScore} {oppName.split(" ")[0]}
+                          </Text>
+                          <Text
+                            className={`text-[9px] font-black uppercase ${
+                              isLeading ? "text-emerald-400" : isTie ? "text-amber-400" : "text-rose-400"
+                            }`}
+                          >
+                            {isLeading ? "Führung! 👑" : isTie ? "Gleichstand" : "Rückstand"}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View className="pt-2 border-t border-white/5 flex-row items-center justify-between">
+                      <Text className="text-slate-500 text-[9px] font-bold">
+                        {isPending ? "Wartet auf Start" : "Live-Punkterennen"}
+                      </Text>
+                      <View className="flex-row items-center">
+                        <Text className="text-amber-400 text-[9px] font-black uppercase mr-1">
+                          Zum Duell
+                        </Text>
+                        <Ionicons name="arrow-forward" size={10} color="#fbbf24" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* 2. Group Quests Cards */}
+              {activeQuests.map((quest) => {
+                const progressPct = quest.targetValue > 0 ? Math.min(100, Math.round((quest.currentValue / quest.targetValue) * 100)) : 0;
+                const timeLeft = formatRemainingTime(quest.endTime);
+
+                return (
+                  <TouchableOpacity
+                    key={quest.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      triggerHaptic("light");
+                      router.push("/games");
+                    }}
+                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: CARD_BG }}
+                    className="border border-cyan-500/30 rounded-2xl p-3.5 justify-between"
+                  >
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center">
+                        <View className="w-6 h-6 rounded-lg bg-cyan-400/15 border border-cyan-400/30 items-center justify-center mr-2">
+                          <Ionicons name="flag" size={12} color="#22d3ee" />
+                        </View>
+                        <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider">
+                          Gruppen-Quest
+                        </Text>
+                      </View>
+                      {timeLeft ? (
+                        <View className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md">
+                          <Text className="text-slate-400 text-[9px] font-bold">
+                            {timeLeft}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View className="mb-2.5">
+                      <Text className="text-white text-xs font-black mb-1.5" numberOfLines={1}>
+                        {quest.title}
+                      </Text>
+                      <View className="flex-row justify-between items-center mb-1">
+                        <Text className="text-slate-400 text-[9px] font-bold">
+                          Fortschritt
+                        </Text>
+                        <Text className="text-cyan-300 text-[9px] font-black">
+                          {quest.currentValue}/{quest.targetValue} ({progressPct}%)
+                        </Text>
+                      </View>
+                      <View className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                        <View style={{ width: `${progressPct}%` }} className="h-full bg-cyan-400 rounded-full" />
+                      </View>
+                    </View>
+
+                    <View className="pt-2 border-t border-white/5 flex-row items-center justify-between">
+                      <Text className="text-slate-500 text-[9px] font-bold">
+                        Gemeinsam lösen
+                      </Text>
+                      <View className="flex-row items-center">
+                        <Text className="text-cyan-400 text-[9px] font-black uppercase mr-1">
+                          Details
+                        </Text>
+                        <Ionicons name="arrow-forward" size={10} color="#22d3ee" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            /* Fallback CTA if no active duels or group quests */
+            <View className="flex-row gap-2.5">
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  triggerHaptic("light");
+                  router.push("/games");
+                }}
+                style={{ backgroundColor: CARD_BG }}
+                className="flex-1 border border-slate-800 rounded-2xl p-3 flex-row items-center"
+              >
+                <View className="w-8 h-8 rounded-xl bg-amber-400/10 border border-amber-400/20 items-center justify-center mr-2.5">
+                  <Ionicons name="trophy-outline" size={16} color="#fbbf24" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white text-[11px] font-black" numberOfLines={1}>
+                    1v1 Duell
+                  </Text>
+                  <Text className="text-slate-400 text-[9px] font-bold mt-0.5">
+                    Freunde fordern
+                  </Text>
+                </View>
+                <Ionicons name="add" size={14} color="#64748b" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  triggerHaptic("light");
+                  router.push("/games");
+                }}
+                style={{ backgroundColor: CARD_BG }}
+                className="flex-1 border border-slate-800 rounded-2xl p-3 flex-row items-center"
+              >
+                <View className="w-8 h-8 rounded-xl bg-cyan-400/10 border border-cyan-400/20 items-center justify-center mr-2.5">
+                  <Ionicons name="flag-outline" size={16} color="#22d3ee" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white text-[11px] font-black" numberOfLines={1}>
+                    Quests
+                  </Text>
+                  <Text className="text-slate-400 text-[9px] font-bold mt-0.5">
+                    Gruppen-Ziele
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* ==========================================
             2. PRIMÄRER CTA — Scannen
             ==========================================
             Der schnellste Weg zu einem Log führt über den Barcode, also steht
@@ -941,8 +1371,17 @@ export default function DashboardScreen() {
                   onPress={(e) =>
                     editMode ? undefined : handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)
                   }
+                  onLongPress={() => {
+                    if (!editMode) {
+                      triggerHaptic("medium");
+                      setPortionOptionsDrink(item);
+                      setSelectedPortionVolume(item.volume);
+                      setSelectedPortionCount(1);
+                    }
+                  }}
+                  delayLongPress={350}
                   disabled={editMode}
-                  accessibilityLabel={`${item.name} eintragen`}
+                  accessibilityLabel={`${item.name} eintragen (lange drücken für Optionen)`}
                   style={{ height: tileHeight, backgroundColor: CARD_BG, borderColor: `${accent}40` }}
                   className="border rounded-2xl p-2 items-center justify-center mb-1"
                 >
@@ -1090,7 +1529,14 @@ export default function DashboardScreen() {
                   key={item.id}
                   activeOpacity={0.8}
                   onPress={(e) => handleLogDrink(item, e.nativeEvent.pageX, e.nativeEvent.pageY)}
-                  accessibilityLabel={`${item.name} eintragen`}
+                  onLongPress={() => {
+                    triggerHaptic("medium");
+                    setPortionOptionsDrink(item);
+                    setSelectedPortionVolume(item.volume);
+                    setSelectedPortionCount(1);
+                  }}
+                  delayLongPress={350}
+                  accessibilityLabel={`${item.name} eintragen (lange drücken für Optionen)`}
                   style={{ backgroundColor: CARD_BG, borderColor: `${accent}33` }}
                   className={`border rounded-2xl px-3.5 py-3 flex-row items-center mb-2 ${isDesktop ? "flex-1" : ""}`}
                 >
@@ -1447,6 +1893,228 @@ export default function DashboardScreen() {
             onScanned={handleScanned}
           />
         </React.Suspense>
+      )}
+
+      {/* ==========================================
+          MODAL: PORTION & MENGEN-OPTIONEN (LONG PRESS)
+          ========================================== */}
+      <Modal
+        visible={!!portionOptionsDrink}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPortionOptionsDrink(null)}
+      >
+        <View className="flex-1 bg-black/80 justify-end">
+          <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[85%]">
+            {portionOptionsDrink && (() => {
+              const accent = accentForCategory(portionOptionsDrink.category);
+              const presets = getVolumePresets(portionOptionsDrink.category, portionOptionsDrink.volume);
+              const isWater = portionOptionsDrink.abv === 0;
+              const gramsPerDrink = calculateAlcoholGrams(selectedPortionVolume, portionOptionsDrink.abv);
+              let singlePoints = isWater ? 10 : 10 + Math.round(gramsPerDrink * 2);
+              if (!isWater && katerSchutz.active) {
+                singlePoints = Math.round(singlePoints * 1.25);
+              }
+              const totalEstimatedPoints = singlePoints * selectedPortionCount;
+
+              return (
+                <>
+                  <View className="flex-row justify-between items-center mb-4">
+                    <View className="flex-row items-center flex-1 mr-2">
+                      <Text className="text-2xl mr-2.5">
+                        {getCategoryIconChar(portionOptionsDrink.category, portionOptionsDrink.name)}
+                      </Text>
+                      <View className="flex-1">
+                        <Text className="text-white text-base font-black uppercase tracking-wider" numberOfLines={1}>
+                          {portionOptionsDrink.name}
+                        </Text>
+                        <Text className="text-slate-400 text-[10px] font-bold">
+                          {portionOptionsDrink.category} · {portionOptionsDrink.abv}% Vol.
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => setPortionOptionsDrink(null)} className="p-1">
+                      <Ionicons name="close" size={24} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Portionsgröße / Volumen */}
+                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                    Portionsgröße
+                  </Text>
+                  <View className="flex-row flex-wrap gap-2 mb-4">
+                    {presets.map((preset) => {
+                      const isSelected = selectedPortionVolume === preset.volume;
+                      return (
+                        <TouchableOpacity
+                          key={`vol-${preset.volume}`}
+                          onPress={() => {
+                            triggerHaptic("light");
+                            setSelectedPortionVolume(preset.volume);
+                          }}
+                          style={{
+                            backgroundColor: isSelected ? `${accent}20` : CARD_BG,
+                            borderColor: isSelected ? accent : "#334155",
+                          }}
+                          className="border px-3.5 py-2.5 rounded-xl flex-row items-center"
+                        >
+                          <Text
+                            className="text-xs font-black"
+                            style={{ color: isSelected ? accent : "#cbd5e1" }}
+                          >
+                            {preset.label}
+                          </Text>
+                          {preset.volume === portionOptionsDrink.volume && (
+                            <Text className="text-slate-500 text-[9px] font-bold ml-1.5">
+                              (Standard)
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Anzahl / Runde */}
+                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                    Anzahl / Runde
+                  </Text>
+                  <View className="flex-row items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-2 mb-4">
+                    <TouchableOpacity
+                      onPress={() => {
+                        triggerHaptic("light");
+                        setSelectedPortionCount((c) => Math.max(1, c - 1));
+                      }}
+                      disabled={selectedPortionCount <= 1}
+                      className="bg-slate-950 border border-slate-800 p-3 rounded-xl disabled:opacity-30"
+                    >
+                      <Ionicons name="remove" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+
+                    <View className="items-center px-4">
+                      <Text className="text-white text-lg font-black">{selectedPortionCount}x</Text>
+                      <Text className="text-slate-400 text-[10px] font-bold">
+                        {((selectedPortionVolume * selectedPortionCount) / 1000).toFixed(2)} l gesamt
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        triggerHaptic("light");
+                        setSelectedPortionCount((c) => Math.min(10, c + 1));
+                      }}
+                      disabled={selectedPortionCount >= 10}
+                      className="bg-slate-950 border border-slate-800 p-3 rounded-xl disabled:opacity-30"
+                    >
+                      <Ionicons name="add" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Quick Count Chips */}
+                  <View className="flex-row gap-2 mb-5">
+                    {[
+                      { label: "1x (Nur ich)", count: 1 },
+                      { label: "2x", count: 2 },
+                      { label: "3x (Runde)", count: 3 },
+                      { label: "5x", count: 5 },
+                    ].map((chip) => {
+                      const isChipActive = selectedPortionCount === chip.count;
+                      return (
+                        <TouchableOpacity
+                          key={`chip-${chip.count}`}
+                          onPress={() => {
+                            triggerHaptic("light");
+                            setSelectedPortionCount(chip.count);
+                          }}
+                          className={`flex-1 py-2 rounded-xl border items-center ${
+                            isChipActive
+                              ? "bg-cyan-400/15 border-cyan-400/40"
+                              : "bg-slate-900 border-slate-800"
+                          }`}
+                        >
+                          <Text
+                            className={`text-[10px] font-black ${
+                              isChipActive ? "text-cyan-400" : "text-slate-400"
+                            }`}
+                          >
+                            {chip.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Submit Button */}
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleLogWithPortion}
+                    className="w-full bg-cyan-400 py-4 rounded-2xl items-center shadow-lg shadow-cyan-500/20 active:scale-95"
+                  >
+                    <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                      {selectedPortionCount}x {portionOptionsDrink.name} eintragen (+{totalEstimatedPoints} XP)
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==========================================
+          UNDO-LEISTE (5 Sekunden nach dem Loggen)
+          ========================================== */}
+      {undoState && (
+        <View
+          style={{
+            position: "absolute",
+            bottom: Platform.OS === "web" ? 24 : 16,
+            left: 16,
+            right: 16,
+            zIndex: 9999,
+            maxWidth: 600,
+            alignSelf: "center",
+          }}
+          className="bg-slate-900/95 border border-cyan-400/40 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md flex-row items-center justify-between"
+        >
+          <View className="flex-row items-center flex-1 mr-3">
+            <View className="bg-cyan-400/20 p-2 rounded-xl border border-cyan-400/30 mr-2.5">
+              <Ionicons name="checkmark" size={16} color="#22d3ee" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-white text-xs font-black" numberOfLines={1}>
+                {undoState.drinkName} geloggt
+              </Text>
+              <Text className="text-cyan-400 text-[10px] font-bold">
+                +{undoState.pointsEarned} XP · Läuft in 5 Sek. ab
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleUndo}
+              accessibilityLabel="Eintrag rückgängig machen"
+              className="bg-amber-400 px-3.5 py-2 rounded-xl flex-row items-center mr-1.5 shadow-md shadow-amber-500/20"
+            >
+              <Ionicons name="arrow-undo" size={13} color="#020617" />
+              <Text className="text-slate-950 text-[11px] font-black uppercase tracking-wider ml-1">
+                Rückgängig
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+                setUndoState(null);
+              }}
+              accessibilityLabel="Schließen"
+              className="p-1.5"
+            >
+              <Ionicons name="close" size={18} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
     </View>
   );

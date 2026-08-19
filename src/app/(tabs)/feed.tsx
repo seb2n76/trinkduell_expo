@@ -25,6 +25,7 @@ import {
 } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "@/components/Avatar";
+import { FriendsRadarSkeleton, FeedItemSkeleton } from "@/components/Skeleton";
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
@@ -83,9 +84,7 @@ function FriendsRadar({
       </View>
 
       {loading ? (
-        <View className="py-6 items-center">
-          <ActivityIndicator size="small" color="#22d3ee" />
-        </View>
+        <FriendsRadarSkeleton />
       ) : entries.length === 0 ? (
         <Text className="text-slate-400 text-xs leading-relaxed font-medium">
           Noch keine Freunde hinzugefügt. Füge unter Menü → Freunde welche hinzu, um zu sehen, wer
@@ -426,8 +425,10 @@ export default function LivePulseFeed() {
         </Text>
 
         {loading ? (
-          <View className="py-20 items-center justify-center">
-            <ActivityIndicator size="small" color="#22d3ee" />
+          <View className="mb-6">
+            <FeedItemSkeleton />
+            <FeedItemSkeleton />
+            <FeedItemSkeleton />
           </View>
         ) : feedItems.length === 0 ? (
           <View className="py-14 items-center justify-center bg-white/5 border border-white/5 rounded-3xl p-6 mb-8">
