@@ -676,6 +676,16 @@ export default function TabsLayout() {
       }
     } catch (error) {
       console.error("Avatar pick failed:", error);
+      await triggerHaptic("error");
+      // Vorher endete der Fehler NUR in der Konsole: die App zeigte nichts an,
+      // das Bild blieb einfach beim alten. Aus Nutzersicht "geht nicht", ohne
+      // jeden Hinweis worauf.
+      notify(
+        "Profilbild",
+        error instanceof Error && error.message
+          ? error.message
+          : "Das Bild konnte nicht gespeichert werden. Bist du mit dem Internet verbunden?"
+      );
     } finally {
       setDrawerLoading(false);
     }

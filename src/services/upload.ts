@@ -106,14 +106,24 @@ export async function uploadImage(uri: string, kind: UploadKind): Promise<string
     contentLength: prepared.byteLength,
   });
 
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    // Content-Type und -Length sind Teil der Signatur. Weicht hier etwas ab,
-    // lehnt R2 den Upload ab — genau das ist der Sinn: die signierte URL
-    // erlaubt nur exakt dieses eine Bild.
-    headers: { "Content-Type": prepared.contentType },
-    body: prepared.blob,
-  });
+  let response: Response;
+  try {
+    response = await fetch(uploadUrl, {
+      // Content-Type und -Length sind Teil der Signatur. Weicht hier etwas ab,
+      // lehnt R2 den Upload ab — genau das ist der Sinn: die signierte URL
+      // erlaubt nur exakt dieses eine Bild.
+      headers: { "Content-Type": prepared.contentType },
+      body: prepared.blob,
+    });
+  } catch {
+    // Ein fehlgeschlagenes fetch OHNE Antwort heisst im Browser fast immer
+    // CORS: das PUT geht direkt an R2, also muss der Bucket PUT von der
+    // Web-Domain erlauben. Ohne diese Unterscheidung stuende hier nur
+    // "Failed to fetch", und niemand kaeme darauf, wo man nachsehen muss.
+    throw new Error(
+      "Der Bild-Speicher hat die Verbindung abgelehnt. Falls das im Browser passiert: die CORS-Regeln des R2-Buckets müssen PUT von dieser Domain erlauben."
+    );
+  }
 
   if (!response.ok) {
     throw new Error(`Upload fehlgeschlagen (${response.status}).`);

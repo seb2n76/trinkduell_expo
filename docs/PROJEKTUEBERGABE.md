@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `4d0c18e` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `fcbd097` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -239,6 +239,22 @@ Produktionsdatenbank gelandet.
 
   Zwei Dubletten sind so behandelt („Helles Bier“, „Pils 0,33“). Wer
   weitere ausblendet: `server/migrate-hide-duplicates.js` ist das Muster.
+
+- **Bild-Uploads gehen vom BROWSER direkt an R2 — der Bucket braucht CORS.**
+  `uploadImage()` holt vom Server nur eine signierte URL und macht das `PUT`
+  dann selbst (`src/services/upload.ts`). Das Bild läuft also nie durch das
+  Backend, und die CORS-Einstellung des Servers hilft hier nichts: erlauben
+  muss es **R2**.
+
+  Nötig ist eine CORS-Regel am Bucket mit `PUT`, den Web-Domains als
+  `AllowedOrigins` und `content-type` in `AllowedHeaders`. Fehlt sie, bricht
+  der Browser das `PUT` ab, bevor es rausgeht.
+
+  Warum das lange unbemerkt blieb: die Avatar-Migration (17.08.2026) wurde
+  mit `curl` geprüft, und curl kennt keine CORS-Preflight. In der nativen
+  App gibt es das Problem ebenfalls nicht — nur im Browser.
+
+  Betrifft **beide** Upload-Wege: Profilbilder und Beweisfotos.
 
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
