@@ -9,8 +9,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Modal,
+  Platform,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
 import {
@@ -18,18 +20,11 @@ import {
   FeedItem,
   FeedScope,
   RadarEntry,
-  MapCoordinate,
   ReportReason,
   REPORT_REASON_LABELS,
 } from "@/services/mockData";
-import { Modal, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-// The map pulls in the whole Leaflet document builder and is only ever shown
-// after the user taps "Karte anzeigen" — so it has no business in the bundle
-// everyone downloads on first load. React.lazy moves it into its own chunk.
-const InteractiveMap = React.lazy(() => import("@/components/InteractiveMap"));
 import { Avatar } from "@/components/Avatar";
-import { getCurrentCoordinates, getLocationMode } from "@/services/location";
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
@@ -53,13 +48,11 @@ const formatLastActivity = (iso: string | null): string => {
 function FriendsRadar({
   entries,
   loading,
-  mapVisible,
-  onToggleMap,
+  onOpenMap,
 }: {
   entries: RadarEntry[];
   loading: boolean;
-  mapVisible: boolean;
-  onToggleMap: () => void;
+  onOpenMap: () => void;
 }) {
   const activeCount = entries.filter((e) => e.status === "active").length;
 
@@ -130,16 +123,17 @@ function FriendsRadar({
       )}
 
       <TouchableOpacity
-        onPress={onToggleMap}
+        onPress={onOpenMap}
+        accessibilityLabel="Karte öffnen"
         className="flex-row items-center justify-between mt-4 pt-3 border-t border-white/5"
       >
         <View className="flex-row items-center">
           <Ionicons name="map-outline" size={13} color="#22d3ee" />
           <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider ml-1.5">
-            {mapVisible ? "Karte ausblenden" : "Karte anzeigen"}
+            Karte öffnen
           </Text>
         </View>
-        <Ionicons name={mapVisible ? "chevron-up" : "chevron-down"} size={14} color="#22d3ee" />
+        <Ionicons name="chevron-forward" size={14} color="#22d3ee" />
       </TouchableOpacity>
     </View>
   );
@@ -149,6 +143,7 @@ function FriendsRadar({
 // Main Screen: Live Activity Feed
 // ─────────────────────────────────────────────
 export default function LivePulseFeed() {
+  const router = useRouter();
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
   const [reportReason, setReportReason] = useState<ReportReason | null>(null);
@@ -156,9 +151,6 @@ export default function LivePulseFeed() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
   const [radarLoading, setRadarLoading] = useState(true);
-  const [mapVisible, setMapVisible] = useState(false);
-  const [mapItems, setMapItems] = useState<MapCoordinate[]>([]);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [scope, setScope] = useState<FeedScope>("friends");
   const [inputText, setInputText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -226,30 +218,9 @@ export default function LivePulseFeed() {
     return () => clearInterval(interval);
   }, [scope]);
 
-  const loadMapData = async () => {
-    try {
-      const me = currentUser || (await apiService.getCurrentUser());
-      if (!me) return;
-      const items = await apiService.getMap(me.name);
-      setMapItems(items);
-
-      // Only center on the live position if the user actually enabled
-      // location — otherwise the map centers on the pins instead.
-      const mode = await getLocationMode();
-      if (mode !== "off") {
-        const coords = await getCurrentCoordinates();
-        if (coords) setUserLocation(coords);
-      }
-    } catch (e) {
-      console.warn("Karte konnte nicht geladen werden:", e);
-    }
-  };
-
-  const handleToggleMap = async () => {
+  const handleOpenMap = async () => {
     await triggerHaptic("light");
-    const next = !mapVisible;
-    setMapVisible(next);
-    if (next) await loadMapData();
+    router.push("/map");
   };
 
   const handleScopeChange = async (nextScope: FeedScope) => {
@@ -380,36 +351,10 @@ export default function LivePulseFeed() {
           />
         }
       >
-        {/* Freunde-Radar */}
-        <FriendsRadar
-          entries={radarEntries}
-          loading={radarLoading}
-          mapVisible={mapVisible}
-          onToggleMap={handleToggleMap}
-        />
-
-        {/* Karte (OpenStreetMap via Leaflet) */}
-        {mapVisible && (
-          <View className="mb-5 h-[450px]">
-            <React.Suspense
-              fallback={
-                <View className="flex-1 bg-slate-950 border border-white/10 rounded-3xl items-center justify-center min-h-[450px]">
-                  <ActivityIndicator color="#22d3ee" />
-                  <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-3">
-                    Karte wird geladen
-                  </Text>
-                </View>
-              }
-            >
-              <InteractiveMap
-                mapItems={mapItems}
-                currentUser={currentUser}
-                userLocation={userLocation}
-                onRefreshMap={loadMapData}
-              />
-            </React.Suspense>
-          </View>
-        )}
+        {/* Freunde-Radar. Die Karte klappte hier früher mit 450 px Höhe auf und
+            schob den eigentlichen Feed aus dem Bild — sie liegt jetzt auf einer
+            eigenen Route und wird von hier aus geöffnet. */}
+        <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
 
         {/* Umschalter: Freunde- vs. Gruppen-Feed */}
         <View className="flex-row bg-slate-900 border border-white/5 rounded-2xl p-1 mb-5">

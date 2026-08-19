@@ -11,8 +11,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerForPushNotificationsAsync, getRouteForNotificationData } from "@/services/notifications";
 import { setupPwa } from "@/services/pwa";
 import * as Notifications from "expo-notifications";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { UnreadProvider } from "@/components/UnreadProvider";
 
 const AGE_GATE_KEY = "trinkduell_age_18_confirmed";
+
+/**
+ * Eine dunkle Kopfzeile für alle Stack-Screens. Sie zwölfmal auszuschreiben
+ * war der einzige Grund, warum die beiden Rechtstexte-Screens bisher so
+ * ausführlich dastanden.
+ */
+const SCREEN_HEADER = {
+  headerShown: true,
+  headerStyle: { backgroundColor: "#020617" },
+  headerTintColor: "#22d3ee",
+  headerTitleStyle: { color: "#ffffff" },
+} as const;
 
 function AgeGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<"checking" | "confirmed" | "pending" | "declined">("checking");
@@ -124,8 +138,6 @@ export function useAuth() {
   }
   return context;
 }
-
-import { SafeAreaProvider } from "react-native-safe-area-context";
 
 export default function RootLayout() {
   useEffect(() => {
@@ -296,38 +308,40 @@ function NavigationLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="notifications"
-        options={{
-          presentation: "modal",
-          title: "Benachrichtigungen",
-          headerShown: false
-        }}
-      />
-      <Stack.Screen
-        name="legal/privacy"
-        options={{
-          title: "Datenschutzerklärung",
-          headerShown: true,
-          headerStyle: { backgroundColor: "#020617" },
-          headerTintColor: "#22d3ee",
-          headerTitleStyle: { color: "#ffffff" },
-        }}
-      />
-      <Stack.Screen
-        name="legal/terms"
-        options={{
-          title: "Nutzungsbedingungen",
-          headerShown: true,
-          headerStyle: { backgroundColor: "#020617" },
-          headerTintColor: "#22d3ee",
-          headerTitleStyle: { color: "#ffffff" },
-        }}
-      />
-    </Stack>
+    <UnreadProvider enabled={!!token}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="notifications"
+          options={{
+            presentation: "modal",
+            title: "Benachrichtigungen",
+            headerShown: false
+          }}
+        />
+
+        {/* Die Bereiche, die bisher als Dialoge im Tab-Layout lagen. Als
+            eigene Routen haben sie einen Titel, einen Zurück-Weg und eine
+            Adresse — und stapeln sich nicht mehr gegenseitig zu. */}
+        <Stack.Screen name="profile" options={{ ...SCREEN_HEADER, title: "Profil" }} />
+        <Stack.Screen name="friends/index" options={{ ...SCREEN_HEADER, title: "Freunde" }} />
+        <Stack.Screen name="friends/group/[id]" options={{ ...SCREEN_HEADER, title: "Gruppe" }} />
+        <Stack.Screen name="friends/quests/[id]" options={{ ...SCREEN_HEADER, title: "Quests" }} />
+        <Stack.Screen name="chat/[id]" options={{ ...SCREEN_HEADER, title: "Chat" }} />
+        <Stack.Screen name="settings/index" options={{ ...SCREEN_HEADER, title: "Einstellungen" }} />
+        <Stack.Screen name="settings/password" options={{ ...SCREEN_HEADER, title: "Passwort ändern" }} />
+        <Stack.Screen name="settings/location" options={{ ...SCREEN_HEADER, title: "Standort" }} />
+        <Stack.Screen name="settings/licenses" options={{ ...SCREEN_HEADER, title: "Lizenzen" }} />
+        <Stack.Screen name="settings/blocked" options={{ ...SCREEN_HEADER, title: "Blockierte Nutzer" }} />
+        <Stack.Screen name="moderation" options={{ ...SCREEN_HEADER, title: "Meldungen" }} />
+        <Stack.Screen name="help" options={{ ...SCREEN_HEADER, title: "Hilfe & Feedback" }} />
+        <Stack.Screen name="map" options={{ ...SCREEN_HEADER, title: "Karte" }} />
+
+        <Stack.Screen name="legal/privacy" options={{ ...SCREEN_HEADER, title: "Datenschutzerklärung" }} />
+        <Stack.Screen name="legal/terms" options={{ ...SCREEN_HEADER, title: "Nutzungsbedingungen" }} />
+      </Stack>
+    </UnreadProvider>
   );
 }
 
