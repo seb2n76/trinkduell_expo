@@ -46,6 +46,12 @@ export interface Drink {
   createdBy?: string | null;
   /** EAN-8/EAN-13 barcode, set when someone names a scanned product. */
   ean?: string | null;
+  /**
+   * Ausgeblendet: erscheint nicht mehr in Auswahl und Kategorie-Karten,
+   * löst aber weiterhin auf. Fuer Dubletten, die man nicht loeschen darf,
+   * weil drink_logs per ON DELETE CASCADE daran haengt.
+   */
+  hidden?: boolean;
 }
 
 export interface DrinkLog {

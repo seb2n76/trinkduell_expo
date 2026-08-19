@@ -42,7 +42,11 @@ CREATE TABLE IF NOT EXISTS drinks (
   created_by TEXT,
   -- Barcode (EAN-8/EAN-13). Filled by whoever first scans an unknown code and
   -- names the product, so the next person to scan it gets the drink directly.
-  ean TEXT
+  ean TEXT,
+  -- Ausgeblendet: taucht nicht mehr in Katalog und Auswahl auf, löst aber
+  -- weiterhin auf. Gedacht für Dubletten, die man NICHT löschen darf, weil
+  -- drink_logs per ON DELETE CASCADE daran hängt.
+  hidden BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS drink_logs (

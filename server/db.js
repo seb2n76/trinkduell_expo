@@ -8,8 +8,20 @@ const { Pool } = require("pg");
 const DB_FILE = process.env.TRINKDUELL_DB_FILE || path.join(__dirname, "db.json");
 
 // Default Drinks Catalog (used as fallback for JSON mode auto-heal)
+// Zwei Einträge stehen hier mit `hidden: true`: sie sind Dubletten aus dem
+// Zusammenlegen vom 18.08.2026, als die im Client hartkodierten Getränke
+// hierher wanderten und zwei davon schon unter anderem Namen existierten.
+//
+// „Helles Bier“ ist dasselbe wie „Helles“, „Pils 0,33“ dasselbe wie „Pils“.
+// Sichtbar bleibt jeweils der Name, der zum Schema der übrigen Biere passt
+// (Export, Weizen, Helles — ohne Menge im Namen); „Helles“ steht zudem in
+// DEFAULT_QUICK_PICKS und darf schon deshalb nicht verschwinden.
+//
+// GELÖSCHT werden sie NICHT: drink_logs hängt per ON DELETE CASCADE daran,
+// ein DELETE nähme die Trink-Einträge aller Nutzer mit.
+
 const DEFAULT_DRINKS = [
-  { id: "drink-beer-500", name: "Helles Bier", category: "Bier", volume: 500, abv: 5.0, calories: 215 },
+  { id: "drink-beer-500", name: "Helles Bier", category: "Bier", volume: 500, abv: 5.0, calories: 215, hidden: true },
   { id: "drink-beer-330", name: "Pils", category: "Bier", volume: 330, abv: 4.9, calories: 140 },
   { id: "drink-shot", name: "Schnaps-Shot", category: "Schnaps", volume: 20, abv: 40.0, calories: 50 },
   { id: "drink-wine-red", name: "Rotwein", category: "Wein", volume: 150, abv: 12.5, calories: 125 },
@@ -25,7 +37,7 @@ const DEFAULT_DRINKS = [
   // zwei getrennten Kopien, von denen eine keine Kategorien hatte. Der
   // Katalog gehört an EINE Stelle, sonst weiß niemand, was es wirklich gibt.
   { id: "drink-beer-helles", name: "Helles", category: "Bier", volume: 500, abv: 4.9, calories: 215 },
-  { id: "drink-beer-pils", name: "Pils 0,33", category: "Bier", volume: 330, abv: 4.8, calories: 140 },
+  { id: "drink-beer-pils", name: "Pils 0,33", category: "Bier", volume: 330, abv: 4.8, calories: 140, hidden: true },
   { id: "drink-beer-export", name: "Export", category: "Bier", volume: 500, abv: 5.2, calories: 225 },
   { id: "drink-beer-weizen", name: "Weizen", category: "Bier", volume: 500, abv: 5.4, calories: 240 },
   { id: "drink-wine-white", name: "Weißwein", category: "Wein", volume: 200, abv: 12.0, calories: 160 },
@@ -267,6 +279,9 @@ async function initPgSchema() {
     // ensureGroupInviteCode in index.js) — deshalb NULL als Ausgangswert und
     // ein partieller Index weiter unten.
     await pool.query("ALTER TABLE groups ADD COLUMN IF NOT EXISTS invite_code TEXT");
+    // Ausgeblendete Getränke. Kein Index: die Tabelle ist klein, und ein
+    // Index auf einem Boolean mit fast nur FALSE bringt nichts.
+    await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE");
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
@@ -680,7 +695,11 @@ module.exports = {
         calories: row.calories,
         // null for the built-in catalog — see the delete route in index.js
         createdBy: row.created_by || null,
-        ean: row.ean || null
+        ean: row.ean || null,
+        // Kommt bewusst MIT heraus statt gefiltert zu werden: der Client
+        // braucht ausgeblendete Getränke weiterhin, um alte Log-Einträge
+        // aufzulösen. Ausgeblendet wird erst in der Auswahl-Ansicht.
+        hidden: row.hidden === true
       }));
     }
     
@@ -708,10 +727,10 @@ module.exports = {
       // the UPDATE list: ownership decides who may delete a drink, and a
       // barcode must not silently move to another product on a later save.
       await pool.query(
-        `INSERT INTO drinks (id, name, category, volume, abv, calories, created_by, ean)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO drinks (id, name, category, volume, abv, calories, created_by, ean, hidden)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (id) DO UPDATE SET
-           name = $2, category = $3, volume = $4, abv = $5, calories = $6`,
+           name = $2, category = $3, volume = $4, abv = $5, calories = $6, hidden = $9`,
         [
           drink.id,
           drink.name,
@@ -721,6 +740,7 @@ module.exports = {
           drink.calories,
           drink.createdBy || null,
           drink.ean || null,
+          drink.hidden === true,
         ]
       );
       return;

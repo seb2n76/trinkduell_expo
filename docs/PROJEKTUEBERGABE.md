@@ -4,7 +4,7 @@
 > → [`NAECHSTE_SCHRITTE.md`](./NAECHSTE_SCHRITTE.md) ist die Arbeitsliste.
 > Dieses Dokument hier erklärt das Projekt und die Fallen — lies es zuerst.
 
-**Stand:** 18.08.2026 · letzter Commit `a9d3213` · alles gepusht
+**Stand:** 18.08.2026 · letzter Commit `4d0c18e` · alles gepusht
 **Repo:** https://github.com/seb2n76/trinkduell_expo (öffentlich)
 
 Dieses Dokument ist so geschrieben, dass jemand ohne Vorwissen weiterarbeiten
@@ -232,7 +232,13 @@ Produktionsdatenbank gelandet.
   Getränk aus dem Standardkatalog sind das die Einträge aller Nutzer.
 
   Wer aufräumen will (es gibt zwei echte Dubletten, siehe Aufgabe 1.12),
-  blendet aus statt zu löschen, oder hängt die Logs vorher per `UPDATE` um.
+  Deshalb gibt es `drinks.hidden`: ausgeblendete Getränke verschwinden aus
+  Auswahl und Kategorie-Karten, lösen aber weiter auf. `GET /api/drinks`
+  liefert sie bewusst MIT (als `hidden: true`) — würde der Server sie
+  weglassen, stünde in der Trink-Historie nur noch „Getränk“.
+
+  Zwei Dubletten sind so behandelt („Helles Bier“, „Pils 0,33“). Wer
+  weitere ausblendet: `server/migrate-hide-duplicates.js` ist das Muster.
 
 - **Handgebaute `db.json`-Dateien sind eine Fehlerquelle.** Die Sammlung heißt
   `logs`, nicht `drinkLogs` — ein selbst geschriebenes Test-Fixture mit dem
@@ -331,6 +337,7 @@ alles über Node's eingebauten Test-Runner.
 | `tests/barcode.test.js` | EAN-Prüfung, Community-Datenbank |
 | `tests/changepassword.test.js` | Passwort ändern, Wirkung auf Sitzungen |
 | `tests/eventsquests.test.js` | Events, Beitritt per Code, Quest-Fortschritt |
+| `tests/hiddendrinks.test.js` | Ausgeblendete Getränke: nicht wählbar, aber auflösbar |
 | `tests/groupinvite.test.js` | Einladungscode, Beitritt, Rotation |
 | `tests/groupmembers.test.js` | Mitglieder hinzufügen/entfernen, Gruppe verlassen |
 | `tests/moderation.test.js` | Blockieren und Melden |

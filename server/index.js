@@ -1279,6 +1279,12 @@ app.put("/api/users/me/drinks", authenticate, async (req, res) => {
     const drinks = await db.getDrinks();
     const byId = new Map(drinks.map((d) => [d.id, d]));
 
+    // Was der Nutzer HEUTE schon hat. Wird gleich gebraucht: ein
+    // ausgeblendetes Getränk darf nicht NEU gewählt werden, aber wer es
+    // bereits in der Schnellwahl hat, muss weiter umsortieren können — sonst
+    // schlaegt jedes Speichern fehl, bis er es zufällig herausnimmt.
+    const bisherige = new Set(await db.getUserDrinkIds(req.userId));
+
     // Doppelte entfernen, Reihenfolge des ersten Vorkommens behalten.
     const seen = new Set();
     const cleaned = [];
@@ -1289,6 +1295,11 @@ app.put("/api/users/me/drinks", authenticate, async (req, res) => {
       // sonst wäre die Sichtbarkeitsregel über diesen Weg umgehbar.
       if (!drink || !isDrinkVisibleTo(drink, req.userId)) {
         return res.status(400).json({ error: "Unbekanntes Getränk in der Auswahl." });
+      }
+      if (drink.hidden && !bisherige.has(id)) {
+        return res.status(400).json({
+          error: `„${drink.name}“ steht nicht mehr zur Auswahl.`,
+        });
       }
       seen.add(id);
       cleaned.push(id);

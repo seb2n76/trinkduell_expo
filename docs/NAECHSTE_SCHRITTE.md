@@ -51,52 +51,49 @@ Der Zustand war beim Schreiben dieses Dokuments sauber.
 
 ## 1. Aufgaben, die der Agent allein erledigen kann
 
-Nach Priorität. Die ersten drei sind klein und schließen echte Lücken.
-
-### 1.12 Doppelte Getränke im Katalog — **mittel**
-
-Der Katalog führt zwei Getränke doppelt:
-
-| | |
-|---|---|
-| `drink-beer-500` „Helles Bier“ 500 ml 5,0 % | `drink-beer-helles` „Helles“ 500 ml 4,9 % |
-| `drink-beer-330` „Pils“ 330 ml 4,9 % | `drink-beer-pils` „Pils 0,33“ 330 ml 4,8 % |
-
-Entstanden am 18.08.2026 beim Zusammenlegen: die 14 im Client hartkodierten
-Getränke wanderten in `DEFAULT_DRINKS` (11 → 25), und zwei davon gab es dort
-schon unter anderem Namen. In der Auswahl-Ansicht stehen sie jetzt
-nebeneinander und sind nicht auseinanderzuhalten.
-
-**Nicht einfach löschen.** `drink_logs.drink_id` hat `ON DELETE CASCADE` —
-ein `DELETE FROM drinks` nimmt jeden Eintrag mit, der darauf zeigt. Auf dem
-Produktionsserver haben Nutzer beide Varianten geloggt; das wären echte
-Datenverluste.
-
-Gangbare Wege, in aufsteigender Gründlichkeit:
-
-1. **Umbenennen.** Macht die Dublette wenigstens sichtbar, löst sie aber nicht.
-2. **Ausblenden statt löschen.** Eine Spalte `drinks.hidden BOOLEAN` (per
-   `ALTER TABLE` in `initPgSchema()`, Reihenfolge siehe Falle 3.5).
-   `isDrinkVisibleTo()` filtert sie aus dem Katalog, bestehende Logs lösen
-   weiter auf. Das ist der saubere Weg.
-3. **Zusammenführen.** Logs per `UPDATE drink_logs SET drink_id = ...` auf die
-   Kanon-ID umhängen, dann die verwaiste Zeile löschen. Braucht ein Skript
-   mit Probelauf und ist nur mit Backup zu empfehlen.
-
-Ist-Zustand prüfen (wie viele Logs hängen an welcher ID?):
-
-```bash
-docker compose -f server/docker-compose.yml exec db psql -U trinkduell_user -d trinkduell -c "SELECT d.id, d.name, count(l.id) AS logs FROM drinks d LEFT JOIN drink_logs l ON l.drink_id = d.id GROUP BY d.id, d.name ORDER BY d.name"
-```
-
-> Verwandt, aber harmlos: die Größenvarianten heißen uneinheitlich.
-> „Aperol Spritz“ (200 ml) neben „Aperol Spritz 0,3“ (300 ml), „Rotwein“
-> (150 ml) neben „Rotwein 0,2“ (200 ml) — mal trägt der Name die Menge,
-> mal nicht. Keine Dublette, nur inkonsequent.
+> **Nichts Offenes mehr auf dieser Liste.** Was noch aussteht, kann nur der
+> Betreiber (Abschnitt 2) — plus eine Entscheidung: Meldungen zusätzlich per
+> E-Mail?
 
 ---
 
 ## Erledigt
+
+### ~~1.12 Doppelte Getränke im Katalog~~ — **erledigt (Code), Betreiber muss migrieren**
+
+Gelöst nach Weg 2: **ausblenden statt löschen**, neue Spalte `drinks.hidden`.
+
+| ausgeblendet | bleibt sichtbar |
+|---|---|
+| `drink-beer-500` „Helles Bier“ | `drink-beer-helles` „Helles“ |
+| `drink-beer-pils` „Pils 0,33“ | `drink-beer-330` „Pils“ |
+
+Sichtbar bleibt jeweils der Name ohne Menge, passend zum Schema der übrigen
+Biere (Export, Weizen). „Helles“ steht zudem in `DEFAULT_QUICK_PICKS` und
+durfte schon deshalb nicht verschwinden.
+
+**Ausblenden heißt genau zwei Dinge, und der Unterschied ist der Kern:**
+
+- **nicht mehr NEU wählbar** — weg aus Auswahl-Ansicht und Kategorie-Karten,
+  und `PUT /api/users/me/drinks` weist es ab
+- **weiterhin auflösbar** — alte Logs zeigen ihren Namen, wer es schon in der
+  Schnellwahl hat, behält es und kann weiter umsortieren
+
+Der zweite Punkt ist die heikle Stelle: würde die Prüfung stur greifen,
+schlüge **jedes** Speichern der Schnellwahl fehl, bis der Nutzer das
+ausgeblendete Getränk zufällig herausnimmt — er käme also nicht mehr an seine
+eigene Auswahl. Deshalb prüft die Route gegen den **bisherigen** Stand.
+
+`GET /api/drinks` liefert ausgeblendete Getränke weiterhin mit (als
+`hidden: true`); gefiltert wird im Client. Würde der Server sie weglassen,
+stünde in der Historie nur noch „Getränk“.
+
+12 Tests in `tests/hiddendrinks.test.js`.
+
+> **Auf dem Server einmalig migrieren** — siehe Abschnitt 2. Die Spalte kommt
+> per `ALTER TABLE` von selbst, aber die beiden Markierungen nicht: der Seed
+> benutzt `ON CONFLICT DO NOTHING` und lässt bestehende Zeilen in Ruhe.
+
 
 Alles darunter ist abgearbeitet. Es steht hier, weil die Begründungen
 erklären, warum etwas so gebaut ist — und weil zwei Punkte noch
@@ -426,6 +423,7 @@ Zugangsdaten, Hardware oder rechtliche Entscheidungen.
 | **Splash-Grafik** | `assets/images/splash-icon.png` ist **byte-identisch mit `expo-logo.png`** — der Startbildschirm zeigt das Expo-Logo und würde so in die Stores gehen |
 | **Schnellwahl-Migration** | Einmalig `docker compose -f server/docker-compose.yml exec backend node server/migrate-quickpicks.js --dry-run`, dann ohne `--dry-run`. Ohne diesen Lauf bekommen Bestandskonten die generische Startauswahl statt ihrer eigenen Gewohnheiten. Setzt drei Favoriten, passend zu den drei Dashboard-Slots. Wiederholbar: wer schon selbst gewählt hat, wird übersprungen |
 | **Moderation freischalten** | `ADMIN_USER_IDS` in `server/.env` auf die eigene Nutzer-ID setzen und den Container neu starten. Ohne diese Variable ist **niemand** Moderator und `/api/reports` antwortet für alle mit 404. ID herausfinden: `docker compose -f server/docker-compose.yml exec db psql -U trinkduell_user -d trinkduell -c "SELECT id, name FROM users ORDER BY name"` |
+| **Dubletten ausblenden** | `docker compose -f server/docker-compose.yml exec backend node server/migrate-hide-duplicates.js --dry-run`, dann ohne `--dry-run`. Blendet „Helles Bier“ und „Pils 0,33“ aus. Löscht nichts, vorhandene Einträge bleiben. Rückgängig per `UPDATE drinks SET hidden = FALSE WHERE id IN ('drink-beer-500', 'drink-beer-pils')` |
 | **R2 aufräumen** | `docker compose -f server/docker-compose.yml exec backend node server/cleanup-r2.js` (Probelauf), Liste prüfen, dann mit `--delete`. **Ungetestet gegen echtes R2**, also erst ohne `--delete`. Alternative ohne Skript: eine Lebenszyklus-Regel im Cloudflare-Dashboard |
 | **CSP scharf schalten** | Nach dem Deploy die Browser-Konsole lesen, fehlende Quellen in `public/_headers` ergänzen, dann `-Report-Only` aus dem Header-Namen streichen. Anleitung steht als Kommentar in der Datei |
 | **Entscheidungen** | Meldungen zusätzlich per E-Mail (1.7)? Bleibt Netlify neben Cloudflare bestehen? |

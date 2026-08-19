@@ -250,6 +250,9 @@ export default function DashboardScreen() {
    */
   const catalogSearchResults = useMemo(() => {
     const query = drinkSearch.trim().toLowerCase();
+    // Ausgeblendete raus: sie bleiben im Katalog, damit alte Log-Eintraege
+    // weiter aufloesen, sollen aber nicht mehr waehlbar sein.
+    const waehlbar = drinks.filter((d) => !d.hidden);
     const tab = pickerCategory ? CATEGORY_TABS.find((t) => t.key === pickerCategory) : null;
     const matches = tab ? (tab.matches as readonly string[]) : null;
 
@@ -257,10 +260,10 @@ export default function DashboardScreen() {
     // ganzen Katalog — sonst findet man ein Bier nicht, weil gerade der
     // Wein-Reiter offen war.
     const list = query
-      ? drinks.filter((d) => d.name.toLowerCase().includes(query))
+      ? waehlbar.filter((d) => d.name.toLowerCase().includes(query))
       : matches
-      ? drinks.filter((d) => matches.includes(d.category))
-      : drinks;
+      ? waehlbar.filter((d) => matches.includes(d.category))
+      : waehlbar;
 
     // Alphabetisch innerhalb der Kategorie, damit die Liste vorhersehbar ist.
     return [...list].sort(
@@ -287,7 +290,7 @@ export default function DashboardScreen() {
     const tab = CATEGORY_TABS.find((t) => t.key === activeCategory);
     if (!tab) return [];
     const matches = tab.matches as readonly string[];
-    return drinks
+    return drinks.filter((d) => !d.hidden)
       .filter((d) => matches.includes(d.category))
       .sort(
         (a, b) =>
@@ -302,7 +305,7 @@ export default function DashboardScreen() {
     const tab = CATEGORY_TABS.find((t) => t.key === activeCategory);
     if (!tab) return 0;
     const matches = tab.matches as readonly string[];
-    return drinks.filter((d) => matches.includes(d.category)).length;
+    return drinks.filter((d) => !d.hidden).filter((d) => matches.includes(d.category)).length;
   }, [drinks, activeCategory]);
 
   const activeCategoryLabel =
