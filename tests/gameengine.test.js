@@ -68,6 +68,19 @@ async function skipBisPhase(call, code, hostToken, kind, maxSchritte = 60) {
   throw new Error(`Phase "${kind}" nach ${maxSchritte} Schritten nicht erreicht`);
 }
 
+/**
+ * Wer hat diese Rolle? Rollen sind nur in der jeweils EIGENEN Sicht lesbar,
+ * also muss jede Sicht einzeln abgefragt werden.
+ */
+async function findeSpielerMitRolle(call, code, spieler, rolle) {
+  for (const s of spieler) {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${s.token}`);
+    const ich = sicht.json.room.players.find((p) => p.id === sicht.json.room.myPlayerId);
+    if (ich && ich.role === rolle) return s;
+  }
+  return null;
+}
+
 /** Wer ist der Verraeter? Nur aus der jeweils EIGENEN Sicht ablesbar. */
 async function findeVerraeter(call, code, spieler) {
   for (const s of spieler) {
@@ -182,13 +195,24 @@ test("Story-Engine: Entscheidungen haben Folgen (B1)", async (t) => {
 
     const prompt = sicht.json.room.gameState.currentChapter.prompt;
     if (prompt && prompt.choices && prompt.choices.length > 0) {
+      // Welche Szene gezogen wird, entscheidet Zufall — und manche gehoeren
+      // einer bestimmten Rolle. Wer sie nicht hat, bekommt zu Recht 403.
+      // Der Test muss deshalb den Spieler waehlen, der handeln DARF, sonst
+      // faellt er zufaellig um (etwa jeder achte Lauf).
+      const handelnder = prompt.forRole
+        ? await findeSpielerMitRolle(call, code, spieler, prompt.forRole)
+        : host;
+      assert.ok(handelnder, `Niemand hat die Rolle ${prompt.forRole}`);
+
       const choice = prompt.choices[0];
       const res = await call("POST", `/game-rooms/${code}/action`, {
-        playerToken: host.token,
+        playerToken: handelnder.token,
         actionType: "choice",
         payload: {
           choiceId: choice.id,
-          targetPlayerId: choice.targetRequired ? spieler[1].id : undefined,
+          targetPlayerId: choice.targetRequired
+            ? spieler.find((s) => s.id !== handelnder.id).id
+            : undefined,
         },
       });
       assert.equal(res.status, 200);

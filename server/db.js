@@ -170,7 +170,18 @@ async function recalculateUserStats(user, logs, drinks, groups) {
   let userSettlements = [];
   if (pool) {
     const res = await pool.query("SELECT * FROM game_settlements WHERE user_id = $1", [user.id]);
-    userSettlements = res.rows;
+    // `pg` liefert TIMESTAMPTZ als Date-Objekt, der JSON-Zweig als Zeichenkette.
+    // Ohne diese Umwandlung wirft das `s.timestamp.slice(...)` weiter unten
+    // eine TypeError — und zwar AUSSCHLIESSLICH im Postgres-Betrieb, den die
+    // Testsuite nicht ausfuehrt. Die uebrigen Lesestellen in dieser Datei
+    // konvertieren aus genau diesem Grund ebenfalls explizit.
+    userSettlements = res.rows.map((r) => ({
+      ...r,
+      timestamp:
+        r.timestamp && r.timestamp.toISOString
+          ? r.timestamp.toISOString()
+          : String(r.timestamp || ""),
+    }));
   } else if (db && Array.isArray(db.gameSettlements)) {
     userSettlements = db.gameSettlements.filter((s) => s.user_id === user.id);
   }
@@ -2002,10 +2013,17 @@ module.exports = {
     const today = new Date().toISOString().slice(0, 10);
 
     if (pool) {
+      // AT TIME ZONE 'UTC' ist Absicht: `timestamp::date` allein wuerde die
+      // Zeitzone der Datenbanksitzung verwenden, waehrend `today` oben aus
+      // toISOString() stammt und damit UTC ist. Auf einem Server, der nicht in
+      // UTC laeuft, faellt die Tagesgrenze dann genau in den Nachtstunden
+      // auseinander — also dann, wenn diese App benutzt wird. Der JSON-Zweig
+      // unten vergleicht ebenfalls gegen UTC; beide Zweige muessen dasselbe
+      // Ergebnis liefern.
       const res = await pool.query(
         `SELECT COALESCE(SUM(points), 0)::int AS total
          FROM game_settlements
-         WHERE user_id = $1 AND timestamp::date = $2::date`,
+         WHERE user_id = $1 AND (timestamp AT TIME ZONE 'UTC')::date = $2::date`,
         [userId, today]
       );
       return res.rows[0] ? res.rows[0].total : 0;
