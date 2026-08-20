@@ -109,17 +109,33 @@ export async function uploadImage(uri: string, kind: UploadKind): Promise<string
   let response: Response;
   try {
     response = await fetch(uploadUrl, {
+      // OHNE method wird daraus ein GET, und fetch wirft sofort
+      // "Request with GET/HEAD method cannot have body" — noch bevor
+      // irgendein Byte das Gerät verlässt. Die Zeile ist beim Ergänzen der
+      // Fehlermeldung unten einmal verlorengegangen; der Fehler landete
+      // dann im catch und wurde dort als CORS gedeutet, obwohl der Bucket
+      // nie gefragt wurde.
+      method: "PUT",
       // Content-Type und -Length sind Teil der Signatur. Weicht hier etwas ab,
       // lehnt R2 den Upload ab — genau das ist der Sinn: die signierte URL
       // erlaubt nur exakt dieses eine Bild.
       headers: { "Content-Type": prepared.contentType },
       body: prepared.blob,
     });
-  } catch {
-    // Ein fehlgeschlagenes fetch OHNE Antwort heisst im Browser fast immer
-    // CORS: das PUT geht direkt an R2, also muss der Bucket PUT von der
-    // Web-Domain erlauben. Ohne diese Unterscheidung stuende hier nur
-    // "Failed to fetch", und niemand kaeme darauf, wo man nachsehen muss.
+  } catch (e) {
+    // Zwei sehr verschiedene Ursachen landen hier, und sie auseinanderzuhalten
+    // spart die nächste Fehlsuche:
+    //
+    //   TypeError vor dem Absenden → ein Programmierfehler in der Anfrage
+    //     selbst (falsche Methode, unerlaubter Header). Der Speicher ist
+    //     unschuldig, er wurde nie erreicht.
+    //   fetch ohne Antwort         → tatsächlich Netzwerk oder CORS: das PUT
+    //     geht direkt an R2, also muss der Bucket PUT von dieser Domain
+    //     erlauben.
+    const grund = e instanceof Error ? e.message : String(e);
+    if (/cannot have body|Failed to construct|Invalid/i.test(grund)) {
+      throw new Error(`Upload-Anfrage ist fehlerhaft aufgebaut: ${grund}`);
+    }
     throw new Error(
       "Der Bild-Speicher hat die Verbindung abgelehnt. Falls das im Browser passiert: die CORS-Regeln des R2-Buckets müssen PUT von dieser Domain erlauben."
     );
