@@ -464,27 +464,34 @@ Offen aus P0 heraus: eine **Tagesobergrenze** für Spiel-XP. Die Punkte sind
 nicht mehr fälschbar, aber wer viele kurze Runden startet, sammelt weiter.
 Gehört zu P3, wenn der Meta-Layer dran ist.
 
-### P1 — Spürbarkeit (viel Wirkung, wenig Content)
-
-Beide Spielfamilien parallel — die Arbeiten überschneiden sich kaum.
+### P1 — Spürbarkeit — ✅ erledigt am 20.08.2026
 
 *Story-RPG:*
-5. Simultane Auflösung mit Server-Deadline; Host-Button entfällt
+5. ✅ Simultane Auflösung mit Server-Deadline; Host-Button ist nur noch
+   Notbremse („Phase überspringen")
 
 *Lokale Spiele:*
-6. Session-Layer „Die Nacht": Akt-Struktur, durchlaufender Punktestand,
-   Spielwechsel (§6.2)
-7. **Aktive Regelleiste** — gezogene Skull-Regeln bleiben stehen
-   *(größte Wirkung pro Zeile Code im ganzen Konzept, Content existiert bereits)*
-8. Vorhersage-Mechanik für Zuschauer
-9. Höher/Tiefer auf Push-your-luck umstellen
+6. ✅ Session-Layer „Die Nacht" (`src/games/session.tsx`): Akte mit steigendem
+   Multiplikator, durchlaufender Punktestand, Spielwechsel
+7. ✅ **Aktive Regelleiste** — gezogene Skull-Regeln bleiben in Kraft
+8. ✅ Tipprunde für Zuschauer (in Höher/Tiefer, ab drei Personen)
+9. ✅ Höher/Tiefer als Push-your-luck mit Topf und Ausstiegswahl
 
 *Beide:*
-10. Joker-Tokens und Wasser-Bonus (S2)
+10. ✅ Joker-Tokens (2 pro Person) und Wasserrunde je Akt
 
-*Fertig, wenn:* in einer Testrunde niemand mehr auf den Host wartet, nach
-20 Minuten sechs Regeln gleichzeitig gelten und die Session ein definiertes Ende
-hat.
+*Fertig, weil:* in der laufenden App stapeln sich vier Skull-Regeln sichtbar und
+wandern beim Wechsel nach Höher/Tiefer mit; die Wasserrunde erhöht alle
+Jokerstände; in der Tipprunde bekommt genau der Zuschauer Punkte, der richtig
+lag. Serverseitig belegen 33 Tests Fristen, Serveruhr, sofortige Auflösung nach
+der letzten Eingabe und den Selbstlauf bei abgelaufener Frist.
+
+Aufgefallen beim Bauen: **Skull und Höher/Tiefer rendern als einzige ihre eigene
+Hülle statt `GameShell`** — sie hätten die Session-Leiste sonst nie gesehen. Kein
+Typecheck fängt das; nur der Blick in die laufende App.
+
+Verschoben: Die Akt-Schwellen (8 und 18 Runden) sind gesetzt, aber nicht an
+echten Runden erprobt. Gehört nach der ersten Testrunde mit Menschen justiert.
 
 ### P2 — Tiefe
 
