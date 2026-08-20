@@ -3915,6 +3915,7 @@ app.post("/api/game-rooms/:code/claim", authenticate, async (req, res) => {
       // ein Reconnect oder ein zweiter Tap landet genau hier.
       awarded: result.awarded,
       points: result.points,
+      reason: result.reason,
     });
   } catch (err) {
     if (err.message === "ROOM_NOT_FOUND") {

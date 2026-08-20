@@ -882,8 +882,8 @@ export const apiService = {
    * nur einmal aus — ein zweiter Aufruf antwortet mit `awarded: false` und
    * ist kein Fehler.
    */
-  claimGameRoomPoints: async (code: string, playerToken: string): Promise<{ success: boolean; awarded: boolean; points: number }> => {
-    const res = await axiosInstance.post<{ success: boolean; awarded: boolean; points: number }>(
+  claimGameRoomPoints: async (code: string, playerToken: string): Promise<{ success: boolean; awarded: boolean; points: number; reason?: string }> => {
+    const res = await axiosInstance.post<{ success: boolean; awarded: boolean; points: number; reason?: string }>(
       `/game-rooms/${code}/claim`,
       { playerToken }
     );

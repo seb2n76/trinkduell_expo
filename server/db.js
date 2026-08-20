@@ -1965,11 +1965,38 @@ module.exports = {
   // ─── Spiel-Punkte ──────────────────────────────────────────────────────────
 
   /**
+   * Summiert die heute bereits gutgeschriebenen Spiel-Punkte eines Nutzers.
+   * Kalendertag nach lokaler ISO-Datumsangabe (YYYY-MM-DD).
+   */
+  getDailyGamePoints: async (userId) => {
+    await loadDb();
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (pool) {
+      const res = await pool.query(
+        `SELECT COALESCE(SUM(points), 0)::int AS total
+         FROM game_settlements
+         WHERE user_id = $1 AND timestamp::date = $2::date`,
+        [userId, today]
+      );
+      return res.rows[0] ? res.rows[0].total : 0;
+    }
+
+    const settlements = db.gameSettlements || [];
+    return settlements
+      .filter((s) => s.user_id === userId && s.timestamp && s.timestamp.startsWith(today))
+      .reduce((sum, s) => sum + (s.points || 0), 0);
+  },
+
+  /**
    * Schreibt einem Nutzer die Punkte aus einer Spielrunde gut — genau einmal.
    *
    * Der Schlüssel ist "raum:nutzer". Ein zweiter Aufruf für dieselbe Runde
    * (Reconnect, doppelter Tap, wiederholter Poll) prallt am Primärschlüssel
-   * ab und ändert nichts. Rückgabe sagt, ob wirklich gutgeschrieben wurde.
+   * ab und ändert nichts.
+   *
+   * Es gilt eine Obergrenze von 300 Punkten pro Kalendertag. Ist das Limit
+   * erreicht oder teilweise erreicht, wird gekappt und der Grund zurückgegeben.
    */
   awardGamePoints: async (roomCode, userId, points) => {
     await loadDb();
@@ -1977,39 +2004,70 @@ module.exports = {
     const amount = Math.max(0, Math.round(points || 0));
     const timestamp = new Date().toISOString();
 
+    // 1. Idempotenz-Vorprüfung: Bereits abgerechnet?
+    if (pool) {
+      const existing = await pool.query(
+        "SELECT points FROM game_settlements WHERE id = $1",
+        [id]
+      );
+      if (existing.rowCount > 0) {
+        return { awarded: false, points: 0, reason: "already_claimed" };
+      }
+    } else {
+      db.gameSettlements = db.gameSettlements || [];
+      if (db.gameSettlements.some((s) => s.id === id)) {
+        return { awarded: false, points: 0, reason: "already_claimed" };
+      }
+    }
+
+    // 2. Tageslimit prüfen (300 XP pro Kalendertag)
+    const todayPoints = await module.exports.getDailyGamePoints(userId);
+    const DAILY_CAP = 300;
+    const remainingCap = Math.max(0, DAILY_CAP - todayPoints);
+
+    if (remainingCap <= 0) {
+      if (pool) {
+        await pool.query(
+          `INSERT INTO game_settlements (id, user_id, room_code, points, timestamp)
+           VALUES ($1, $2, $3, 0, $4)
+           ON CONFLICT (id) DO NOTHING`,
+          [id, userId, roomCode, timestamp]
+        );
+      } else {
+        db.gameSettlements.push({ id, user_id: userId, room_code: roomCode, points: 0, timestamp });
+        await saveDb();
+      }
+      return { awarded: false, points: 0, reason: "daily_cap" };
+    }
+
+    const effectiveAmount = Math.min(amount, remainingCap);
+    const isPartial = effectiveAmount < amount;
+
     if (pool) {
       const inserted = await pool.query(
         `INSERT INTO game_settlements (id, user_id, room_code, points, timestamp)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (id) DO NOTHING
          RETURNING id`,
-        [id, userId, roomCode, amount, timestamp]
+        [id, userId, roomCode, effectiveAmount, timestamp]
       );
       if (inserted.rowCount === 0) {
-        return { awarded: false, points: 0 };
+        return { awarded: false, points: 0, reason: "already_claimed" };
       }
       await pool.query(
         "UPDATE users SET game_points = COALESCE(game_points, 0) + $1 WHERE id = $2",
-        [amount, userId]
+        [effectiveAmount, userId]
       );
     } else {
-      db.gameSettlements = db.gameSettlements || [];
-      if (db.gameSettlements.some((s) => s.id === id)) {
-        return { awarded: false, points: 0 };
-      }
-      db.gameSettlements.push({ id, user_id: userId, room_code: roomCode, points: amount, timestamp });
+      db.gameSettlements.push({ id, user_id: userId, room_code: roomCode, points: effectiveAmount, timestamp });
       const stored = db.users.find((u) => u.id === userId);
       if (stored) {
-        stored.gamePoints = (stored.gamePoints || 0) + amount;
+        stored.gamePoints = (stored.gamePoints || 0) + effectiveAmount;
       }
       await saveDb();
     }
 
-    // Den Punktestand direkt nachziehen. `points` wird sonst ausschließlich
-    // von recalculateUserStats() geschrieben — die Gutschrift wäre also erst
-    // sichtbar, wenn der Nutzer irgendwann das nächste Getränk einträgt.
-    // Über den regulären Weg statt per Direktaddition, damit Rang, Level-
-    // Sperre und Erfolge konsistent bleiben.
+    // Den Punktestand direkt nachziehen
     const users = await module.exports.getUsers();
     const user = users.find((u) => u.id === userId);
     if (user) {
@@ -2022,7 +2080,11 @@ module.exports = {
       await module.exports.saveUser(updated);
     }
 
-    return { awarded: true, points: amount };
+    return {
+      awarded: true,
+      points: effectiveAmount,
+      reason: isPartial ? "daily_cap_partial" : undefined,
+    };
   },
 
   getCumulativeXpForLevel,

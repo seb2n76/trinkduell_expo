@@ -481,3 +481,126 @@ test("Spiel-XP überleben die Neuberechnung (B3)", async (t) => {
     assert.equal(res.status, 403);
   });
 });
+
+test("Tagesobergrenze für Spiel-XP (300 Punkte pro Kalendertag)", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call, register } = server;
+
+  const konto = await register("vielspieler");
+
+  async function rundeBisFinale(mehrereAuswahlen = false) {
+    const { code, spieler } = await raumMitDreiSpielern(call, "murder_express", konto.token);
+    const host = spieler[0];
+    await call("POST", `/game-rooms/${code}/start`, { playerToken: host.token });
+    await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: host.token,
+      actionType: "choice",
+      payload: { choiceId: "inspect_scene" }, // +15 Punkte
+    });
+
+    if (mehrereAuswahlen) {
+      // In eine weitere Phase wechseln und erneut Punkte sammeln
+      await naechstesKapitel(call, code, host.token);
+      const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+      const prompt = sicht.json.room.gameState.currentChapter?.prompt;
+      if (prompt && prompt.choices && prompt.choices.length > 0) {
+        const choice = prompt.choices[0];
+        await call("POST", `/game-rooms/${code}/action`, {
+          playerToken: host.token,
+          actionType: "choice",
+          payload: { choiceId: choice.id },
+        });
+      }
+    }
+
+    await skipBisPhase(call, code, host.token, "vote");
+    for (const s of spieler) {
+      await call("POST", `/game-rooms/${code}/action`, {
+        playerToken: s.token,
+        actionType: "vote",
+        payload: { targetPlayerId: spieler[1].id },
+      });
+    }
+    return { code, hostToken: host.token };
+  }
+
+  // 19 Runden à 15 Punkte = 285 Punkte sammeln
+  const runden = [];
+  for (let i = 0; i < 19; i++) {
+    runden.push(await rundeBisFinale());
+  }
+
+  await t.test("unterhalb der Grenze wird voll gutgeschrieben", async () => {
+    // Erste Runde abrechnen
+    const res = await call(
+      "POST",
+      `/game-rooms/${runden[0].code}/claim`,
+      { playerToken: runden[0].hostToken },
+      konto.token
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.json.awarded, true);
+    assert.equal(res.json.points, 15);
+
+    // Die übrigen 18 Runden ebenfalls gutschreiben -> 19 * 15 = 285 Punkte
+    for (let i = 1; i < 19; i++) {
+      const r = await call(
+        "POST",
+        `/game-rooms/${runden[i].code}/claim`,
+        { playerToken: runden[i].hostToken },
+        konto.token
+      );
+      assert.equal(r.status, 200);
+      assert.equal(r.json.awarded, true);
+      assert.equal(r.json.points, 15);
+    }
+
+    const me = await call("GET", "/users/me", undefined, konto.token);
+    assert.equal(me.json.gamePoints, 285);
+  });
+
+  const rundeMitUeberhang = await rundeBisFinale(true);
+  const rundeUeberLimit = await rundeBisFinale(false);
+
+  await t.test("an der Grenze wird gekappt, nicht abgelehnt", async () => {
+    // 285 Punkte bereits erhalten. Die nächste Runde bringt >= 25 Punkte.
+    // Es dürfen exakt 15 Punkte gutgeschrieben werden, um auf 300 zu deckeln.
+    const res = await call(
+      "POST",
+      `/game-rooms/${rundeMitUeberhang.code}/claim`,
+      { playerToken: rundeMitUeberhang.hostToken },
+      konto.token
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.json.awarded, true);
+    assert.equal(res.json.points, 15, "Gekappt auf die verbleibenden 15 Punkte bis 300");
+    assert.equal(res.json.reason, "daily_cap_partial");
+  });
+
+  await t.test("oberhalb der Grenze wird nichts mehr gutgeschrieben", async () => {
+    const res = await call(
+      "POST",
+      `/game-rooms/${rundeUeberLimit.code}/claim`,
+      { playerToken: rundeUeberLimit.hostToken },
+      konto.token
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.json.awarded, false, "Keine Gutschrift mehr bei vollem Kontingent");
+    assert.equal(res.json.points, 0);
+    assert.equal(res.json.reason, "daily_cap");
+  });
+
+  await t.test("die Idempotenz pro Runde bleibt bestehen", async () => {
+    const res = await call(
+      "POST",
+      `/game-rooms/${rundeUeberLimit.code}/claim`,
+      { playerToken: rundeUeberLimit.hostToken },
+      konto.token
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.json.awarded, false);
+    assert.equal(res.json.points, 0);
+  });
+});
+
