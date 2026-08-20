@@ -23,6 +23,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
 import { useThemeColors } from "@/services/theme";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 
 type TabKey = "friends" | "groups" | "events";
 
@@ -807,6 +808,7 @@ export default function FriendsScreen() {
   );
 
   return (
+    <KeyboardSafe>
     <View className="flex-1 bg-bg">
       {/* Reiterleiste. Steht fest; darunter bekommt jeder Reiter die volle
           Resthöhe für seinen eigenen Scrollbereich. */}
@@ -1275,5 +1277,6 @@ export default function FriendsScreen() {
         </View>
       </Modal>
     </View>
+    </KeyboardSafe>
   );
 }

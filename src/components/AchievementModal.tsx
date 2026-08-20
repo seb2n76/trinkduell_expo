@@ -52,6 +52,51 @@ export const ACHIEVEMENTS_METADATA: Record<string, Omit<AchievementInfo, "id">> 
     description: "Du bist Admin einer Gruppe und hast die Zügel fest in der Hand.",
     icon: "📣",
   },
+  DRIVER_OF_THE_NIGHT: {
+    title: "Driver of the Night 🚗",
+    description: "0,0g Alkohol am Abend – vorbildlich und sicher unterwegs!",
+    icon: "🚘",
+  },
+  HYDRO_HOMIE: {
+    title: "Hydro-Homie 💧",
+    description: "Mindestens 3 Wasser hintereinander geloggt – Hydration läuft!",
+    icon: "🌊",
+  },
+  UEBERLEBENSKUENSTLER: {
+    title: "Überlebenskünstler 💖",
+    description: "Ein lebensrettendes Wasser nach 04:00 Uhr morgens geloggt.",
+    icon: "🌅",
+  },
+  GAME_FIRST_ROUND: {
+    title: "Erster Spielabend 🎮",
+    description: "Du hast deine erste Spielrunde erfolgreich abgeschlossen!",
+    icon: "🎲",
+  },
+  GAME_FIVE_ROUNDS: {
+    title: "Spielratte 🎲",
+    description: "5 Spielrunden absolviert – der Abend nimmt Fahrt auf!",
+    icon: "🎯",
+  },
+  GAME_TEN_ROUNDS: {
+    title: "Party-Legende 👑",
+    description: "10 Spielrunden gespielt! Du bist eine wahre Legende am Tisch.",
+    icon: "🏆",
+  },
+  GAME_HUNDRED_XP: {
+    title: "Punktejäger ⚡",
+    description: "Mindestens 100 XP aus Spielrunden gesammelt – stark gespielt!",
+    icon: "⭐",
+  },
+  GAME_DAILY_CAP: {
+    title: "Tageslimit geknackt 🔥",
+    description: "Das Maximum von 300 Spiel-XP an einem Tag erreicht!",
+    icon: "🚀",
+  },
+  GAME_MASTER: {
+    title: "Meister aller Runden 🏅",
+    description: "Mindestens 3 verschiedene Spielrunden gemeistert.",
+    icon: "🎖️",
+  },
 };
 
 interface AchievementModalProps {

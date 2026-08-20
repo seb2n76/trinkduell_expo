@@ -239,15 +239,164 @@
       }
     },
     {
-      "id": "a1_erste_runde",
+      "id": "a1_schmuckschatulle",
       "act": 1,
-      "closing": true,
-      "weight": 10,
-      "title": "Erste Verdächtigungen",
-      "textTemplate": "Der Schneesturm rüttelt an den Fenstern. Der Speisewagen füllt sich.\nNoch ist nichts bewiesen — aber alle haben eine Meinung.",
-      "discussion": {
-        "seconds": 90,
-        "prompt": "Redet. Wer wirkt zu ruhig, wer zu eifrig? Wer hat schon von sich aus ein Alibi angeboten, ohne dass jemand gefragt hat?"
+      "weight": 6,
+      "title": "Die geplünderte Schmuckschatulle",
+      "textTemplate": "Auf dem Mahagonitisch im Salonwagen liegt die Samtschatulle des Barons — das Schloss gewaltsam aufgebrochen, der Samt zerwühlt.\nDie Diamantkette des Hauses Falkenstein ist spurlos verschwunden.",
+      "prompt": {
+        "title": "Die Beute des Mörders",
+        "description": "Was machst du beim Anblick des leeren Schmuckkastens?",
+        "choices": [
+          {
+            "id": "examine_box",
+            "label": "Die Hebelspuren am Verschluss prüfen",
+            "outcomeText": "Feine Kratzer deuten auf einen spitzen Gegenstand — vielleicht eine Hutnadel oder einen Dolch.",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "scan_crowd",
+            "label": "Die Taschen der Anwesenden mustern (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Du blickst jemandem fest in die Augen. Die Tasche beult sich verdächtig.",
+            "effects": [{ "points": 18 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "drink_diamonds",
+            "label": "Auf die verlorenen Juwelen trinken (1 Schluck)",
+            "outcomeText": "Du nimmst einen kräftigen Schluck. Geld vergeht, Schnaps bleibt.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_telegraph",
+      "act": 1,
+      "weight": 5,
+      "title": "Die gekappte Leitung",
+      "textTemplate": "Der Schaffner hämmert fluchend auf den Bord-Telegraphen ein: Kein Summen, kein Signal.\nDas Kupferkabel im Postwagen wurde sauber mit einer Zange durchtrennt. Der Mörder wusste genau, was er tat.",
+      "prompt": {
+        "title": "Abgeschnitten von der Welt",
+        "description": "Wie reagierst du auf die Sabotage?",
+        "choices": [
+          {
+            "id": "inspect_wire",
+            "label": "Die Schnittstelle am Kabel analysieren",
+            "outcomeText": "Die Schnittkante glänzt metallisch frisch — die Tat geschah erst vor wenigen Minuten.",
+            "effects": [{ "points": 20 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "guard_station",
+            "label": "Vor dem Postabteil Wache beziehen",
+            "outcomeText": "Du stellst dich demonstrativ vor die Tür. Hier sabotiert niemand mehr.",
+            "effects": [{ "points": 16 }, { "variable": "panik", "delta": -2 }]
+          },
+          {
+            "id": "spread_unease",
+            "label": "Die Runde vor dem Saboteur warnen",
+            "outcomeText": "Deine Worte lassen die Passagiere unruhig tuscheln.",
+            "effects": [{ "points": 14 }, { "variable": "panik", "delta": 2 }, { "variable": "verdacht", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_zeugin_erbin",
+      "act": 1,
+      "weight": 7,
+      "requires": [{ "roleAlive": "Die Erbin 💎" }],
+      "title": "Das Testament des Barons",
+      "textTemplate": "Die Erbin steht mit blassem Gesicht am Fenster und hält ein versiegeltes Kuvert in den zitternden Fingern.\nDer Nachlass des Barons steht auf dem Spiel — und alle Blicke richten sich auf sie.",
+      "prompt": {
+        "title": "Nur die Erbin handelt",
+        "description": "Was tust du mit dem Testament?",
+        "forRole": "Die Erbin 💎",
+        "choices": [
+          {
+            "id": "read_will",
+            "label": "Das Testament vorlesen und das Erbe beanspruchen",
+            "outcomeText": "„Ich bin die Alleinerbin!“ Dein Motiv liegt offen — aber du zeigst keine Furcht.",
+            "effects": [{ "points": 25 }, { "variable": "verdacht", "delta": 3 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "hide_will",
+            "label": "Das Testament im Mantel verschwinden lassen",
+            "outcomeText": "Du steckst den Umschlag rasch ein. Wer schweigt, schützt sein Geheimnis.",
+            "effects": [{ "points": 18 }, { "variable": "verdacht", "delta": -1 }]
+          },
+          {
+            "id": "drink_inheritance",
+            "label": "Auf den reichen Erbonkel anstoßen (1 Schluck)",
+            "outcomeText": "Du hebst das Glas auf den Toten. Trauer sieht anders aus.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_fenster_spuren",
+      "act": 1,
+      "weight": 5,
+      "title": "Schuhabdrücke im Schnee",
+      "textTemplate": "Am Fenster von Abteil 7 zieht ein eisiger Wind herein. Die Scheibe ist einen Spalt breit geöffnet.\nDraußen auf dem schmalen Trittbrett zeichnet sich im Neuschnee ein einzelner Stiefelabdruck ab.",
+      "prompt": {
+        "title": "Spurensuche am Fenster",
+        "description": "Was tust du mit der Entdeckung?",
+        "choices": [
+          {
+            "id": "measure_print",
+            "label": "Die Schuhgröße mit den Schuhen der Runde abgleichen",
+            "outcomeText": "Ein schmaler Absatz — das grenzt den Kreis der Verdächtigen spürbar ein.",
+            "effects": [{ "points": 20 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "lock_window",
+            "label": "Das Fenster verriegeln und Kälte aussperren",
+            "outcomeText": "Das Klirren des Riegels beruhigt die Fröstelnden im Abteil.",
+            "effects": [{ "points": 14 }, { "variable": "panik", "delta": -1 }]
+          },
+          {
+            "id": "drink_cold",
+            "label": "Einen Schnaps gegen die eisige Zugluft trinken (1 Schluck)",
+            "outcomeText": "Die Kälte beißt in die Wangen, der Schnaps brennt in der Kehle.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_fingerabdruecke",
+      "act": 1,
+      "weight": 6,
+      "title": "Das gravierte Monogramm",
+      "textTemplate": "Am schweren Kaminbesteck des Salonwagens glänzt ein zerkratztes Silberplättchen.\nBei genauerem Hinsehen lassen sich zwei kunstvoll geschwungene Initialen erkennen.",
+      "prompt": {
+        "title": "Die Waffe am Kamin",
+        "description": "Wie deutest du das Monogramm?",
+        "choices": [
+          {
+            "id": "read_monogram",
+            "label": "Das Monogramm laut entziffern",
+            "outcomeText": "„Hier steht ein Buchstabe!“ Die Blicke der Runde wandern nervös umher.",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "wipe_handle",
+            "label": "Unauffällig den Griff mit dem Ärmel abwischen",
+            "outcomeText": "Du verwischst die Reste. Spurensicherung ade — aber deine Finger sind sauber.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }, { "variable": "hinweise", "delta": -1 }]
+          },
+          {
+            "id": "step_back",
+            "label": "Zwei Schritte zurücktreten und nichts berühren",
+            "outcomeText": "Vorsicht ist die Mutter des Alibis. Du bleibst unbeteiligt.",
+            "effects": [{ "points": 12 }]
+          }
+        ]
       }
     },
     {
@@ -282,6 +431,18 @@
             "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 2 }]
           }
         ]
+      }
+    },
+    {
+      "id": "a1_erste_runde",
+      "act": 1,
+      "closing": true,
+      "weight": 10,
+      "title": "Erste Verdächtigungen",
+      "textTemplate": "Der Schneesturm rüttelt an den Fenstern. Der Speisewagen füllt sich.\nNoch ist nichts bewiesen — aber alle haben eine Meinung.",
+      "discussion": {
+        "seconds": 90,
+        "prompt": "Redet. Wer wirkt zu ruhig, wer zu eifrig? Wer hat schon von sich aus ein Alibi angeboten, ohne dass jemand gefragt hat?"
       }
     },
 
@@ -432,6 +593,163 @@
       }
     },
     {
+      "id": "a2_schlafwagen_durchsuchung",
+      "act": 2,
+      "weight": 6,
+      "title": "Der Schlafwagenschlüssel",
+      "textTemplate": "Im Gang des Schlafwagens findet {{player:1|jemand}} einen verbogenen Dietrich.\n{{memory:beteuert|Jemand}} wirft nervöse Blicke auf die verschlossenen Türen. Eines der Schlösser weist frische Kratzer auf.",
+      "prompt": {
+        "title": "Einbruch im Schlafwagen",
+        "description": "Was fängst du mit dem Dietrich an?",
+        "choices": [
+          {
+            "id": "inspect_locks",
+            "label": "Alle Schlösser im Wagen auf Kratzer prüfen",
+            "outcomeText": "Du findest heraus, welches Abteil vor der Tat geöffnet wurde.",
+            "effects": [{ "points": 22 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "confront_locksmith",
+            "label": "Die Runde nach handwerklichem Geschick befragen",
+            "outcomeText": "Wer kennt sich mit Schlössern aus? Die Ausflüchte beginnen.",
+            "effects": [{ "points": 18 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "pocket_pick",
+            "label": "Den Dietrich lautlos einstecken",
+            "outcomeText": "Ein nützliches Werkzeug. Niemand hat gesehen, wie du es nimmst.",
+            "effects": [{ "points": 20 }, { "remember": "dietrich" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_giftampulle",
+      "act": 2,
+      "weight": 6,
+      "title": "Die braune Ampulle",
+      "textTemplate": "Zwischen den Samtkissen der Speisewagenbank schimmert eine zerbrochene Glasampulle.\nEin stechender Geruch nach Bittermandeln steigt auf — Blausäure.",
+      "prompt": {
+        "title": "Spuren von Gift",
+        "description": "Wie gehst du mit dem Giftfund um?",
+        "choices": [
+          {
+            "id": "smell_hands",
+            "label": "Die Hände der Tischnachbarn prüfen",
+            "outcomeText": "Du forderst alle auf, die Hände vorzuzeigen. Ein feines Zittern verrät mehr als Worte.",
+            "effects": [{ "points": 22 }, { "variable": "hinweise", "delta": 2 }, { "variable": "panik", "delta": 1 }]
+          },
+          {
+            "id": "wrap_glass",
+            "label": "Die Glasscherben vorsichtig in ein Tuch wickeln",
+            "outcomeText": "Ein handfester Beweis gesichert — ohne dich selbst zu vergiften.",
+            "effects": [{ "points": 20 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "antidote_drink",
+            "label": "Ein Gegengift trinken (1 Schluck)",
+            "outcomeText": "Hochprozentiges desinfiziert angeblich alles. Du spülst den Schock runter.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 14 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_zugpersonal",
+      "act": 2,
+      "weight": 5,
+      "title": "Das Geständnis des Schaffners",
+      "textTemplate": "Der Schaffner wischt sich Schweiß von der Stirn und senkt die Stimme.\n„Es gab einen Fahrgast ohne Ticket. Er stieg im Nebel vor dem Tunnel zu und zahlte in bar.“",
+      "prompt": {
+        "title": "Der blinde Passagier",
+        "description": "Was tust du mit diesem Geständnis?",
+        "choices": [
+          {
+            "id": "demand_description",
+            "label": "Eine genaue Personenbeschreibung verlangen",
+            "outcomeText": "„Dunkler Mantel, Hut tief im Gesicht.“ Das trifft auf die halbe Runde zu.",
+            "effects": [{ "points": 20 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "press_bribe",
+            "label": "Den Schaffner wegen Bestechung beschuldigen",
+            "outcomeText": "Deine Anschuldigung bringt den Wagen zum Kochen.",
+            "effects": [{ "points": 18 }, { "variable": "verdacht", "delta": 2 }, { "variable": "panik", "delta": 1 }]
+          },
+          {
+            "id": "calm_conductor",
+            "label": "Den Schaffner beruhigen und Diskretion wahren",
+            "outcomeText": "Er dankt dir mit einem leisen Nicken und steckt dir ein Ticket zu.",
+            "effects": [{ "points": 16 }, { "variable": "panik", "delta": -2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_verbrannte_asche",
+      "act": 2,
+      "weight": 6,
+      "title": "Asche im Ofen",
+      "textTemplate": "Im gusseisernen Ofen des Speisewagens glimmen verkohlte Papierreste.\n{{memory:eingesteckt|Jemand}} zuckt merklich zusammen, als der Schürhaken ein halb verbranntes Dokument herausangelt.",
+      "prompt": {
+        "title": "Vernichtete Beweise",
+        "description": "Was machst du mit der Asche?",
+        "choices": [
+          {
+            "id": "read_ash",
+            "label": "Die verkohlten Ränder vorsichtig entziffern",
+            "outcomeText": "Ein Schuldenschein über 100.000 Mark — ausgestellt auf den Namen eines Mitreisenden!",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 3 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "stir_ashes",
+            "label": "Die Asche endgültig zerbröseln",
+            "outcomeText": "Du stocherst im Ofen, bis nur noch Staub übrig ist. Keine Spuren mehr.",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": -1 }]
+          },
+          {
+            "id": "fire_whiskey",
+            "label": "Etwas hochprozentigen Alkohol ins Feuer gießen (1 Schluck)",
+            "outcomeText": "Eine blaue Stichflamme erhellt den Raum. Der Wagen hält den Atem an.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 16 }, { "variable": "panik", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_geheime_notiz",
+      "act": 2,
+      "weight": 6,
+      "title": "Die Botschaft unter der Serviette",
+      "textTemplate": "Unter dem Silberteller im Speisewagen klebt ein hastig gefalteter Zettel: „Ich weiß, was du um Mitternacht getan hast.“\n{{memory:angeklagt|Jemand}} starrt mit regungslosem Gesicht auf das Tischtuch.",
+      "prompt": {
+        "title": "Die Drohung am Tisch",
+        "description": "Wie reagierst du auf die gefundene Notiz?",
+        "choices": [
+          {
+            "id": "confront_writer",
+            "label": "Die Notiz laut vorlesen und den Verfasser fordern",
+            "outcomeText": "Die Stimmung gefriert augenblicklich. Niemand rührt sich.",
+            "effects": [{ "points": 22 }, { "variable": "verdacht", "delta": 3 }, { "variable": "hinweise", "delta": 1 }]
+          },
+          {
+            "id": "compare_handwriting",
+            "label": "Die Schriftart mit dem Gästebuch vergleichen",
+            "outcomeText": "Die geschwungenen Buchstaben passen verblüffend genau zu einem Eintrag.",
+            "effects": [{ "points": 24 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "eat_paper",
+            "label": "Den Zettel unbemerkt verschwinden lassen",
+            "outcomeText": "Du zerknüllst das Papier in deiner Handfläche. Niemand erfährt je davon.",
+            "effects": [{ "points": 18 }, { "remember": "notiz_vernichtet" }]
+          }
+        ]
+      }
+    },
+    {
       "id": "a2_kaelte",
       "act": 2,
       "weight": 6,
@@ -506,6 +824,17 @@
             "effects": [{ "points": 12 }, { "variable": "verdacht", "delta": 1 }]
           }
         ]
+      }
+    },
+    {
+      "id": "a2_duell_der_worte",
+      "act": 2,
+      "weight": 6,
+      "title": "Offener Schlagabtausch",
+      "textTemplate": "Die Höflichkeit der ersten Klasse ist verflogen. Beschuldigungen prallen aufeinander wie Gewehrkugeln.\nWer war um 23:45 Uhr wirklich im Salon?",
+      "discussion": {
+        "seconds": 75,
+        "prompt": "Direktes Duell: Nennt euch gegenseitig eure schwächsten Ausreden. Wer stammelt, verliert!"
       }
     },
     {
@@ -596,6 +925,112 @@
             "effects": [{ "points": 15 }]
           }
         ]
+      }
+    },
+    {
+      "id": "a3_letzte_stunden",
+      "act": 3,
+      "weight": 7,
+      "title": "Das Schneepflug-Signal",
+      "textTemplate": "In der eisigen Ferne heult die schrille Dampfpfeife des Schneepflugs auf.\nDie Gleise sind frei. In weniger als zehn Minuten läuft der Zug auf Gleis 1 des Hauptbahnhofs ein.",
+      "prompt": {
+        "title": "Der Countdown läuft",
+        "description": "Wie nutzt du die verbleibenden Minuten?",
+        "choices": [
+          {
+            "id": "rally_team",
+            "label": "Die Beweiskette noch einmal laut zusammenfassen",
+            "outcomeText": "Du bringst die entscheidenden Details auf den Punkt. Klarheit zieht ein.",
+            "effects": [{ "points": 24 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "sow_doubt",
+            "label": "Zweifel an der bisherigen Theorie säen",
+            "outcomeText": "„Was, wenn wir die ganze Zeit auf die falsche Fährte gelockt wurden?“",
+            "effects": [{ "points": 22 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "toast_end",
+            "label": "Ein letztes Mal mit allen anstoßen (alle trinken 1 Schluck)",
+            "outcomeText": "Die Gläser klingen. Gleich fallen alle Masken.",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 18 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a3_schatten_im_gang",
+      "act": 3,
+      "weight": 6,
+      "title": "Schatten an der Wagentür",
+      "textTemplate": "Ein eisiger Windstoß fegt durch den Verbindungsbalg. Ein schwerer Mantel flattert im Sog.\n{{memory:alibi|Jemand}} versucht, sich im Trubel der herannahenden Station unbemerkt zur Außentür abzusetzen.",
+      "prompt": {
+        "title": "Fluchtversuch im Schneetreiben",
+        "description": "Was tust du beim Anblick der offenen Tür?",
+        "choices": [
+          {
+            "id": "block_escape",
+            "label": "Den Weg zur Ausgangstür verstellen",
+            "outcomeText": "Du stellst dich breitbeinig in den Gang: Niemand springt aus dem fahrenden Zug!",
+            "effects": [{ "points": 26 }, { "variable": "hinweise", "delta": 2 }, { "variable": "panik", "delta": -1 }]
+          },
+          {
+            "id": "call_alarm",
+            "label": "Laut Alarm durch den ganzen Zug rufen",
+            "outcomeText": "„Dort drüben will jemand fliehen!“ Alle drehen sich um.",
+            "effects": [{ "points": 22 }, { "variable": "verdacht", "delta": 3 }]
+          },
+          {
+            "id": "watch_shadow",
+            "label": "Aus dem Schatten beobachten und schweigen",
+            "outcomeText": "Du merkst dir jede Bewegung ganz genau. Gleich schlägt deine Stunde.",
+            "effects": [{ "points": 18 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a3_kofferraum_falle",
+      "act": 3,
+      "weight": 6,
+      "title": "Das letzte Gepäckstück",
+      "textTemplate": "Aus dem Gepäcknetz poltert beim Bremsmanöver ein schwerer Lederkoffer zu Boden und springt auf.\nDarin: Das blutbefleckte Original-Taschentuch mit dem Wappen des Falkenstein-Geschlechts.",
+      "prompt": {
+        "title": "Der finale Beweis",
+        "description": "Wem gehört der Koffer?",
+        "choices": [
+          {
+            "id": "identify_owner",
+            "label": "Die Gepäckplakette mit den Tickets abgleichen",
+            "outcomeText": "Der Name auf dem Kofferanhänger lässt keinen Zweifel mehr offen.",
+            "effects": [{ "points": 28 }, { "variable": "hinweise", "delta": 3 }]
+          },
+          {
+            "id": "deny_ownership",
+            "label": "Schwören, dass dir dieser Koffer völlig fremd ist",
+            "outcomeText": "Du weist jede Verbindung weit von dir. Ob man dir glaubt?",
+            "effects": [{ "points": 18 }, { "variable": "verdacht", "delta": 1 }]
+          },
+          {
+            "id": "drink_shock_bag",
+            "label": "Auf den Fund einen Schluck trinken (1 Schluck)",
+            "outcomeText": "Der Fund sitzt tief. Du nimmst einen Schluck zur Beruhigung.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 14 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a3_letztes_kreuzverhoer",
+      "act": 3,
+      "weight": 7,
+      "title": "Tribunal im Scheinwerferlicht",
+      "textTemplate": "Die Scheinwerfer der Bahnhofshalle fluten den Salonwagen mit blendendem Licht.\nJetzt gilt jedes Wort doppelt.",
+      "discussion": {
+        "seconds": 60,
+        "prompt": "60 Sekunden: Jeder nennt seinen Hauptverdächtigen! Wer zögert, hat etwas zu verbergen."
       }
     },
     {

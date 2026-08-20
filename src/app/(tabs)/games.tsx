@@ -33,6 +33,7 @@ import { StoryGameShell } from "@/components/games/StoryGameShell";
 import { ALL_TRUTHS, ALL_DARES } from "@/games/content";
 import { NightSessionProvider, useNightSession } from "@/games/session";
 import { SessionBar } from "@/components/games/SessionBar";
+import { SessionReport } from "@/components/games/SessionReport";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -327,6 +328,7 @@ function GamesScreenContent() {
   const [players, setPlayers] = useState<GamePlayer[]>([]);
   const [guestNameInput, setGuestNameInput] = useState("");
   const [showFriendSelector, setShowFriendSelector] = useState(false);
+  const [showSessionReport, setShowSessionReport] = useState(false);
 
   // Multi-Device Story-RPG State
   const [showJoinRoomModal, setShowJoinRoomModal] = useState(false);
@@ -1058,6 +1060,44 @@ function GamesScreenContent() {
             Bereit für die Runde?
           </Text>
           <Text className="text-content text-xl font-black mb-6">Trinkspiele & Duelle 🎮</Text>
+
+          {/* Active Night Session Banner */}
+          {session && session.active && (
+            <View className="bg-surface border border-accent/40 rounded-3xl p-5 mb-6 relative overflow-hidden shadow-lg">
+              <View className="flex-row items-center justify-between mb-1">
+                <Text className="text-accent text-[9px] font-black uppercase tracking-widest">
+                  Laufende Nacht aktiv 🌙
+                </Text>
+                <View className="bg-accent/20 px-2 py-0.5 rounded-md">
+                  <Text className="text-accent text-[8.5px] font-black uppercase">
+                    {session.actLabel}
+                  </Text>
+                </View>
+              </View>
+              <Text className="text-content text-sm font-black mb-1">
+                {session.rounds} Runden gespielt · {session.players.length} Spieler
+              </Text>
+              {session.leader && (
+                <Text className="text-content-faint text-[10px] font-bold mb-4">
+                  Aktuell in Führung: 👑 {session.leader.name} ({session.leader.points} Pkt.)
+                </Text>
+              )}
+              <View className="flex-row space-x-3 gap-2">
+                <TouchableOpacity
+                  onPress={() => {
+                    triggerHaptic("medium");
+                    setShowSessionReport(true);
+                  }}
+                  className="flex-1 bg-accent py-3 rounded-2xl items-center shadow active:scale-95 flex-row justify-center"
+                >
+                  <Ionicons name="trophy-outline" size={14} color={c.onAccent} />
+                  <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-1.5">
+                    Auswertung &amp; Abschluss
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Active Saved Game Banner */}
           {runningGame !== null && (
@@ -2336,6 +2376,8 @@ function GamesScreenContent() {
           onExit={() => setActiveStoryGame(null)}
         />
       )}
+
+      <SessionReport visible={showSessionReport} onClose={() => setShowSessionReport(false)} />
 
       {renderCancelConfirmOverlay()}
     </View>

@@ -244,8 +244,10 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
   });
 
   await t.test("in Akt III zaehlt die Stimme dann", async () => {
-    // Bis zur Abstimmung durchschalten: reveal -> Akt II -> reveal -> Akt III.
-    for (let i = 0; i < 3; i++) {
+    // Bis zur Abstimmungsphase durchschalten
+    for (let i = 0; i < 60; i++) {
+      const sicht = await call("GET", `/game-rooms/${createdCode}?playerToken=${hostToken}`);
+      if (sicht.json.room.gameState.phase && sicht.json.room.gameState.phase.kind === "vote") break;
       await call("POST", `/game-rooms/${createdCode}/next`, { playerToken: hostToken });
     }
 

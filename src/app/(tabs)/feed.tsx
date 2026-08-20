@@ -20,6 +20,7 @@ import {
   User,
   FeedItem,
   FeedScope,
+  Group,
   RadarEntry,
   ReportReason,
   REPORT_REASON_LABELS,
@@ -269,13 +270,17 @@ export default function LivePulseFeed() {
   const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
   const [radarLoading, setRadarLoading] = useState(true);
   const [scope, setScope] = useState<FeedScope>("friends");
+  // null = alle eigenen Gruppen zusammen, sonst genau diese eine.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [myGroups, setMyGroups] = useState<Group[]>([]);
+  const [showImageSource, setShowImageSource] = useState(false);
   const [inputText, setInputText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const loadFeedData = async (activeScope: FeedScope) => {
+  const loadFeedData = async (activeScope: FeedScope, groupId: string | null = null) => {
     try {
       const me = await apiService.getCurrentUser();
       if (!me) {
@@ -286,18 +291,20 @@ export default function LivePulseFeed() {
 
       setCurrentUser(me);
 
-      const [radar, fetchedFeed] = await Promise.all([
+      const [radar, fetchedFeed, groups] = await Promise.all([
         apiService.getRadar(me.name).catch((e) => {
           console.warn("Radar konnte nicht geladen werden:", e);
           return [] as RadarEntry[];
         }),
-        apiService.getFeed(activeScope, me.name).catch((e) => {
+        apiService.getFeed(activeScope, me.name, groupId).catch((e) => {
           console.warn("Feed konnte nicht geladen werden:", e);
           return [] as FeedItem[];
         }),
+        apiService.getGroups().catch(() => [] as Group[]),
       ]);
 
       setRadarEntries(radar);
+      setMyGroups(groups.filter((g) => (g.memberIds || []).includes(me.id)));
 
       // Sort descending + deduplicate
       const sorted = [...fetchedFeed].sort(
@@ -321,53 +328,73 @@ export default function LivePulseFeed() {
 
   useFocusEffect(
     useCallback(() => {
-      loadFeedData(scope);
-    }, [scope])
+      loadFeedData(scope, selectedGroupId);
+    }, [scope, selectedGroupId])
   );
 
   useEffect(() => {
-    const interval = setInterval(() => loadFeedData(scope), 15000);
+    const interval = setInterval(() => loadFeedData(scope, selectedGroupId), 15000);
     return () => clearInterval(interval);
-  }, [scope]);
+  }, [scope, selectedGroupId]);
 
   const handleOpenMap = async () => {
     await triggerHaptic("light");
     router.push("/map");
   };
 
-  const handleScopeChange = async (nextScope: FeedScope) => {
-    if (nextScope === scope) return;
+  /** Umschalten zwischen Freunden, allen Gruppen und einer einzelnen Gruppe. */
+  const handleFilterChange = async (nextScope: FeedScope, groupId: string | null) => {
+    if (nextScope === scope && groupId === selectedGroupId) return;
     await triggerHaptic("light");
     setScope(nextScope);
+    setSelectedGroupId(groupId);
     setLoading(true);
-    loadFeedData(nextScope);
+    loadFeedData(nextScope, groupId);
   };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await triggerHaptic("light");
-    await loadFeedData(scope);
+    await loadFeedData(scope, selectedGroupId);
     setRefreshing(false);
-  }, [scope]);
+  }, [scope, selectedGroupId]);
 
-  // Handle Photo Picker for Status
-  const handlePickImage = async () => {
+  /**
+   * Foto aus der Galerie wählen oder direkt aufnehmen.
+   *
+   * Bis August 2026 gab es hier ausschließlich die Galerie — auf einer Party
+   * ist das genau der falsche Weg herum: das Foto entsteht im Moment, nicht
+   * vorher. Im Browser gibt es keine Kamera über diesen Weg, dort bleibt es
+   * bei der Galerie.
+   */
+  const pickFrom = async (quelle: "kamera" | "galerie") => {
     triggerHaptic("light");
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission =
+        quelle === "kamera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (!permission.granted) {
-        const msg = "Berechtigung für die Fotogalerie wird benötigt.";
+        const msg =
+          quelle === "kamera"
+            ? "Für Aufnahmen wird der Zugriff auf die Kamera benötigt."
+            : "Berechtigung für die Fotogalerie wird benötigt.";
         if (Platform.OS === "web") window.alert(msg);
         else Alert.alert("Zugriff verweigert", msg);
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const optionen = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
+        aspect: [4, 3] as [number, number],
         quality: 0.8,
-      });
+      };
+      const result =
+        quelle === "kamera"
+          ? await ImagePicker.launchCameraAsync(optionen)
+          : await ImagePicker.launchImageLibraryAsync(optionen);
 
       if (!result.canceled && result.assets && result.assets[0]) {
         setSelectedImage(result.assets[0].uri);
@@ -376,6 +403,16 @@ export default function LivePulseFeed() {
     } catch (err) {
       console.warn("Fehler bei Bildauswahl:", err);
     }
+  };
+
+  const handlePickImage = async () => {
+    // Im Browser kennt expo-image-picker keine Kamera — die Auswahl waere
+    // dort eine Sackgasse.
+    if (Platform.OS === "web") {
+      await pickFrom("galerie");
+      return;
+    }
+    setShowImageSource(true);
   };
 
   // Handle React to feed item
@@ -478,15 +515,19 @@ export default function LivePulseFeed() {
       }
 
       await triggerHaptic("success");
+      // Beitrag geht dorthin, wo man gerade hinschaut. Vorher landete er
+      // IMMER bei den Freunden — auch wenn man gerade eine Gruppe offen
+      // hatte, wo er dann nie auftauchte. Genau das machte die Gruppen
+      // unverständlich.
       await apiService.createPost(
         inputText.trim() || (selectedImage ? "📸 Schnappschuss geteilt" : ""),
-        "friends",
-        currentUser.id,
+        selectedGroupId ? "group" : "friends",
+        selectedGroupId || currentUser.id,
         uploadedUrl
       );
       setInputText("");
       setSelectedImage(null);
-      await loadFeedData(scope);
+      await loadFeedData(scope, selectedGroupId);
     } catch (e) {
       console.error("Failed to create feed post:", e);
       Alert.alert(
@@ -533,19 +574,43 @@ export default function LivePulseFeed() {
         {/* Freunde-Radar */}
         <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
 
-        {/* Umschalter: Freunde- vs. Gruppen-Feed */}
-        <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-5">
-          {([
-            { key: "friends" as const, label: "Freunde", icon: "people" },
-            { key: "groups" as const, label: "Gruppen", icon: "people-circle" },
-          ]).map((tab) => {
-            const isActive = scope === tab.key;
+        {/* Filterleiste: Freunde, alle Gruppen, oder eine einzelne Gruppe.
+            Vorher gab es nur zwei Knöpfe, und "Gruppen" warf sämtliche
+            Gruppen zusammen — bei mehr als einer war nicht mehr erkennbar,
+            was wozu gehört. Waagerecht scrollbar, damit auch acht Gruppen
+            hineinpassen. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="mb-5 -mx-1"
+          contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
+        >
+          {[
+            { key: "friends" as const, groupId: null, label: "Freunde", icon: "people" },
+            ...(myGroups.length > 0
+              ? [
+                  {
+                    key: "groups" as const,
+                    groupId: null,
+                    label: "Alle Gruppen",
+                    icon: "people-circle",
+                  },
+                ]
+              : []),
+            ...myGroups.map((g) => ({
+              key: "groups" as const,
+              groupId: g.id,
+              label: g.name,
+              icon: "people-circle-outline",
+            })),
+          ].map((tab) => {
+            const isActive = scope === tab.key && selectedGroupId === tab.groupId;
             return (
               <TouchableOpacity
-                key={tab.key}
-                onPress={() => handleScopeChange(tab.key)}
-                className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center ${
-                  isActive ? "bg-surface border border-line" : ""
+                key={`${tab.key}-${tab.groupId ?? "alle"}`}
+                onPress={() => handleFilterChange(tab.key, tab.groupId)}
+                className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
+                  isActive ? "bg-accent/10 border-accent/50" : "bg-surface border-line"
                 }`}
               >
                 <Ionicons
@@ -557,20 +622,24 @@ export default function LivePulseFeed() {
                   className={`text-xs font-black uppercase tracking-wider ml-1.5 ${
                     isActive ? "text-accent-ink" : "text-content-faint"
                   }`}
+                  numberOfLines={1}
                 >
                   {tab.label}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Status Creator Box */}
         {currentUser && (
           <View className="bg-surface border border-line p-4 rounded-3xl mb-5 shadow-sm">
             <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider">
-                Status oder Schnappschuss teilen
+              {/* Sagt vor dem Tippen, wo der Beitrag landet. */}
+              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider flex-1 mr-2" numberOfLines={1}>
+                {selectedGroupId
+                  ? `An „${myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Gruppe"}“`
+                  : "An deine Freunde"}
               </Text>
               {selectedImage && (
                 <View className="bg-accent/20 px-2 py-0.5 rounded-full">
@@ -722,11 +791,16 @@ export default function LivePulseFeed() {
                       {item.text}
                     </Text>
 
-                    {/* Attached Photo */}
+                    {/* Foto.
+                        Bewusst groß und im 4:3-Format statt der früheren
+                        200-Pixel-Leiste: ein Schnappschuss ist der einzige
+                        Inhalt hier, den man wirklich ANSCHAUT — der Rest
+                        wird gelesen. Ein Bild in Briefmarkengröße lädt
+                        niemanden zum Hinsehen ein. */}
                     {item.image && (
                       <Image
                         source={{ uri: item.image }}
-                        style={{ width: "100%", height: 200 }}
+                        style={{ width: "100%", aspectRatio: 4 / 3 }}
                         className="rounded-2xl mb-2.5 bg-surface-alt"
                         resizeMode="cover"
                         accessibilityLabel={`Foto von ${item.username}`}
@@ -906,6 +980,62 @@ export default function LivePulseFeed() {
 
             <TouchableOpacity onPress={() => setReportTarget(null)} className="mt-3 py-3 items-center">
               <Text className="text-content-muted text-xs font-black uppercase tracking-wider">Abbrechen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Kamera oder Galerie?
+          Auf einer Party entsteht das Foto im Moment — deshalb steht die
+          Kamera oben und ist der offensichtliche Weg. */}
+      <Modal visible={showImageSource} animationType="fade" transparent>
+        <View className="flex-1 bg-black/80 justify-end">
+          <View className="bg-surface border-t border-line rounded-t-3xl p-5 pb-8">
+            <Text className="text-content text-sm font-black uppercase tracking-wider text-center mb-4">
+              Foto hinzufügen
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => {
+                setShowImageSource(false);
+                pickFrom("kamera");
+              }}
+              className="flex-row items-center bg-bg border border-line p-4 rounded-2xl mb-3"
+            >
+              <Ionicons name="camera" size={20} color={c.accent} />
+              <View className="ml-3 flex-1">
+                <Text className="text-content text-sm font-black">Kamera</Text>
+                <Text className="text-content-faint text-[11px] font-medium">
+                  Jetzt aufnehmen
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={c.contentFaint} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setShowImageSource(false);
+                pickFrom("galerie");
+              }}
+              className="flex-row items-center bg-bg border border-line p-4 rounded-2xl"
+            >
+              <Ionicons name="images" size={20} color={c.accent} />
+              <View className="ml-3 flex-1">
+                <Text className="text-content text-sm font-black">Galerie</Text>
+                <Text className="text-content-faint text-[11px] font-medium">
+                  Vorhandenes Foto wählen
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={c.contentFaint} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowImageSource(false)}
+              className="mt-4 py-3 items-center"
+            >
+              <Text className="text-content-muted text-xs font-black uppercase tracking-wider">
+                Abbrechen
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

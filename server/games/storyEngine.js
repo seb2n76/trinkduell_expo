@@ -82,7 +82,11 @@ function listStories() {
     icon: s.icon,
     tagline: s.tagline,
     description: s.description,
-    chapterCount: s.chapters.length,
+    chapterCount: Array.isArray(s.chapters)
+      ? s.chapters.length
+      : s.structure && Array.isArray(s.structure.acts)
+        ? s.structure.acts.reduce((sum, a) => sum + (a.count || 0), 0)
+        : 0,
   }));
 }
 

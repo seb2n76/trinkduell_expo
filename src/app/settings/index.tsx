@@ -159,6 +159,17 @@ export default function SettingsScreen() {
           </SettingsSection>
 
           <SettingsSection title="Rechtliches">
+            {/* Impressum zuerst: § 5 DDG verlangt, dass es leicht erkennbar
+                und unmittelbar erreichbar ist. */}
+            <SettingsRow
+              icon="business-outline"
+              label="Impressum"
+              hint="Anbieterkennzeichnung"
+              onPress={() => {
+                triggerHaptic("light");
+                router.push("/legal/imprint");
+              }}
+            />
             <SettingsRow
               icon="reader-outline"
               label="Nutzungsbedingungen"

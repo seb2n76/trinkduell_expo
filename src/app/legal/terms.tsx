@@ -11,6 +11,21 @@ interface Section {
 
 const SECTIONS: Section[] = [
   {
+    // Ohne benannten Vertragspartner ist unklar, mit WEM der Nutzungsvertrag
+    // zustande kommt — und genau darauf verweist Abschnitt 8 (anwendbares
+    // Recht und Gerichtsstand).
+    title: "0. Anbieter",
+    body:
+      "Anbieter und Vertragspartner ist:\n\n" +
+      "Sebastian Scheck\n" +
+      "Hinter den Gärten 4\n" +
+      "76448 Durmersheim\n" +
+      "Deutschland\n\n" +
+      "E-Mail: sebastianscheck2@googlemail.com\n\n" +
+      "Die vollständigen Anbieterangaben findest du im Impressum " +
+      "(Einstellungen → Impressum).",
+  },
+  {
     title: "1. Zweck der App",
     body:
       "TrinkDuell ist eine Unterhaltungs-App zum spielerischen Festhalten von Getränke-Konsum mit Freunden " +

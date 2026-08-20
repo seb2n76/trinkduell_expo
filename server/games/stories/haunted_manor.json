@@ -1,22 +1,53 @@
 {
   "id": "haunted_manor",
+  "format": "storylets",
   "title": "Escape the Haunted Manor",
   "subtitle": "Co-Op Horror Survival & Geister-Besessenheit",
   "genre": "Survival-Horror & Co-Op",
-  "durationMinutes": 20,
+  "durationMinutes": 25,
   "minPlayers": 3,
   "maxPlayers": 12,
   "themeColor": "#4c1d95",
   "accentColor": "#a855f7",
   "icon": "skull",
   "tagline": "Überlebt die Nacht in der verfluchten Villa.",
-  "description": "Ihr seid in einer Geistervilla gefangen! Das Team teilt sich 100 Lebenspunkte. Findet die 3 Bann-Schlüssel, bevor der Dämon euch alle besitzt!",
+  "description": "Ihr seid in einer verfluchten Geistervilla gefangen! Das gesamte Team teilt sich 100 Lebenspunkte. Findet Bann-Runen, trotzt dem Spuk und bannt den Dämon, bevor eure Lebensenergie auf 0 sinkt!",
 
   "variables": {
-    "healthPoints": 100
+    "healthPoints": 100,
+    "geisterPraesenz": 0,
+    "weihwasser": 0,
+    "schluessel": 0
   },
+
   "variableLimits": {
-    "healthPoints": 100
+    "healthPoints": 100,
+    "geisterPraesenz": 10,
+    "weihwasser": 10,
+    "schluessel": 10
+  },
+
+  "structure": {
+    "acts": [
+      {
+        "act": 1,
+        "count": 4,
+        "title": "Akt I: Das Flüstern in der Eingangshalle",
+        "atmosphereHint": "Schwere Flügeltüren schlagen zu. Kerzen erlöschen mit einem Zischen."
+      },
+      {
+        "act": 2,
+        "count": 5,
+        "title": "Akt II: Die finsteren Katakomben",
+        "atmosphereHint": "Modriger Geruch, tropfendes Wasser und schleifende Schritte im Dunkeln."
+      },
+      {
+        "act": 3,
+        "count": 3,
+        "title": "Akt III: Der finale Exorzismus",
+        "atmosphereHint": "Die Turmuhr schlägt Mitternacht. Der Hausdämon manifestiert sich."
+      }
+    ]
   },
 
   "roles": {
@@ -24,51 +55,68 @@
       {
         "name": "Vom Geist Besessen 👻",
         "allegiance": "traitor",
-        "secretPrompt": "Du wurdest vom Hausgeist verflucht! Tue so, als würdest du helfen, aber versuche unauffällig die Team-HP auf 0 zu senken und {{player:2|andere}} zu opfern!"
+        "secretPrompt": "Ein uralter Dämon hat von dir Besitz ergriffen! Dein Ziel: Lenke den Verdacht auf andere, schwäche unauffällig die Team-HP und überstehe den finalen Exorzismus unentdeckt."
       },
       {
         "name": "Das Medium 🔮",
         "allegiance": "town",
-        "secretPrompt": "Du spürst paranormale Auren! Deine Trank-Rituale heilen die verlorenen Lebenspunkte der Gruppe."
+        "secretPrompt": "Du spürst paranormale Auren. In Akt I gehört dir eine eigene Szene: Deine Seancen können verlorene Team-HP regenerieren und Geister aufspüren."
       },
       {
         "name": "Der Gelehrte 📜",
         "allegiance": "town",
-        "secretPrompt": "Du kannst alte Bann-Runen entziffern. Deine Aktionen können Flüche neutralisieren."
+        "secretPrompt": "Du entzifferst alte Bann-Schriften. In Akt II gehört dir eine eigene Szene: Du kannst Schutzsiegel aktivieren und Flüche abwenden."
       },
       {
         "name": "Der Exorzist ✝️",
         "allegiance": "town",
-        "secretPrompt": "Du trägst geweihtes Wasser bei dir. Du darfst im Finale jemanden vor dem Geisterbefall retten."
+        "secretPrompt": "Du führst geweihte Reliquien mit dir. In Akt II gehört dir eine eigene Szene: Du reinigst verdorbene Räume und schützt das Team vor Schaden."
       }
     ],
     "pool": [
-      { "name": "Der Ghostbuster ⚡", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Die Archäologin 🏺", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Der Schlosswächter 🗝️", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Die Wahrsagerin 🎴", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Der Kameramann 📹", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Der Parapsychologe 🧠", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Die Überlebenskünstlerin 🔦", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" },
-      { "name": "Der Nachtwächter 🕯️", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!" }
+      { "name": "Der Ghostbuster ⚡", "allegiance": "town", "secretPrompt": "Du bist als {{role}} mit Messtechnik ausgerüstet. Halte die Gruppe zusammen und sichere das Überleben!" },
+      { "name": "Die Archäologin 🏺", "allegiance": "town", "secretPrompt": "Du erkundest als {{role}} das Anwesen. Suche nach alten Bann-Schlüsseln und halte die Team-HP hoch!" },
+      { "name": "Der Schlosswächter 🗝️", "allegiance": "town", "secretPrompt": "Du kennst als {{role}} die geheimen Gänge der Villa. Hilf deinen Gefährten bei der Flucht!" },
+      { "name": "Die Wahrsagerin 🎴", "allegiance": "town", "secretPrompt": "Du deutest als {{role}} die Omen. Vertraue deinem Instinkt bei der Enttarnung des Besessenen!" },
+      { "name": "Der Parapsychologe 🧠", "allegiance": "town", "secretPrompt": "Du analysierst als {{role}} paranormale Phänomene. Finde die Schwachstelle des Hausdämons!" },
+      { "name": "Die Überlebenskünstlerin 🔦", "allegiance": "town", "secretPrompt": "Du behältst als {{role}} in der Finsternis die Nerven. Schütze die Gruppe vor bösen Überraschungen!" },
+      { "name": "Der Kameramann 📹", "allegiance": "town", "secretPrompt": "Du dokumentierst als {{role}} jede Bewegung. Achte genau darauf, wer sich verdächtig verhält!" },
+      { "name": "Der Nachtwächter 🕯️", "allegiance": "town", "secretPrompt": "Du wachst als {{role}} über die verlassenen Hallen. Lass die letzte Flamme nicht erlöschen!" }
     ]
   },
 
-  "chapters": [
+  "pinholes": {
+    "witness": "Du hast es genau gesehen: {{traitor}} stand vor dem Spiegelsaal, und sein Spiegelbild lächelte boshaft, während er selbst starr blieb!",
+    "traitor": "Der Dämon hat von dir Besitz ergriffen! Lass dir deine Besessenheit nicht anmerken und treibe die Team-HP heimlich in den Keller!",
+    "noise": [
+      "Du hast gesehen, wie {{other}} beim Kälteeinbruch auffällig ungerührt blieb.",
+      "Die Schatten an den Wänden schienen sich kurz nach {{other}} auszustrecken.",
+      "{{other}} flüsterte in einem Raum unverständliche Worte vor sich hin.",
+      "Das EMF-Messgerät schlug in der Nähe von {{other}} kurz heftig aus.",
+      "{{other}} blickte beim Betreten des Kellers fasziniert in die tiefste Finsternis.",
+      "Eine kalte Böe wehte genau in dem Moment durch die Halle, als {{other}} sprach."
+    ]
+  },
+
+  "storylets": [
     {
-      "id": "act_1_library",
+      "id": "h1_eingangshalle",
       "act": 1,
-      "title": "Akt I: Das Flüstern in der Bibliothek",
-      "atmosphereHint": "Alte Folianten fliegen durch die Luft. Die Kronleuchter flackern.",
-      "textTemplate": "Die schwere Eingangstür schlägt mit ohrenbetäubendem Krachen zu! Das rostige Schloss rastet ein.\n{{player:1|Jemand}} und {{player:2|Ein Forscher}} betreten die verstaubte Ahnengalerie. Auf dem Kamin lodert blaues Feuer.\nEin eisiger Hauch streift eure Nacken: Die Geister des Schlosses verlangen ein Trinkopfer!",
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "picks": {
+        "curse": ["ein eisiger Kältehauch", "ein ohrenbetäubendes Klopfen", "ein schrilles Wispern"]
+      },
+      "textTemplate": "Die schwere Eingangstür fällt mit ohrenbetäubendem Krachen ins Schloss! Das rostige Riegelwerk rastet ein.\n{{player:1|Gastgeberin}} und {{player:2|Ein Forscher}} betreten die verstaubte Eingangshalle. Auf dem Kamin lodert unheimliches blaues Feuer.\nPlötzlich erfüllt {{pick:curse}} den Raum: Der Spuk des Hauses erwacht!",
       "prompt": {
-        "title": "Die erste Geistererscheinung",
-        "description": "Wie schützt du die Gruppe vor dem Kälteeinbruch?",
+        "title": "Erste Heimsuchung",
+        "description": "Wie reagierst du auf den Geisterausbruch?",
         "choices": [
           {
             "id": "drink_shield",
-            "label": "Schutz-Schluck nehmen (1 Schluck = +10 Team-HP)",
-            "outcomeText": "Dein mutiger Schluck bannt den Kältefluch und stärkt das Team!",
+            "label": "Schutz-Schluck nehmen (1 Schluck = +10 Team-HP oder Schutzformel)",
+            "outcomeText": "Dein mutiger Entschluss stärkt die Lebensenergie des Teams (+10 HP)!",
             "sips": { "self": 1 },
             "effects": [
               { "variable": "healthPoints", "delta": 10 },
@@ -78,7 +126,7 @@
           {
             "id": "panic_run",
             "label": "In Panik davonrennen (-15 Team-HP)",
-            "outcomeText": "Du stößt eine antike Standuhr um — der Geist fügt der Gruppe Schaden zu!",
+            "outcomeText": "Du stößt eine antike Standuhr um — der Geist fügt der Gruppe Schaden zu (-15 HP)!",
             "effects": [
               { "variable": "healthPoints", "delta": -15 },
               { "points": 5 }
@@ -87,26 +135,243 @@
           {
             "id": "read_spell",
             "label": "Bannformel laut aufsagen",
-            "outcomeText": "Deine Worte hallen durch die Hallen – der Geist weicht kurz zurück!",
-            "effects": [{ "points": 20 }]
+            "outcomeText": "Deine Worte hallen durch die Halle – der Geist weicht kurz zurück!",
+            "effects": [
+              { "points": 20 },
+              { "variable": "weihwasser", "delta": 1 }
+            ]
           }
         ]
       }
     },
     {
-      "id": "act_2_cellar",
-      "act": 2,
-      "title": "Akt II: Das Ritual im Weinkeller",
-      "atmosphereHint": "Tropfendes Wasser, modriger Geruch und klirrende Weinflaschen in den Katakomben.",
-      "textTemplate": "Ihr steigt über eine modrige Wendeltreppe in den Gewölbekeller hinab.\nEin riesiges Pentagramm leuchtet rot am Boden. Plötzlich verzieht sich das Gesicht von {{randomPlayer|Jemand}} zu einer unheimlichen Fratze!\nIst {{randomPlayer}} vom Hausgeist besessen worden?",
+      "id": "h1_medium",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Das Medium 🔮" }],
+      "title": "Die Seance des Mediums",
+      "textTemplate": "Das Medium spürt eine mächtige spirituelle Präsenz im Raum und schlägt einen Schutzkreis auf.\nDie Kerzen flackern violett. Eine Séance beginnt.",
       "prompt": {
-        "title": "Das dunkle Katakomben-Ritual",
-        "description": "Wie reagierst du auf das Leuchten im Keller?",
+        "title": "Nur das Medium handelt",
+        "description": "Wie lenkst du die spirituelle Kraft?",
+        "forRole": "Das Medium 🔮",
+        "choices": [
+          {
+            "id": "heal_aura",
+            "label": "Heilendes Kraftfeld aufbauen (+20 Team-HP)",
+            "outcomeText": "Du kanalisierst reine Lebenskraft und heilst die gesamte Gruppe (+20 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 20 },
+              { "points": 25 }
+            ]
+          },
+          {
+            "id": "probe_minds",
+            "label": "Die Gedanken der Runde abtasten",
+            "outcomeText": "Du spürst finstere Schwingungen bei einem der Gefährten!",
+            "effects": [
+              { "points": 20 },
+              { "variable": "geisterPraesenz", "delta": 2 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h1_kaminzimmer",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "title": "Das blutende Porträt im Kaminzimmer",
+      "textTemplate": "Über dem Kamin hängt das Ölgemälde des alten Schlossherrn.\n{{player:1|Ein Ermittler}} bemerkt, wie sich die gemalten Augen plötzlich bewegen und rote Tropfen aus der Leinwand sickern!",
+      "prompt": {
+        "title": "Schrecken am Kamin",
+        "description": "Wie begegnest du der Erscheinung?",
+        "choices": [
+          {
+            "id": "bless_painting",
+            "label": "Das Bild mit Weihwasser besprühen (+10 Team-HP)",
+            "outcomeText": "Das Zischen reinigt den Raum — das Team schöpft neuen Mut (+10 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 18 }
+            ]
+          },
+          {
+            "id": "freeze_fear",
+            "label": "Vor Schreck erstarren (-10 Team-HP oder 1 Schluck gegen die Kälte)",
+            "outcomeText": "Der Schrecken lähmt eure Glieder und kostet wertvolle Lebenskraft (-10 HP)!",
+            "sips": { "self": 1 },
+            "effects": [
+              { "variable": "healthPoints", "delta": -10 },
+              { "points": 10 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h1_diskussion",
+      "act": 1,
+      "once": true,
+      "title": "Erste Risse im Team",
+      "textTemplate": "Die Gruppe versammelt sich im Korridor. Das Misstrauen wächst mit jedem Knarren im Gebälk.",
+      "discussion": {
+        "prompt": "Wer hat kurz vor dem ersten Spukausbruch verdächtig lange an der verriegelten Eingangstür gezögert?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "h1_spiegelkabinett",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "title": "Der Gang der Zerrspiegel",
+      "textTemplate": "In einem schmalen Flur hängen Dutzende staubige Spiegel.\n{{player:2|Ein Gefährte}} blickt hinein — doch das Spiegelbild bewegt sich verzögert und winkt mit kralligen Fingern!",
+      "prompt": {
+        "title": "Spiegel-Dämon",
+        "description": "Wie reagierst du auf das verzerrende Glas?",
+        "choices": [
+          {
+            "id": "shatter_mirror",
+            "label": "Den Zerrspiegel zertrümmern (-15 Team-HP)",
+            "outcomeText": "Scherben fliegen umher! Der Geist entweicht mit gellendem Schrei (-15 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": -15 },
+              { "points": 12 }
+            ]
+          },
+          {
+            "id": "cover_glass",
+            "label": "Den Spiegel mit einem Tuch verhängen (+5 Team-HP)",
+            "outcomeText": "Mit kühlem Kopf bannst du die Reflektion und sicherst die Gruppe (+5 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": 5 },
+              { "points": 15 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h1_bibliothek",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "title": "Die fliegenden Folianten der Bibliothek",
+      "textTemplate": "Bücher stürzen aus den Regalen und wirbeln wie Fledermäuse durch die Luft.\nEin altes Grimoire schlägt sich von selbst auf.",
+      "prompt": {
+        "title": "Das verfluchte Grimoire",
+        "description": "Was tust du mit dem alten Zauberbuch?",
+        "choices": [
+          {
+            "id": "read_healing_chant",
+            "label": "Den Heilgesang anstimmen (+15 Team-HP)",
+            "outcomeText": "Sanftes goldenes Licht erfüllt die Bibliothek — das Team regeneriert Lebenspunkte (+15 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 15 },
+              { "points": 20 }
+            ]
+          },
+          {
+            "id": "slam_book",
+            "label": "Das Buch zuschlagen (-10 Team-HP)",
+            "outcomeText": "Eine Druckwelle schleudert die Gruppe gegen die Regale (-10 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -10 },
+              { "points": 10 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h1_korridor",
+      "act": 1,
+      "once": true,
+      "weight": 7,
+      "title": "Der endlose Korridor",
+      "textTemplate": "Egal wie weit ihr lauft, die Türen scheinen sich immer weiter zu entfernen.\n{{player:1|Ein Sucher}} entdeckt eine geheime Falltür im Parkettboden.",
+      "prompt": {
+        "title": "Raumkrümmung der Geister",
+        "description": "Wie überwindet ihr die Illusion?",
+        "choices": [
+          {
+            "id": "hold_hands",
+            "label": "Kette bilden und gemeinsam voranschreiten (+10 Team-HP)",
+            "outcomeText": "Gemeinsam durchbrecht ihr den Zauber und gewinnt Energie zurück (+10 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "drink_courage",
+            "label": "Mut-Schluck nehmen (1 Schluck oder kurzes Innehalten)",
+            "outcomeText": "Du trotzt der Täuschung und führst die Gruppe sicher weiter.",
+            "sips": { "self": 1 },
+            "effects": [
+              { "points": 15 },
+              { "variable": "geisterPraesenz", "delta": 1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h1_abschluss",
+      "act": 1,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der Abstieg ins Ungewisse",
+      "textTemplate": "Akt I endet vor einer massiven Eichentür, die hinab in die Gewölbekeller führt.\nKratzgeräusche dringen von unten herauf. Der wahre Horror beginnt gleich.",
+      "prompt": {
+        "title": "Vorbereitung auf den Keller",
+        "description": "Wie rüstet sich das Team für Akt II?",
+        "choices": [
+          {
+            "id": "fortify_spirits",
+            "label": "Gemeinsam die Sinne schärfen (+10 Team-HP)",
+            "outcomeText": "Ihr schwört euch gegenseitige Hilfe und stärkt euren Überlebenswillen (+10 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "toast_survival",
+            "label": "Einen Schluck auf das Überleben trinken (1 Schluck oder Ermutigung)",
+            "outcomeText": "Ein kräftiger Schluck vertreibt die Gänsehaut vor dem Abstieg.",
+            "sips": { "self": 1 },
+            "effects": [
+              { "points": 12 },
+              { "variable": "weihwasser", "delta": 1 }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "h2_katakomben",
+      "act": 2,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "picks": {
+        "altar": ["auf dem Blut-Altar", "in einer vermauerten Nische", "hinter eisernen Gittern"]
+      },
+      "textTemplate": "Akt II: Ihr steigt über eine modrige Wendeltreppe in die Katakomben hinab.\nEin rotes Leuchten pulsiert {{pick:altar}}.\n{{player:1|Jemand}} entdeckt uralte Bann-Runen an den feuchten Wänden!",
+      "prompt": {
+        "title": "Das Leuchten im Keller",
+        "description": "Wie reagiert das Team auf die dunkle Magie?",
         "choices": [
           {
             "id": "holy_toast",
-            "label": "Geisterbann-Trunk (2 Schlucke = +20 Team-HP)",
-            "outcomeText": "Du nimmst 2 kräftige Schlucke und heilst das Team spürbar!",
+            "label": "Geisterbann-Trunk (2 Schlucke = +20 Team-HP oder Reinigungsritus)",
+            "outcomeText": "Dein Ritual heilt das Team spürbar (+20 HP)!",
             "sips": { "self": 2 },
             "effects": [
               { "variable": "healthPoints", "delta": 20 },
@@ -116,7 +381,7 @@
           {
             "id": "sabotage_team",
             "label": "Kerzen austreten (-20 Team-HP)",
-            "outcomeText": "Die Dunkelheit bricht herein – der Dämon schlägt zu!",
+            "outcomeText": "Dunkelheit bricht herein – der Dämon schlägt gnadenlos zu (-20 HP)!",
             "effects": [
               { "variable": "healthPoints", "delta": -20 },
               { "points": 10 }
@@ -124,8 +389,8 @@
           },
           {
             "id": "share_potion",
-            "label": "Gemeinsam anstoßen (Alle trinken 1 Schluck)",
-            "outcomeText": "Die gesamte Gruppe trinkt zusammen und trotzt der Finsternis!",
+            "label": "Gemeinsam anstoßen (Alle trinken 1 Schluck = +10 Team-HP)",
+            "outcomeText": "Die gesamte Gruppe trinkt zusammen und trotzt der Finsternis (+10 HP)!",
             "sips": { "all": 1 },
             "effects": [
               { "variable": "healthPoints", "delta": 10 },
@@ -136,13 +401,370 @@
       }
     },
     {
-      "id": "act_3_exorcism",
+      "id": "h2_exorzist",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Exorzist ✝️" }],
+      "title": "Die Weihe des Exorzisten",
+      "textTemplate": "Der Exorzist tritt mit dem silbernen Kruzifix vor das Pentagramm.\nWeihrauch breitet sich im Keller aus. Dämonische Schreie hallen von den Wänden.",
+      "prompt": {
+        "title": "Nur der Exorzist handelt",
+        "description": "Welches Ritual vollziehst du?",
+        "forRole": "Der Exorzist ✝️",
+        "choices": [
+          {
+            "id": "sanctify_ground",
+            "label": "Den Boden weihen (+25 Team-HP)",
+            "outcomeText": "Heiliges Licht vertreibt die Dämonenbrut (+25 HP für die Gruppe)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 25 },
+              { "points": 30 }
+            ]
+          },
+          {
+            "id": "test_companion",
+            "label": "Einen Gefährten mit Weihwasser besprühen",
+            "outcomeText": "Du prüfst eine Person auf dämonische Reaktionen!",
+            "targetRequired": true,
+            "effects": [
+              { "points": 20 },
+              { "variable": "geisterPraesenz", "delta": 2 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_gelehrter",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Gelehrte 📜" }],
+      "title": "Die Entzifferung der Runentafel",
+      "textTemplate": "Der Gelehrte streicht über eine uralte Steintafel im Gewölbe.\nDie Schriftzeichen beschreiben den Schwachpunkt des Hausdämons.",
+      "prompt": {
+        "title": "Nur der Gelehrte handelt",
+        "description": "Was liest du der Gruppe vor?",
+        "forRole": "Der Gelehrte 📜",
+        "choices": [
+          {
+            "id": "read_secret_ward",
+            "label": "Den Schutzbann aktivieren (+20 Team-HP)",
+            "outcomeText": "Die Worte der Tafel legen einen mächtigen Schutzschild um alle (+20 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 20 },
+              { "points": 25 },
+              { "variable": "schluessel", "delta": 1 }
+            ]
+          },
+          {
+            "id": "mistranslate",
+            "label": "Einen falschen Zauberspruch vorlesen (-15 Team-HP)",
+            "outcomeText": "Die Runen lodern auf und fügen der Gruppe Schaden zu (-15 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -15 },
+              { "points": 15 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_diskussion",
+      "act": 2,
+      "once": true,
+      "title": "Dämonische Schatten im Keller",
+      "textTemplate": "Eine Eiseskälte kriecht durch die Katakomben. Die Gesichter wirken im Fackellicht fahl und verzerrt.",
+      "discussion": {
+        "prompt": "Wessen Verhalten wirkte beim Betreten der Katakomben unheimlich und ferngesteuert?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "h2_laboratorium",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Das verlassene Alchemie-Labor",
+      "textTemplate": "Regale voller staubiger Kolben und Elixiere säumen den Raum.\n{{player:2|Ein Forscher}} findet eine Phiole mit leuchtend grünem Lebenselixier!",
+      "prompt": {
+        "title": "Das Lebenselixier",
+        "description": "Was geschieht mit dem Trank?",
+        "choices": [
+          {
+            "id": "distribute_elixir",
+            "label": "Den Trank im Team teilen (+25 Team-HP)",
+            "outcomeText": "Die wärmende Flüssigkeit heilt alte Wunden der gesamten Gruppe (+25 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 25 },
+              { "points": 20 }
+            ]
+          },
+          {
+            "id": "spill_elixir",
+            "label": "Die Phiole ungeschickt fallen lassen (-20 Team-HP)",
+            "outcomeText": "Giftige Dämpfe steigen auf und schädigen die Gruppe (-20 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -20 },
+              { "points": 10 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_krypta",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Die Sarkophage der Ahnen",
+      "textTemplate": "Schwere Steinsarkophage öffnen sich mit leisem Knirschen.\nSkeletthände greifen aus der Finsternis nach den Knöcheln der Flüchtigen!",
+      "prompt": {
+        "title": "Angriff aus den Gräbern",
+        "description": "Wie schlagt ihr den Angriff zurück?",
+        "choices": [
+          {
+            "id": "fight_skeletons",
+            "label": "Mit Fackeln verteidigen (-25 Team-HP)",
+            "outcomeText": "Ein harter Kampf! Ihr schlagt die Untoten zurück, verliert aber Lebenskraft (-25 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": -25 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "holy_symbol",
+            "label": "Schutzsymbol vorhalten (+15 Team-HP)",
+            "outcomeText": "Das strahlende Symbol treibt die Ahnen friedlich in ihre Gräber zurück (+15 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 15 },
+              { "points": 20 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_geisterkuche",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Die alte Schlossküche",
+      "textTemplate": "Kochtöpfe klappern von Geisterhand. Ein eisiger Wind fegt durch den Schornstein.\nAuf einem Tisch dampft ein seltsamer Kessel.",
+      "prompt": {
+        "title": "Der Geisterkessel",
+        "description": "Was tut ihr in der Küche?",
+        "choices": [
+          {
+            "id": "taste_soup",
+            "label": "Vom Stärkungstrunk kosten (1 Schluck = +10 Team-HP)",
+            "outcomeText": "Der Sud spendet neue Kraft für die nächsten Prüfungen (+10 HP)!",
+            "sips": { "self": 1 },
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "tip_cauldron",
+            "label": "Den Kessel umwerfen (-15 Team-HP)",
+            "outcomeText": "Kochende Geisterbrühe spritzt umher (-15 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -15 },
+              { "points": 8 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_verzweiflung",
+      "act": 2,
+      "once": true,
+      "weight": 9,
+      "requires": [{ "var": "healthPoints", "atMost": 40 }],
+      "title": "Die letzte flackernde Kerze",
+      "textTemplate": "Eure Lebensenergie ist gefährlich geschrumpft! Kalter Schweiß steht allen auf der Stirn.\nDer Dämon spürt eure Schwäche und rüttelt an den Wänden.",
+      "prompt": {
+        "title": "Letzte Kraftreserven",
+        "description": "Wie rettet ihr das Team vor dem Auslöschen?",
+        "choices": [
+          {
+            "id": "desperate_prayer",
+            "label": "Verzweifeltes Schutzgebet (+30 Team-HP)",
+            "outcomeText": "In höchster Not erwacht ein Funke göttlicher Gnade (+30 HP für das Team)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 30 },
+              { "points": 25 }
+            ]
+          },
+          {
+            "id": "share_last_drop",
+            "label": "Letzten Schluck teilen (Alle trinken 1 Schluck = +20 Team-HP)",
+            "outcomeText": "Ihr teilt eure letzten Reserven und trotzt dem drohenden Untergang (+20 HP)!",
+            "sips": { "all": 1 },
+            "effects": [
+              { "variable": "healthPoints", "delta": 20 },
+              { "points": 20 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h2_kellerabschluss",
+      "act": 2,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der Aufstieg zum Dachboden",
+      "textTemplate": "Akt II endet am Fuße der Wendeltreppe zum Glockenturm.\nVon oben dringt das Läuten der Mitternachtsglocke. Das Finale rückt unaufhaltsam näher.",
+      "prompt": {
+        "title": "Der Weg zum Glockenturm",
+        "description": "Wie bereitet ihr euch auf den Showdown vor?",
+        "choices": [
+          {
+            "id": "steel_will",
+            "label": "Eisernen Willen schwören (+10 Team-HP)",
+            "outcomeText": "Ihr bündelt eure verbliebene Kraft für den finalen Exorzismus (+10 HP).",
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "drink_final_courage",
+            "label": "Letzten Schluck gegen die Geisterstunde nehmen (1 Schluck oder Gebet)",
+            "outcomeText": "Deine Entschlossenheit überträgt sich auf die gesamte Gruppe.",
+            "sips": { "self": 1 },
+            "effects": [
+              { "points": 12 },
+              { "variable": "weihwasser", "delta": 1 }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "h3_dachboden",
       "act": 3,
-      "title": "Akt III: Der finale Exorzismus",
-      "atmosphereHint": "Der Glockenturm schlägt Mitternacht. Das Finale entscheidet über Leben und Tod!",
-      "textTemplate": "Die Geisterstunde hat ihren Höhepunkt erreicht!\nDas Portal öffnet sich nur, wenn ihr den Besessenen unter euch enttarnt und das Ritual vollendet.\nStimmt jetzt ab: Wer von euch beherbergt den bösen Geist der Villa?",
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "textTemplate": "Akt III: Der verstaubte Dachboden unter den Glocken!\nSpinnweben hängen wie Vorhänge von den Balken. Ein riesiger Schatten baut sich vor euch auf.\nDie Geisterstunde hat ihren Zenit erreicht!",
+      "prompt": {
+        "title": "Das Erscheinen des Dämons",
+        "description": "Wie begegnet ihr der wahren Gestalt des Bösen?",
+        "choices": [
+          {
+            "id": "raise_wards",
+            "label": "Schutzbann errichten (+10 Team-HP)",
+            "outcomeText": "Euer Schutzkreis fängt den ersten Hieb des Dämons ab (+10 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 10 },
+              { "points": 20 }
+            ]
+          },
+          {
+            "id": "demon_blast",
+            "label": "Vom Dämonenwind getroffen werden (-20 Team-HP)",
+            "outcomeText": "Schwarze Schatten reißen an eurer Lebensenergie (-20 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -20 },
+              { "points": 10 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h3_letzte_rettung",
+      "act": 3,
+      "once": true,
+      "weight": 9,
+      "requires": [{ "var": "healthPoints", "atMost": 40 }],
+      "title": "Das Weihwasser-Elixier in höchster Not",
+      "textTemplate": "Das Team taumelt am Rande der Erschöpfung! Ein letztes Fläschchen Weihwasser leuchtet auf dem Dachboden.",
+      "prompt": {
+        "title": "Rettung vor dem Team-Wipe",
+        "description": "Wie nutzt ihr die letzte Rettung?",
+        "choices": [
+          {
+            "id": "drink_holy_elixir",
+            "label": "Das Weihwasser trinken (+30 Team-HP)",
+            "outcomeText": "Reine Heilkraft durchströmt eure Adern und bewahrt euch vor dem Untergang (+30 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 30 },
+              { "points": 25 }
+            ]
+          },
+          {
+            "id": "anoint_weapons",
+            "label": "Die Hände weihen (+20 Team-HP)",
+            "outcomeText": "Der Dämon weicht vor eurer geweihten Aura zurück (+20 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 20 },
+              { "points": 20 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h3_diskussion",
+      "act": 3,
+      "once": true,
+      "title": "Das letzte Wort vor dem Exorzismus",
+      "textTemplate": "Die Glocke schlägt den zwölften Schlag! Dies ist der letzte Moment der Wahrheit.",
+      "discussion": {
+        "prompt": "Wer von euch ist der wahre Besessene, der das Team in den Untergang treiben will?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "h3_glockenturm",
+      "act": 3,
+      "once": true,
+      "weight": 8,
+      "title": "Das Schwingen der Todesglocke",
+      "textTemplate": "Die schwere Bronzeglocke schwingt von selbst hin und her.\nSchallwellen dröhnen in euren Ohren.",
+      "prompt": {
+        "title": "Der Klang des Urteils",
+        "description": "Wie schützt ihr euch vor dem Glockenschlag?",
+        "choices": [
+          {
+            "id": "endure_bell",
+            "label": "Dem Glockenton trotzen (-25 Team-HP)",
+            "outcomeText": "Das Dröhnen zerrt an euren Nerven (-25 HP), doch ihr bleibt standhaft!",
+            "effects": [
+              { "variable": "healthPoints", "delta": -25 },
+              { "points": 15 }
+            ]
+          },
+          {
+            "id": "ring_holy_counter",
+            "label": "Gegenton anstimmen (+15 Team-HP)",
+            "outcomeText": "Euer Gesang bricht die Dissonanz der Totenglocke (+15 HP)!",
+            "effects": [
+              { "variable": "healthPoints", "delta": 15 },
+              { "points": 20 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "h3_finale_abstimmung",
+      "act": 3,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der finale Exorzismus",
+      "textTemplate": "Das Portal öffnet sich nur, wenn ihr den Besessenen unter euch enttarnt und das Bann-Ritual vollendet.\nWählt jetzt auf eurem Smartphone: Wer beherbergt den bösen Hausdämon?",
       "voting": {
-        "prompt": "Wer ist der vom Dämon Besessene?"
+        "prompt": "Wer von euch ist der vom Dämon Besessene?"
       }
     }
   ],
@@ -157,26 +779,26 @@
       "wipe": {
         "winnerTeam": "Der Hausdämon 👻",
         "title": "Team ausgelöscht!",
-        "summary": "Die Team-HP sind auf 0 gesunken! Die Geister haben das Herrenhaus für immer für sich beansprucht.",
+        "summary": "Die Team-HP sind auf 0 gesunken! Die Geister haben das Herrenhaus für immer für sich beansprucht und eure Seelen gefangen genommen.",
         "penalties": [
-          { "who": "all", "sips": 3, "reason": "Als Geisterfutter in der Villa!" }
+          { "who": "all", "sips": 3, "reason": "Als Geisterfutter in der Villa verloren!" }
         ]
       },
       "caught": {
         "winnerTeam": "Die mutigen Forscher 🔦",
         "title": "Erfolgreich entkommen!",
-        "summary": "Der Exorzismus war erfolgreich! {{traitor}} wurde vom Geist befreit und alle konnten mit {{var:healthPoints}} HP entkommen.",
+        "summary": "Der Exorzismus war erfolgreich! {{traitor}} wurde vom Geist befreit und das Team konnte mit {{var:healthPoints}} HP aus dem Spukhaus fliehen.",
         "penalties": [
-          { "who": "traitor", "sips": 4, "reason": "Für den erfolgreichen Exorzismus!" }
+          { "who": "traitor", "sips": 4, "reason": "Für den vollzogenen Exorzismus!" }
         ]
       },
       "escaped": {
         "winnerTeam": "Der Besessene 👻",
         "title": "Der Dämon triumphiert!",
-        "summary": "Ihr habt {{condemned}} beschuldigt, während {{traitor}} den Fluch vollendet hat!",
+        "summary": "Ihr habt fälschlicherweise {{condemned}} verurteilt, während {{traitor}} den Fluch vollendet hat und unerkannt entkommen ist!",
         "penalties": [
-          { "who": "condemned", "sips": 3, "reason": "Fälschlicherweise exorziert!" },
-          { "who": "others", "sips": 2, "reason": "Vom Dämon getäuscht worden!" }
+          { "who": "condemned", "sips": 3, "reason": "Unschuldig als Besessener exorziert!" },
+          { "who": "others", "sips": 2, "reason": "Vom wahren Dämon getäuscht worden!" }
         ]
       }
     }

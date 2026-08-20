@@ -31,4 +31,10 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "DRIVER_OF_THE_NIGHT", name: "Driver of the Night", icon: "car-outline", criteria: "0,0g Alkohol am Abend (mindestens 1 alkoholfreies Getränk geloggt).", color: "text-blue-400", colorHex: "#60a5fa" },
   { id: "HYDRO_HOMIE", name: "Hydro-Homie", icon: "water", criteria: "Mindestens 3 Wasser hintereinander geloggt, ohne Alkohol dazwischen.", color: "text-sky-400", colorHex: "#38bdf8" },
   { id: "UEBERLEBENSKUENSTLER", name: "Überlebenskünstler", icon: "heart-outline", criteria: "Ein lebensrettendes Wasser nach 04:00 Uhr morgens geloggt.", color: "text-teal-400", colorHex: "#2dd4bf" },
+  { id: "GAME_FIRST_ROUND", name: "Erster Spielabend", icon: "game-controller-outline", criteria: "Deine erste Spielrunde erfolgreich abgeschlossen.", color: "text-indigo-400", colorHex: "#818cf8" },
+  { id: "GAME_FIVE_ROUNDS", name: "Spielratte", icon: "dice-outline", criteria: "5 Spielrunden erfolgreich abgeschlossen.", color: "text-violet-400", colorHex: "#a78bfa" },
+  { id: "GAME_TEN_ROUNDS", name: "Party-Legende", icon: "trophy-outline", criteria: "10 Spielrunden absolviert – du bist eine wahre Party-Legende!", color: "text-amber-400", colorHex: "#fbbf24" },
+  { id: "GAME_HUNDRED_XP", name: "Punktejäger", icon: "flash-outline", criteria: "Mindestens 100 XP aus Spielrunden gesammelt.", color: "text-yellow-400", colorHex: "#facc15" },
+  { id: "GAME_DAILY_CAP", name: "Tageslimit geknackt", icon: "flame-outline", criteria: "Das Tageslimit von 300 Spiel-XP an einem Tag erreicht.", color: "text-rose-400", colorHex: "#fb7185" },
+  { id: "GAME_MASTER", name: "Meister aller Runden", icon: "medal-outline", criteria: "Mindestens 3 verschiedene Spielrunden gemeistert.", color: "text-emerald-400", colorHex: "#34d399" },
 ];

@@ -1,133 +1,775 @@
 {
   "id": "court_treason",
+  "format": "storylets",
   "title": "Der Verrat am Königshof",
   "subtitle": "Game of Thrones trifft Social Deduction & Trink-Diplomatie",
   "genre": "Intrigen & Rollenspiel",
-  "durationMinutes": 25,
+  "durationMinutes": 30,
   "minPlayers": 3,
   "maxPlayers": 12,
   "themeColor": "#b45309",
   "accentColor": "#fbbf24",
   "icon": "crown",
   "tagline": "Wer goss das Gift in den königlichen Kelch?",
-  "description": "Der König liegt vergiftet auf dem Thronsaal. Ein Attentäter sitzt mit am Tisch! Schafft es der Inquisitor, die Wahrheit ans Licht zu bringen, oder verurteilt der Kronrat die Falschen?",
+  "description": "Der König sinkt beim Festbankett leblos zu Boden. Ein Attentäter sitzt mit am Tisch! Schafft es der Kronrat, die Wahrheit ans Licht zu bringen, oder verurteilen die Häuser einen Unschuldigen?",
+
+  "variables": {
+    "beweise": 0,
+    "verdacht": 0,
+    "unruhe": 0,
+    "intrige": 0
+  },
+
+  "variableLimits": {
+    "beweise": 10,
+    "verdacht": 10,
+    "unruhe": 10,
+    "intrige": 10
+  },
+
+  "structure": {
+    "acts": [
+      {
+        "act": 1,
+        "count": 4,
+        "title": "Akt I: Der vergiftete Kelch",
+        "atmosphereHint": "Fackeln flackern im Thronsaal. Die schweren Burgtore fallen mit lautem Rasseln ins Schloss."
+      },
+      {
+        "act": 2,
+        "count": 5,
+        "title": "Akt II: Das Kreuzverhör im Kronrat",
+        "atmosphereHint": "Kaltes Steinmauerwerk, zitternde Schatten. Niemand traut seinem Sitznachbarn."
+      },
+      {
+        "act": 3,
+        "count": 3,
+        "title": "Akt III: Das Urteil des Schafotts",
+        "atmosphereHint": "Die Henkersaxt ist geschliffen. Die Ratsherren fordern ein Urteil."
+      }
+    ]
+  },
 
   "roles": {
     "fixed": [
       {
         "name": "Attentäter 🗡️",
         "allegiance": "traitor",
-        "secretPrompt": "Du hast den König vergiftet! Dein Ziel: Lenke den Verdacht unauffällig auf {{player:2|andere}} oder {{player:3|deine Nachbarn}}. Lass dich beim Tribunal um keinen Preis wählen!"
+        "secretPrompt": "Du hast das Gift in den Kelch des Königs gegossen! Dein Ziel: Lenke den Verdacht geschickt auf die anderen Häuser. Überstehe das Tribunal, ohne verurteilt zu werden."
       },
       {
         "name": "Großinquisitor ⚖️",
         "allegiance": "town",
-        "secretPrompt": "Du leitest die königliche Untersuchung. Beobachte genau, wer nervös trinkt, zögert oder Ausflüchte sucht. Deine Stimme wiegt im Kronrat schwer!"
+        "secretPrompt": "Du leitest die Untersuchung der Krone. In Akt I gehört dir eine eigene Szene: Du verhörst den Saal und suchst nach Widersprüchen. Deine Stimme wiegt schwer."
       },
       {
         "name": "Hofalchemist 🧪",
         "allegiance": "town",
-        "secretPrompt": "Du kennst alle Gifte des Reiches. Du darfst im Rat eine Person auswählen und sie zwingen, ihren Trinkbecher vorzukosten."
+        "secretPrompt": "Du kennst die Gifte und Elixiere des Reiches. In Akt I gehört dir eine eigene Szene: Du analysierst die Rückstände im Kelch und gibst Hinweise preis."
+      },
+      {
+        "name": "Der Mundschenk 🍷",
+        "allegiance": "town",
+        "secretPrompt": "Du hast den Wein serviert. In Akt II gehört dir eine eigene Szene: Du weißt, wer zuletzt nahe beim Fass stand. Entscheide, wem du die Schuld zuschiebst."
       },
       {
         "name": "Der Hofnarr 🃏",
-        "allegiance": "neutral",
-        "secretPrompt": "Du genießt Narrenfreiheit! Verwirre die anderen mit kühnen Thesen und mache die Runde betrunken."
+        "allegiance": "town",
+        "secretPrompt": "Du genießt Narrenfreiheit. In Akt II darfst du den Rat mit einer frechen Finte provozieren und die Runde aufmischen."
+      },
+      {
+        "name": "Die Kronprinzessin 👑",
+        "allegiance": "town",
+        "secretPrompt": "Du forderst Rache für deinen Vater. In Akt II darfst du den Kronrat vereidigen und eine Sonderprüfung anordnen."
       }
     ],
     "pool": [
-      { "name": "Haus Löwenstein 🦁", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Drachenfels 🐉", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Schattenwacht 🦅", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Silberquell 🌊", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Nachtdorn 🌹", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Sonnenfels ☀️", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Eisengard 🛡️", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
-      { "name": "Haus Rabenkron 🐦", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" }
+      { "name": "Haus Löwenstein 🦁", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Krieger des Südens. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Drachenfels 🐉", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Bergfürsten. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Schattenwacht 🦅", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Wächter der Nordgrenze. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Silberquell 🌊", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Handelsflotte. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Nachtdorn 🌹", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Diplomaten des Ostens. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Sonnenfels ☀️", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Goldminen-Erbfolge. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Eisengard 🛡️", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Waffenmeister. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Rabenkron 🐦", "allegiance": "town", "secretPrompt": "Du vertrittst als {{role}} die Gelehrten des Turms. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" }
     ]
   },
 
-  "chapters": [
+  "pinholes": {
+    "witness": "Du hast es genau gesehen: {{traitor}} schüttete kurz vor dem Trinkspruch heimlich Pulver in den kaiserlichen Kelch. Wenn du es unüberlegt herausposaunst, erklärt man dich zum Lügner.",
+    "traitor": "Du hast das Gift platziert, doch ein Schatten im Saal huschte an dir vorbei. Finde heraus, wer dich im Kronrat belasten könnte, und diskreditiere diese Person!",
+    "noise": [
+      "Du hast bemerkt, dass {{other}} beim Trinkspruch verdächtig lange den Atem anhielt. Vielleicht nur Zufall.",
+      "{{other}} flüsterte vor dem Bankett aufgeregt mit den Dienern an den Weinfässern.",
+      "Die Hand von {{other}} zitterte auffällig, als der König nach seiner Kehle griff.",
+      "{{other}} trug heute Morgen noch einen Siegelring, der nun spurlos verschwunden ist.",
+      "Du hast gesehen, wie {{other}} kurz vor dem Essen ein Tuch unter dem Wappenrock versteckte.",
+      "{{other}} blickte beim Ausrufen des Banketts mehrfach nervös zu den Flügeltüren."
+    ]
+  },
+
+  "storylets": [
     {
-      "id": "act_1_poison",
+      "id": "c1_giftbecher",
       "act": 1,
-      "title": "Akt I: Der goldene Kelch",
-      "atmosphereHint": "Der Thronsaal verstummt. Die Hofwache verriegelt mit lautem Rasseln die Flügeltüren.",
+      "opening": true,
+      "once": true,
+      "weight": 10,
       "picks": {
-        "poison": ["Nachtschatten-Extrakt", "Basilisken-Träne", "Zyankali-Wein", "Schlangengift"]
+        "poison": ["Schlangengift", "Zyankali-Wein", "Nachtschatten-Extrakt", "Basilisken-Träne"]
       },
-      "textTemplate": "Das Festmahl war auf dem Höhepunkt, als der König plötzlich nach seiner Kehle griff und zu Boden sank!\n{{player:1|Ein Adliger}} war der Letzte, der am Weinfass gesehen wurde. {{player:2|Ein Gast}} schwört jedoch, dass {{player:3|Der Mundschenk}} kurz zuvor mit einem Fläschchen {{pick:poison}} hantierte.\nDie Hofwache riegelt alle Burgtore ab: Niemand verlässt den Saal, bis der Mörder überführt ist!",
+      "textTemplate": "Das königliche Bankett war in vollem Gange, als der König plötzlich nach der Kehle griff und leblos vom Thronsessel stürzte!\nDer goldene Kelch rollt scheppernd über die Fliesen — gefüllt mit {{pick:poison}}.\n{{player:1|Ein Ratsherr}} weicht erschrocken zurück. {{player:2|Eine Hofdame}} schreit auf.\nDie Garde verriegelt die Tore: Niemand verlässt den Thronsaal, bis der Verräter gefunden ist!",
       "prompt": {
-        "title": "Das kaiserliche Dekret",
-        "description": "Wie reagierst du auf das Entsetzen im Thronsaal?",
+        "title": "Aufruhr im Thronsaal",
+        "description": "Wie reagierst du auf das Attentat?",
         "choices": [
           {
-            "id": "toast_king",
-            "label": "Auf den gefallenen König anstoßen (1 Schluck)",
-            "outcomeText": "Du hebst deinen Kelch und beweist deine scheinbare Treue zum Thron.",
+            "id": "inspect_chalice",
+            "label": "Den Kelch untersuchen",
+            "outcomeText": "Du findest feine Reste eines seltenen Kräuterpulvers am Becherrand.",
+            "effects": [{ "points": 15 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "toast_shock",
+            "label": "Einen Schluck auf den gefallenen König trinken (1 Schluck oder Pflichtgebet)",
+            "outcomeText": "Du hebst deinen Becher zur Ehrerbietung. Die Runde nimmt deine Geste zur Kenntnis.",
             "sips": { "self": 1 },
-            "effects": [{ "points": 10 }]
+            "effects": [{ "points": 10 }, { "variable": "unruhe", "delta": 1 }]
           },
           {
-            "id": "blame_other",
-            "label": "Laut Verdacht gegen die Tischnachbarn erheben",
-            "outcomeText": "Du lenkst die Blicke geschickt von dir ab auf die anderen!",
-            "effects": [{ "points": 15 }]
+            "id": "raise_suspicion",
+            "label": "Lautstark die Tischnachbarn beschuldigen",
+            "outcomeText": "Du richtest den Finger auf die anderen! Alle Blicke wandern durch den Saal.",
+            "effects": [{ "points": 12 }, { "variable": "verdacht", "delta": 2 }, { "remember": "beschuldigt" }]
           },
           {
-            "id": "swear_oath",
-            "label": "Einen heiligen Treueeid schwören (Verteile 1 Schluck)",
-            "outcomeText": "Deine feierlichen Worte überzeugen die Wachen – du darfst 1 Schluck verteilen!",
+            "id": "calm_hall",
+            "label": "Die Panik der Ratsherren dämpfen",
+            "outcomeText": "Du mahnst zur Besonnenheit und verhinderst ein sofortiges Handgemenge.",
+            "effects": [{ "points": 12 }, { "variable": "unruhe", "delta": -2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_inquisitor",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Großinquisitor ⚖️" }],
+      "title": "Das Dekret des Großinquisitors",
+      "textTemplate": "Der Großinquisitor tritt mit gezogenem Richtschwert vor den Kronrat.\nAlle Gespräche verstummen augenblicklich. Seine Entscheidung bestimmt die Richtung der Ermittlungen.",
+      "prompt": {
+        "title": "Nur der Großinquisitor handelt",
+        "description": "Was verkündest du dem versammelten Kronrat?",
+        "forRole": "Großinquisitor ⚖️",
+        "choices": [
+          {
+            "id": "strict_interrogation",
+            "label": "Strenges Verhör aller Hohen Häuser anordnen",
+            "outcomeText": "„Niemand steht über dem Verdacht! Wir prüfen jedes Motiv.\" Der Rat raunt.",
+            "effects": [{ "points": 25 }, { "variable": "beweise", "delta": 3 }]
+          },
+          {
+            "id": "target_interrogation",
+            "label": "Einen Verdächtigen direkt befragen (oder 1 Schluck Buße)",
+            "outcomeText": "Du stellst die Person vor der gesamten Runde bloß und verlangst Antworten.",
             "targetRequired": true,
             "sips": { "target": 1 },
-            "effects": [{ "points": 20 }]
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }]
           }
         ]
       }
     },
     {
-      "id": "act_2_investigation",
-      "act": 2,
-      "title": "Akt II: Das Kreuzverhör im Kronrat",
-      "atmosphereHint": "Fackellicht flackert an den kalten Steinmauern. Die Gesichter spiegeln Misstrauen wider.",
-      "textTemplate": "Der Großinquisitor tritt mit gezogenem Richtschwert vor den Rat!\n{{lastPlayer|Ein Zeuge}} meldet sich mit zittriger Stimme: \"Ich habe gesehen, wie {{randomPlayer|Jemand}} heimlich Pulver in den Pokal streute!\"\nDie Stimmung kippt bedrohlich. Wer die Wahrheit spricht, weiß niemand – doch die Gläser füllen sich für die nächsten Anschuldigungen!",
+      "id": "c1_alchemist",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Hofalchemist 🧪" }],
+      "title": "Die Giftanalyse des Alchemisten",
+      "textTemplate": "Der Hofalchemist beugt sich über den Weinkelch und tröpfelt eine Reagenz auf den Rand.\nEin zischender weißer Rauch steigt auf. Die Zusammensetzung des Gifts liegt offen.",
       "prompt": {
-        "title": "Geheime Verhöre & Bestechung",
-        "description": "Wähle deine Taktik vor den Inquisitoren:",
+        "title": "Nur der Hofalchemist handelt",
+        "description": "Welchen Befund teilst du dem Rat mit?",
+        "forRole": "Hofalchemist 🧪",
         "choices": [
           {
-            "id": "bribe_council",
-            "label": "Kronrat bestechen (Verteile 2 Schlucke)",
-            "outcomeText": "Mit gezielten Anschuldigungen verteilst du 2 Strafschlucke an einen Mitspieler!",
-            "targetRequired": true,
-            "sips": { "target": 2 },
-            "effects": [{ "points": 20 }]
+            "id": "reveal_poison_origin",
+            "label": "Die Herkunft des Gifts enthüllen",
+            "outcomeText": "„Dieses Gift stammt aus den königlichen Geheimkammern. Der Täter hatte einen Schlüssel!\"",
+            "effects": [{ "points": 25 }, { "variable": "beweise", "delta": 3 }]
           },
           {
-            "id": "drink_proof",
-            "label": "Unschuldstrunk leeren (1 Schluck)",
-            "outcomeText": "Du trinkst deinen Becher zügig und beweist deinen unschuldigen Magen.",
+            "id": "conceal_origin",
+            "label": "Den Befund vage halten und Verwirrung stiften",
+            "outcomeText": "Du murmelst von fremdländischen Giften. Das Misstrauen zwischen den Häusern wächst.",
+            "effects": [{ "points": 20 }, { "variable": "intrige", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_diskussion",
+      "act": 1,
+      "once": true,
+      "title": "Der Streit am Festtisch",
+      "textTemplate": "Die Ratsherren drängen sich um den Thron. Worte werden schärfer, Hände wandern zu Dolchgriffen.",
+      "discussion": {
+        "prompt": "Wer stand während des Trinkspruchs dem König am nächsten und wirkte auffällig nervös?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "c1_wache",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "title": "Die Palastgarde riegelt ab",
+      "textTemplate": "Schwere Eisenriegel fallen vor alle Ausgänge.\n{{player:1|Ein Ritter}} verlangt lautstark Einlass nach draußen, doch die Hofwache drängt ihn mit Hellebarden zurück.",
+      "prompt": {
+        "title": "Eingesperrt im Saal",
+        "description": "Wie verhältst du dich gegenüber der Palastgarde?",
+        "choices": [
+          {
+            "id": "support_guards",
+            "label": "Die Wachen unterstützen und Zeugen befragen",
+            "outcomeText": "Du beruhigst die Garde und sicherst wertvolle Aussagen von den Dienern.",
+            "effects": [{ "points": 15 }, { "variable": "beweise", "delta": 1 }]
+          },
+          {
+            "id": "drink_solidarity",
+            "label": "Mit den Wachposten anstoßen (1 Schluck oder Ehrenwort)",
+            "outcomeText": "Du suchst die Gunst der Wachen. Sie merken sich dein freundliches Gesicht.",
             "sips": { "self": 1 },
+            "effects": [{ "points": 10 }, { "variable": "intrige", "delta": 1 }]
+          },
+          {
+            "id": "rebel_guards",
+            "label": "Gegen das Einsperren protestieren",
+            "outcomeText": "Deine lauten Rufe erregen den Unmut der Inquisitoren.",
+            "effects": [{ "points": 12 }, { "variable": "unruhe", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_nachbar",
+      "act": 1,
+      "once": true,
+      "weight": 7,
+      "title": "Der Blick zum Nachbartisch",
+      "textTemplate": "Im flackernden Kerzenlicht mustern sich die Adligen gegenseitig.\n{{player:2|Ein Gast}} sitzt bleich da und vermeidet jeden Blickkontakt mit {{player:3|einem Nachbarn}}.",
+      "prompt": {
+        "title": "Argwohn am Tisch",
+        "description": "Wen nimmst du genauer unter die Lupe?",
+        "choices": [
+          {
+            "id": "grill_neighbor",
+            "label": "Den Nachbarn ins Kreuzverhör nehmen (1 Strafschluck verteilen oder Ausflucht verlangen)",
+            "outcomeText": "Du bringst dein Gegenüber ins Schwitzen und entlockst ein nervöses Dementi.",
+            "targetRequired": true,
+            "sips": { "target": 1 },
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "watch_silently",
+            "label": "Im Stillen beobachten und Notizen machen",
+            "outcomeText": "Du hältst dich zurück und prägst dir alle Reaktionen der Gruppe ein.",
+            "effects": [{ "points": 15 }, { "variable": "beweise", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_diener",
+      "act": 1,
+      "once": true,
+      "weight": 7,
+      "title": "Die Befragung der Mundschenk-Gehilfen",
+      "textTemplate": "Zwei junge Schankknappen kauern eingeschüchtert hinter den Serviertischen.\n{{player:1|Ein Sucher}} verlangt Auskunft über die Tischordnung beim ersten Gang.",
+      "prompt": {
+        "title": "Aussagen der Diener",
+        "description": "Wie befragst du das Palastpersonal?",
+        "choices": [
+          {
+            "id": "bribe_servants",
+            "label": "Die Diener mit Gold bestechen",
+            "outcomeText": "Ein Knappe berichtet leise von einem verdächtigen Gast nahe der königlichen Kanne.",
+            "effects": [{ "points": 15 }, { "variable": "beweise", "delta": 1 }]
+          },
+          {
+            "id": "intimidate_servants",
+            "label": "Mit dem Kerker drohen (oder 1 Schluck Schankwein trinken)",
+            "outcomeText": "Die Knappen geraten in Panik und widersprechen sich gegenseitig.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }, { "variable": "unruhe", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_alibi",
+      "act": 1,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der Schwur der Hohen Häuser",
+      "textTemplate": "Akt I neigt sich dem Ende zu. Der Großinquisitor fordert von jedem Haus einen Treueeid auf die Krone.\nWer zögert, gerät unmittelbar unter Verdacht.\nDie Fronten im Thronsaal verhärten sich.",
+      "prompt": {
+        "title": "Der Treueeid",
+        "description": "Wie leistest du deinen Eid vor dem Kronrat?",
+        "choices": [
+          {
+            "id": "swear_solemnly",
+            "label": "Feierlich auf das Schwert schwören",
+            "outcomeText": "Mit fester Stimme bekennst du dich zur Krone. Niemand kann dir Zögern vorwerfen.",
+            "effects": [{ "points": 15 }, { "remember": "eid_geschworen" }]
+          },
+          {
+            "id": "swear_and_toast",
+            "label": "Den Eid mit einem Becher besiegeln (1 Schluck oder Verneigung)",
+            "outcomeText": "Du trinkst deinen Becher aus. Der Rat nickt anerkennend.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }, { "variable": "intrige", "delta": 1 }]
+          },
+          {
+            "id": "deflect_oath",
+            "label": "Die Eidesformel geschickt verdrehen",
+            "outcomeText": "Deine Worte klingen loyal, lassen dir aber alle Hintertüren offen.",
+            "effects": [{ "points": 18 }, { "variable": "intrige", "delta": 2 }]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "c2_weinkeller",
+      "act": 2,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "picks": {
+        "cask": ["im Jahrgangswein-Fass", "hinter dem Gewürzregal", "im Ablassventil des Hauptfasses", "unter den Rebentrögen"]
+      },
+      "textTemplate": "Akt II führt die Untersuchung tief in die Kellergewölbe unter der Burg.\nDer Geruch von altem Holz und feuchtem Moos erfüllt den Raum.\n{{player:1|Ein Sucher}} entdeckt ein zerbrochenes Giftfläschchen {{pick:cask}}!\nDie Frage ist: Wer hatte den Kellerschlüssel?",
+      "prompt": {
+        "title": "Fund im Weinkeller",
+        "description": "Wie gehst du mit dem Fund um?",
+        "choices": [
+          {
+            "id": "secure_traces",
+            "label": "Spuren am Fläschchen sichern",
+            "outcomeText": "Du erkennst ein eingraviertes Hauswappen auf dem Korken!",
+            "effects": [{ "points": 20 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "test_wine",
+            "label": "Das Weinfass prüfen (1 Schluck Vorkosten oder Geruchsprobe)",
+            "outcomeText": "Der Wein schmeckt rein — das Gift wurde erst oben im Saal beigemischt!",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }, { "variable": "beweise", "delta": 1 }]
+          },
+          {
+            "id": "plant_evidence",
+            "label": "Die Scherben unbemerkt verschieben",
+            "outcomeText": "Du lenkst die Sucher auf eine falsche Fährte.",
+            "effects": [{ "points": 18 }, { "variable": "intrige", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_kerker",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Der Gang in die Verliese",
+      "textTemplate": "Auf der Suche nach Motiven steigen die Ratsherren hinab zu den Kerkern.\nAus den Zellen dringen Rufe alter Gefangener, die von finsteren Plänen der Fürsten wispern.",
+      "prompt": {
+        "title": "Stimmen aus der Finsternis",
+        "description": "Welchem Gefangenen schenkst du Gehör?",
+        "choices": [
+          {
+            "id": "listen_rebel",
+            "label": "Den Rebellenführer befragen",
+            "outcomeText": "Er nennt dir ein Losungswort, das heute Nacht im Thronsaal geflüstert wurde.",
+            "effects": [{ "points": 18 }, { "variable": "beweise", "delta": 1 }]
+          },
+          {
+            "id": "lock_dungeon",
+            "label": "Die Zellentüren doppelt verriegeln (oder 1 Schluck gegen den Schreck)",
+            "outcomeText": "Du sorgst für Ruhe im Verlies und vermeidest weiteres Gerede.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }, { "variable": "unruhe", "delta": -1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_archiv",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Die alten Hofchroniken",
+      "textTemplate": "In der königlichen Bibliothek durchstöbert {{player:2|ein Gelehrter}} verstaubte Pergamente.\nEin alter Erbfolgestreit zwischen den Häusern wirft neue Schatten auf die Anwesenden.",
+      "prompt": {
+        "title": "Recherchen im Archiv",
+        "description": "Welches Dokument ziehst du heraus?",
+        "choices": [
+          {
+            "id": "uncover_feud",
+            "label": "Eine uralte Fehde ans Licht bringen",
+            "outcomeText": "Du deckst auf, dass zwei Familien am Tisch seit Generationen verfeindet sind!",
+            "effects": [{ "points": 20 }, { "variable": "intrige", "delta": 1 }]
+          },
+          {
+            "id": "hide_family_record",
+            "label": "Die Akte der eigenen Familie verschwinden lassen",
+            "outcomeText": "Du schützt dein Haus vor unangenehmen Fragen des Kronrats.",
+            "effects": [{ "points": 15 }, { "variable": "intrige", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_spion",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "title": "Schatten in den Gängen",
+      "textTemplate": "Auf dem Rückweg zum Saal huscht eine vermummte Gestalt über den Wehrgang.\n{{player:1|Ein Wächter}} schlägt Alarm — jemand versucht, heimlich Nachrichten aus der Burg zu schmuggeln!",
+      "prompt": {
+        "title": "Der Bote im Schatten",
+        "description": "Wie fängst du den Boten ab?",
+        "choices": [
+          {
+            "id": "catch_messenger",
+            "label": "Die Brieftaube abfangen und die Botschaft lesen",
+            "outcomeText": "Der Zettel enthält Anweisungen für das Abstimmungsverhalten im Kronrat!",
+            "effects": [{ "points": 20 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "sound_horn",
+            "label": "Das Sturmhorn blasen (Alle trinken 1 Schluck gegen den Alarm)",
+            "outcomeText": "Das Horn gellt durch die Nacht — die gesamte Festung ist in Alarmbereitschaft!",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 15 }, { "variable": "unruhe", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_mundschenk",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Mundschenk 🍷" }],
+      "title": "Das Geständnis des Mundschenks",
+      "textTemplate": "Der Mundschenk kniet zitternd auf den feuchten Kellersteinen.\nEr war der Einzige mit freiem Zugang zu den Schankkelchen. Alle Augen richten sich auf ihn.",
+      "prompt": {
+        "title": "Nur der Mundschenk handelt",
+        "description": "Was offenbarst du dem Kronrat?",
+        "forRole": "Der Mundschenk 🍷",
+        "choices": [
+          {
+            "id": "name_guest",
+            "label": "Einen Gast belasten, der am Fass herumlungerte",
+            "outcomeText": "Du nennst einen Namen und verteilst 2 Strafschlucke (oder Verhörfragen) an diesen Spieler!",
+            "targetRequired": true,
+            "sips": { "target": 2 },
+            "effects": [{ "points": 25 }, { "variable": "verdacht", "delta": 3 }]
+          },
+          {
+            "id": "plead_duty",
+            "label": "Die eigene Pflichterfüllung beteuern",
+            "outcomeText": "„Ich habe nur eingeschenkt, was mir gebracht wurde!\" Der Rat bleibt skeptisch.",
+            "effects": [{ "points": 20 }, { "variable": "unruhe", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_hofnarr",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Hofnarr 🃏" }],
+      "title": "Der Schabernack des Hofnarrs",
+      "textTemplate": "Der Hofnarr springt auf den Ratstisch und wirft Glöckchen in die Menge.\n„Wer weint um die Krone und lacht heimlich in den Ärmel?\"",
+      "prompt": {
+        "title": "Nur der Hofnarr handelt",
+        "description": "Wie treibst du dein Spiel mit dem Kronrat?",
+        "forRole": "Der Hofnarr 🃏",
+        "choices": [
+          {
+            "id": "mock_all",
+            "label": "Alle Ratsherren zum Trinken verdonnern (Alle trinken 1 Schluck)",
+            "outcomeText": "Mit frechen Reimen bringst du die gesamte Runde dazu, gemeinsam anzustoßen!",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 25 }, { "variable": "unruhe", "delta": 2 }]
+          },
+          {
+            "id": "reveal_whisper",
+            "label": "Ein belauschtes Geheimnis preisgeben",
+            "outcomeText": "Du reimst über einen geheimen Deal zweier Fürsten — handfeste Beweise kommen ans Licht.",
+            "effects": [{ "points": 25 }, { "variable": "beweise", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_diskussion",
+      "act": 2,
+      "once": true,
+      "title": "Der Machtkampf der Häuser",
+      "textTemplate": "Die Fürstenhäuser werfen sich gegenseitig finstere Absichten vor.\nJeder beansprucht die Treue zur Krone für sich allein.",
+      "discussion": {
+        "prompt": "Welches der Hohen Häuser profitiert am meisten von einer herrenlosen Krone?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "c2_geheimgang",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "var": "beweise", "atLeast": 2 }],
+      "title": "Der Spalt in der Ahnengalerie",
+      "textTemplate": "Dank der gesammelten Hinweise entdeckt {{player:1|ein Späher}} einen Geheimgang hinter einem Königsporträt!\nFrische Fußspuren im Staub führen direkt zurück in den Thronsaal.",
+      "prompt": {
+        "title": "Der Fluchtweg des Attentäters",
+        "description": "Wie verwertest du die Entdeckung?",
+        "choices": [
+          {
+            "id": "measure_tracks",
+            "label": "Die Schuhgröße mit den Ratsherren vergleichen",
+            "outcomeText": "Die Spuren passen genau zu einem der Gäste am Tisch!",
+            "effects": [{ "points": 20 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "block_passage",
+            "label": "Den Geheimgang verbarrikadieren",
+            "outcomeText": "Ein möglicher Fluchtweg ist abgeschnitten — niemand entkommt ungesehen.",
+            "effects": [{ "points": 15 }, { "variable": "unruhe", "delta": -1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_siegelring",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "var": "intrige", "atLeast": 2 }],
+      "title": "Das gefälschte Dekret",
+      "textTemplate": "Auf dem Schreibtisch des Kanzlers taucht ein brisantes Pergament auf: Eine vorgefertigte Thronfolge-Urkunde mit königlichem Wachssiegel!",
+      "prompt": {
+        "title": "Beweis einer Verschwörung",
+        "description": "Wem schiebst du das Dokument zu?",
+        "choices": [
+          {
+            "id": "accuse_forgery",
+            "label": "Das Siegel öffentlich als Fälschung entlarven",
+            "outcomeText": "Du stellst die Verschwörer bloß und gewinnst das Vertrauen der Loyalen.",
+            "effects": [{ "points": 20 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "burn_scroll",
+            "label": "Das Pergament im Kamin verbrennen (oder 1 Schluck trinken)",
+            "outcomeText": "Asche fliegt auf. Das belastende Dokument ist für immer vernichtet.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }, { "variable": "intrige", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_aufruhr",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "var": "unruhe", "atLeast": 2 }],
+      "title": "Gezogene Klingen im Kronrat",
+      "textTemplate": "Die Stimmung kocht über! {{player:2|Ein Herzog}} zieht seinen Dolch und fordert ein Gottesurteil.\nDie Wachen greifen zu den Piken, um Blutvergießen zu verhindern.",
+      "prompt": {
+        "title": "Eskalation im Rat",
+        "description": "Wie reagierst du auf die gezogenen Waffen?",
+        "choices": [
+          {
+            "id": "disarm_brawler",
+            "label": "Den Hitzkopf entwaffnen und zur Ordnung rufen",
+            "outcomeText": "Mit kühlem Kopf beendest du den Tumult und stellst die Ordnung wieder her.",
+            "effects": [{ "points": 20 }, { "variable": "unruhe", "delta": -2 }]
+          },
+          {
+            "id": "fuel_fire",
+            "label": "Den Streit weiter anheizen",
+            "outcomeText": "Du wirfst scharfe Vorwürfe in die Runde und stiftest pures Chaos.",
+            "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_kronprinzessin",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Die Kronprinzessin 👑" }],
+      "title": "Das Machtwort der Kronprinzessin",
+      "textTemplate": "Die Kronprinzessin erhebt sich vom Thron ihres Vaters.\nIhre Stimme schneidet durch das Gemurmel der Fürsten.",
+      "prompt": {
+        "title": "Nur die Kronprinzessin handelt",
+        "description": "Welchen kaiserlichen Befehl erteilst du?",
+        "forRole": "Die Kronprinzessin 👑",
+        "choices": [
+          {
+            "id": "demand_trial",
+            "label": "Unmittelbares Tribunal für Akt III anordnen",
+            "outcomeText": "„Bis zum Morgengrauen wird der Mörder auf dem Schafott stehen!\"",
+            "effects": [{ "points": 25 }, { "variable": "beweise", "delta": 2 }]
+          },
+          {
+            "id": "royal_amnesty",
+            "label": "Demjenigen Gnade versprechen, der den Verräter verrät",
+            "outcomeText": "Deine Offerte spaltet die Verschwörer. Jeder fürchtet, als Erster verraten zu werden.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c2_ratsbeschluss",
+      "act": 2,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der Kronrat schließt die Zeugenliste",
+      "textTemplate": "Akt II endet. Alle Aussagen wurden protokolliert, alle Weinfässer versiegelt.\nDer Großinquisitor klopft dreimal mit dem Richtstab auf den Eichentisch: Das Tribunal beginnt gleich.",
+      "prompt": {
+        "title": "Die Ruhe vor dem Urteil",
+        "description": "Wie bereitest du dich auf das finale Tribunal vor?",
+        "choices": [
+          {
+            "id": "rally_allies",
+            "label": "Letzte Stimmenabsprachen treffen",
+            "outcomeText": "Du flüsterst mit deinen Verbündeten und formierst eine geschlossene Front.",
+            "effects": [{ "points": 15 }, { "variable": "intrige", "delta": 1 }]
+          },
+          {
+            "id": "drink_resolve",
+            "label": "Mut antrinken für das Tribunal (1 Schluck oder Schweigeminute)",
+            "outcomeText": "Ein kräftiger Schluck stärkt deine Nerven für die anstehende Abstimmung.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 10 }, { "variable": "unruhe", "delta": -1 }]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "c3_anklage",
+      "act": 3,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "textTemplate": "Akt III: Das Schafott im Schlosshof ist hergerichtet!\nDie Henkersknechte stehen mit geschliffener Axt bereit.\nDer Großinquisitor ruft die Anklage auf: Ein Mitglied dieses Kronrats hat den König ermordet!",
+      "prompt": {
+        "title": "Eröffnung des Tribunals",
+        "description": "Wie trittst du vor das Tribunal?",
+        "choices": [
+          {
+            "id": "firm_stance",
+            "label": "Mit fester Stimme deine Unschuld bekräftigen",
+            "outcomeText": "Dein Blick weicht keinem Richter aus. Du forderst Gerechtigkeit.",
             "effects": [{ "points": 15 }]
           },
           {
-            "id": "demand_silence",
-            "label": "Zum Schweigen verdonnern (Alle trinken 1 Schluck)",
-            "outcomeText": "Du rufst nach Ruhe im Saal – die gesamte Runde trinkt gemeinsam 1 Schluck!",
-            "sips": { "all": 1 },
-            "effects": [{ "points": 25 }]
+            "id": "last_toast",
+            "label": "Auf das Urteil der Götter anstoßen (1 Schluck oder Verbeugung)",
+            "outcomeText": "Du hebst deinen Kelch vor der Henkersaxt. Ein Schauder geht durch den Rat.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }]
           }
         ]
       }
     },
     {
-      "id": "act_3_tribunal",
+      "id": "c3_bannstrahl",
       "act": 3,
-      "title": "Akt III: Das Tribunal des Schafotts",
-      "atmosphereHint": "Die Henkersaxt wird geschliffen. Alle Augen richten sich aufeinander.",
-      "textTemplate": "Die Stunde des Urteils ist da!\nJeder Adlige am Tisch muss nun Farbe bekennen. Wer ist der wahre Mörder des Königs?\nWählt jetzt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!",
+      "once": true,
+      "weight": 8,
+      "requires": [{ "var": "verdacht", "atLeast": 2 }],
+      "title": "Erdrückendes Belastungsmaterial",
+      "textTemplate": "Die gesammelten Indizien werden verlesen!\nMehrere Zeugen haben eine konkrete Person mit dem Giftbecher hantieren sehen.",
+      "prompt": {
+        "title": "Das Beweismaterial wiegt schwer",
+        "description": "Wie reagierst du auf die Vorwürfe?",
+        "choices": [
+          {
+            "id": "demand_confession",
+            "label": "Den Hauptverdächtigen zum Geständnis auffordern",
+            "outcomeText": "Du forderst, dass der Verräter vor dem Richtblock niederkniet!",
+            "effects": [{ "points": 20 }]
+          },
+          {
+            "id": "defend_desperately",
+            "label": "Die Beweisführung als Intrige bezeichnen",
+            "outcomeText": "Du warnst vor einem Justizirrtum im Angesicht des Henkers.",
+            "effects": [{ "points": 15 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c3_diskussion",
+      "act": 3,
+      "once": true,
+      "title": "Das letzte Wort vor dem Richtblock",
+      "textTemplate": "Die Sanduhr läuft ab. Dies ist die letzte Gelegenheit, die Meinung des Kronrats zu drehen.",
+      "discussion": {
+        "prompt": "Wer verstrickt sich bei den Schankzeiten und Motiven in Widersprüche? Wer gehört auf das Schafott?",
+        "seconds": 90
+      }
+    },
+    {
+      "id": "c3_letzter_becher",
+      "act": 3,
+      "once": true,
+      "weight": 8,
+      "title": "Der Kelch der Wahrheit",
+      "textTemplate": "Die Ratsdiener reichen den letzten Becher herum, bevor die Urteilstafeln verteilt werden.\nJeder Adlige muss Farbe bekennen.",
+      "prompt": {
+        "title": "Die letzte Wahl vor der Abstimmung",
+        "description": "Wie stimmst du dich auf die Verurteilung ein?",
+        "choices": [
+          {
+            "id": "clear_conscience",
+            "label": "Mit reinem Gewissen auf die Wahrheit vertrauen",
+            "outcomeText": "Du hast deine Entscheidung getroffen und blickst dem Urteil gefasst entgegen.",
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "solidarity_drink",
+            "label": "Einen letzten Schluck mit dem Nachbarn teilen (1 Schluck oder Händedruck)",
+            "outcomeText": "Ihr blickt euch in die Augen — einer von euch könnte gleich verurteilt werden.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "c3_schafott",
+      "act": 3,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Das Urteil des Kronrats",
+      "textTemplate": "Die Stunde der Wahrheit ist gekommen!\nJeder Adlige am Tisch stimmt nun ab: Wer ist der wahre Mörder des Königs?\nWählt jetzt auf eurem Smartphone die Person, die auf das Schafott geschickt wird!",
       "voting": {
-        "prompt": "Wen verdächtigst du als Attentäter des Königs?"
+        "prompt": "Wen verurteilt der Kronrat als Attentäter des Königs?"
       }
     }
   ],
@@ -138,7 +780,7 @@
       "caught": {
         "winnerTeam": "Die Getreuen der Krone 👑",
         "title": "Gerechtigkeit siegt!",
-        "summary": "Der Kronrat hat {{traitor}} als wahren Attentäter überführt! Der Verrat ist gerächt und das Reich gerettet.",
+        "summary": "Der Kronrat hat {{traitor}} als wahren Attentäter überführt! Die Henkersaxt fällt, der Verrat ist gerächt und das Reich vor dem Zerfall gerettet.",
         "penalties": [
           { "who": "traitor", "sips": 4, "reason": "Als entlarvter Attentäter auf dem Schafott!" }
         ]
@@ -146,10 +788,10 @@
       "escaped": {
         "winnerTeam": "Der Attentäter 🗡️",
         "title": "Der Verrat war vollkommen!",
-        "summary": "Der Kronrat hat fälschlicherweise {{condemned}} verurteilt, während {{traitor}} triumphierend im Schatten lacht!",
+        "summary": "Der Kronrat hat fälschlicherweise {{condemned}} verurteilt, während {{traitor}} triumphierend im Schatten der Thronsäulen lacht!",
         "penalties": [
-          { "who": "condemned", "sips": 3, "reason": "Unschuldig auf dem Schafott gelandet!" },
-          { "who": "others", "sips": 2, "reason": "Auf die Intrige des Attentäters hereingefallen!" }
+          { "who": "condemned", "sips": 3, "reason": "Unschuldig auf dem Schafott verurteilt!" },
+          { "who": "others", "sips": 2, "reason": "Auf die perfide Intrige des Attentäters hereingefallen!" }
         ]
       }
     }

@@ -25,6 +25,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useThemeColors } from "@/services/theme";
 import { Avatar } from "@/components/Avatar";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 
 type AdminTab = "dashboard" | "users" | "reports" | "drinks" | "broadcast";
 
@@ -309,6 +310,7 @@ export default function AdminConsoleScreen() {
   );
 
   return (
+    <KeyboardSafe>
     <View className="flex-1 bg-bg">
       {/* Header Tabs */}
       <View className="bg-surface border-b border-line px-3 pt-2 pb-2">
@@ -1078,5 +1080,6 @@ export default function AdminConsoleScreen() {
         </View>
       </Modal>
     </View>
+    </KeyboardSafe>
   );
 }

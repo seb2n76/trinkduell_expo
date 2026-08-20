@@ -53,6 +53,7 @@ export function StoryGameShell({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimedPoints, setClaimedPoints] = useState<number | null>(null);
+  const [claimReason, setClaimReason] = useState<string | null>(null);
   // Abrechnen genau einmal pro Runde, auch wenn der Poll das Finale mehrfach
   // liefert. Der Server ist zwar idempotent, aber ein Request alle 2,5 s wäre
   // trotzdem Unsinn.
@@ -128,7 +129,13 @@ export function StoryGameShell({
     apiService
       .claimGameRoomPoints(roomCode, myPlayerToken)
       .then((res) => {
-        if (res.awarded) setClaimedPoints(res.points);
+        if (res.awarded) {
+          setClaimedPoints(res.points);
+          if (res.reason) setClaimReason(res.reason);
+        } else if (res.reason === "daily_cap") {
+          setClaimedPoints(0);
+          setClaimReason("daily_cap");
+        }
       })
       .catch(() => {
         // Gäste ohne Konto bekommen hier eine Absage — das ist kein Fehler,
@@ -379,11 +386,25 @@ export function StoryGameShell({
                 </Text>
 
                 {claimedPoints !== null && (
-                  <View className="w-full bg-success/10 border border-success/30 rounded-2xl p-3 mb-4 flex-row items-center justify-center">
-                    <Ionicons name="star" size={16} color={c.success} />
-                    <Text className="text-success text-xs font-black ml-2">
-                      +{claimedPoints} XP für dein Profil
-                    </Text>
+                  <View className="w-full bg-success/10 border border-success/30 rounded-2xl p-3 mb-4 items-center justify-center">
+                    <View className="flex-row items-center justify-center">
+                      <Ionicons name="star" size={16} color={c.success} />
+                      <Text className="text-success text-xs font-black ml-2">
+                        {claimedPoints > 0
+                          ? `+${claimedPoints} XP für dein Profil`
+                          : "Tageslimit erreicht"}
+                      </Text>
+                    </View>
+                    {claimReason === "daily_cap" && (
+                      <Text className="text-content-faint text-[10px] font-medium text-center mt-1">
+                        Tageslimit von 300 Spiel-XP erreicht — morgen gibt es wieder neue XP!
+                      </Text>
+                    )}
+                    {claimReason === "daily_cap_partial" && (
+                      <Text className="text-content-faint text-[10px] font-medium text-center mt-1">
+                        Tageslimit von 300 Spiel-XP erreicht (Rest gutgeschrieben).
+                      </Text>
+                    )}
                   </View>
                 )}
 
