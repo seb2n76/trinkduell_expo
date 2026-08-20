@@ -28,6 +28,7 @@ import {
   type LocationMode,
   type Coordinates,
 } from "@/services/location";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 import { useThemeColors, useTheme, type ThemeColors } from "@/services/theme";
 // Lazy on purpose: the camera module is only needed once someone taps
 // "Scannen", and it has no business in the bundle everyone loads first.
@@ -1642,7 +1643,7 @@ export default function DashboardScreen() {
         animationType="slide"
         onRequestClose={() => setShowPickerModal(false)}
       >
-        <View className="flex-1 bg-black/80 justify-end">
+        <KeyboardSafe><View className="flex-1 bg-black/80 justify-end">
           <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             <View className="flex-row justify-between items-center mb-1">
               <Text className="text-content text-base font-black uppercase tracking-wider">
@@ -1752,14 +1753,14 @@ export default function DashboardScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View></KeyboardSafe>
       </Modal>
 
       {/* ==========================================
           MODAL: CUSTOM DRINK CREATOR
           ========================================== */}
       <Modal visible={showAddModal} transparent={true} animationType="slide" onRequestClose={() => setShowAddModal(false)}>
-        <View className="flex-1 bg-black/80 justify-end">
+        <KeyboardSafe><View className="flex-1 bg-black/80 justify-end">
           <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-5">
               <Text className="text-content text-base font-black uppercase tracking-wider">
@@ -1879,7 +1880,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </View></KeyboardSafe>
       </Modal>
 
       {/* Achievement Unlocked Announcement Modal */}
@@ -1910,7 +1911,7 @@ export default function DashboardScreen() {
         animationType="slide"
         onRequestClose={() => setPortionOptionsDrink(null)}
       >
-        <View className="flex-1 bg-black/80 justify-end">
+        <KeyboardSafe><View className="flex-1 bg-black/80 justify-end">
           <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             {portionOptionsDrink && (() => {
               const accent = accentForCategory(portionOptionsDrink.category);
@@ -2063,7 +2064,7 @@ export default function DashboardScreen() {
               );
             })()}
           </View>
-        </View>
+        </View></KeyboardSafe>
       </Modal>
 
       {/* ==========================================

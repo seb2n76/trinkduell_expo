@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../_layout";
 import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 
 export default function ChangePasswordScreen() {
   const c = useThemeColors();
@@ -71,6 +72,7 @@ export default function ChangePasswordScreen() {
   const unvollstaendig = !currentPassword || !newPassword || !repeatPassword;
 
   return (
+    <KeyboardSafe>
     <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
@@ -175,5 +177,6 @@ export default function ChangePasswordScreen() {
         </View>
       </ScrollView>
     </View>
+    </KeyboardSafe>
   );
 }

@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from "react-native";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiService } from "@/services/api";
@@ -104,7 +106,10 @@ export default function ChatScreen() {
   };
 
   return (
-    <View className="flex-1 bg-bg">
+    // Der Chat ist der schlimmste Fall: das Eingabefeld sitzt ganz unten und
+    // verschwand ohne diesen Rahmen komplett unter der Tastatur.
+    <KeyboardSafe style={{ backgroundColor: c.bg }} offset={Platform.OS === "ios" ? 90 : 0}>
+      <View className="flex-1 bg-bg">
       <Stack.Screen
         options={{
           title: name || (isGroup ? "Gruppenchat" : "Chat"),
@@ -211,6 +216,7 @@ export default function ChatScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </View>
+      </View>
+    </KeyboardSafe>
   );
 }

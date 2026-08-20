@@ -14,6 +14,7 @@ import { GroupQuest } from "@/services/mockData";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useThemeColors } from "@/services/theme";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 
 const QUEST_TYPEN = [
   { key: "drinks" as const, label: "Getränke", einheit: "Stück", icon: "beer-outline" },
@@ -98,6 +99,7 @@ export default function GroupQuestsScreen() {
   };
 
   return (
+    <KeyboardSafe>
     <View className="flex-1 bg-bg">
       <Stack.Screen options={{ title: name ? `Quests · ${name}` : "Quests" }} />
 
@@ -285,5 +287,6 @@ export default function GroupQuestsScreen() {
         </View>
       </ScrollView>
     </View>
+    </KeyboardSafe>
   );
 }

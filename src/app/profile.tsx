@@ -19,6 +19,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { ACHIEVEMENTS } from "@/services/achievements";
 import { useThemeColors } from "@/services/theme";
+import { KeyboardSafe } from "@/components/KeyboardSafe";
 
 const getCategoryIcon = (cat: string): "beer" | "wine" | "wine-outline" | "flask" | "water" => {
   switch (cat) {
@@ -227,6 +228,7 @@ export default function ProfileScreen() {
   }
 
   return (
+    <KeyboardSafe>
     <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
@@ -381,5 +383,6 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
     </View>
+    </KeyboardSafe>
   );
 }

@@ -1013,9 +1013,19 @@ export const apiService = {
       () => db.getRadarLocal(username)
     ),
 
-  getFeed: (scope: db.FeedScope, username: string): Promise<db.FeedItem[]> =>
+  /**
+   * Feed laden.
+   *
+   * `groupId` grenzt den Gruppen-Feed auf eine einzelne Gruppe ein. Ohne
+   * Angabe kommen alle eigenen Gruppen zusammen — was bei mehr als einer
+   * Gruppe unübersichtlich wird und der Grund für den Filter war.
+   */
+  getFeed: (scope: db.FeedScope, username: string, groupId?: string | null): Promise<db.FeedItem[]> =>
     executeApiCall(
-      () => axiosInstance.get<db.FeedItem[]>(`/feed?scope=${scope}`),
+      () =>
+        axiosInstance.get<db.FeedItem[]>(
+          `/feed?scope=${scope}${groupId ? `&groupId=${encodeURIComponent(groupId)}` : ""}`
+        ),
       () => db.getFeedLocal(scope, username)
     ),
 

@@ -1719,7 +1719,22 @@ app.get("/api/feed", authenticate, async (req, res) => {
 
     if (scope === "groups") {
       const groups = await db.getGroups();
-      const myGroups = groups.filter((g) => (g.memberIds || []).includes(req.user.id));
+      let myGroups = groups.filter((g) => (g.memberIds || []).includes(req.user.id));
+
+      // Auf EINE Gruppe eingrenzen, wenn der Client eine nennt. Vorher warf
+      // der Gruppen-Feed immer alle Gruppen in einen Topf — bei mehreren
+      // Gruppen war nicht mehr erkennbar, was wozu gehoert.
+      //
+      // Die Mitgliedschaft wird hier geprueft und nicht dem Client geglaubt:
+      // sonst liesse sich mit einer fremden Gruppen-Id deren Feed auslesen.
+      const requestedGroupId = typeof req.query.groupId === "string" ? req.query.groupId : null;
+      if (requestedGroupId) {
+        myGroups = myGroups.filter((g) => g.id === requestedGroupId);
+        if (myGroups.length === 0) {
+          return res.status(404).json({ error: "Gruppe nicht gefunden." });
+        }
+      }
+
       const myGroupIds = new Set(myGroups.map((g) => g.id));
 
       visibleUserIds = new Set();
@@ -1729,7 +1744,16 @@ app.get("/api/feed", authenticate, async (req, res) => {
       visiblePostFilter = (p) => p.contextType === "group" && myGroupIds.has(p.contextId);
     } else {
       visibleUserIds = resolveFriendUserIds(req.user, users, friendships);
-      visiblePostFilter = (p) => visibleUserIds.has(p.userId) || p.userId === "system";
+      // Ein Beitrag AN EINE GRUPPE gehoert nicht in den Freunde-Feed. Vorher
+      // wurde hier nur nach Verfasser gefiltert, nie nach Adressat: was jemand
+      // in eine Gruppe schrieb, stand anschliessend auch bei allen seinen
+      // Freunden — und der Gruppen-Feed wirkte dadurch wie eine Dublette.
+      //
+      // Systemmeldungen (Level-Up) tragen ebenfalls contextType "group", sind
+      // aber an alle gerichtet und bleiben deshalb drin.
+      visiblePostFilter = (p) =>
+        p.userId === "system" ||
+        (p.contextType !== "group" && visibleUserIds.has(p.userId));
     }
 
     // Blocking wins over every other visibility rule. Removing the friendship
