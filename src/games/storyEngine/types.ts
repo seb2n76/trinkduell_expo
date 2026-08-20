@@ -1,63 +1,21 @@
+/**
+ * Typen für die Multi-Device-Story-Spiele.
+ *
+ * Seit August 2026 liegt die Spiellogik ausschließlich auf dem Server
+ * (`server/games/`). Der Client kennt weder Kapitel noch Rollenverteilung
+ * noch die Effekte einer Auswahl — er rendert, was der Raumzustand hergibt,
+ * und schickt Absichten zurück.
+ *
+ * Vorher rechnete der Client des Hosts das Spiel aus. Punkte und Schaden
+ * einer Auswahl kamen deshalb nirgends an, die Team-HP-Leiste bewegte sich
+ * nie, und der Host konnte Rollen und Ausgang bestimmen. Was hier fehlt, ist
+ * Absicht: alles, was der Client nicht kennt, kann er nicht fälschen.
+ */
+
 export type StoryGameId = "court_treason" | "murder_express" | "haunted_manor";
 
-export interface StoryPlayer {
-  id: string;
-  name: string;
-  avatar?: string | null;
-  isHost: boolean;
-  role?: string | null;
-  secretPrompt?: string | null;
-  points: number;
-  sipsTaken: number;
-  hasSubmittedAction?: boolean;
-}
-
-export interface StoryRole {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  secretPrompt: string;
-  allegiance?: "town" | "traitor" | "neutral";
-}
-
-export interface RoleAssignment {
-  playerId: string;
-  role: string;
-  secretPrompt: string;
-}
-
-export interface StoryChoice {
-  id: string;
-  label: string;
-  icon?: string;
-  outcomeText: string;
-  sips?: number;
-  targetRequired?: boolean;
-  damage?: number;
-  rewardPoints?: number;
-}
-
-export interface StoryChapter {
-  id: string;
-  act: number;
-  title: string;
-  atmosphereHint?: string;
-  generateText: (players: StoryPlayer[], customVars: Record<string, any>) => string;
-  /** Optional interactive prompt for a specific role or everyone */
-  interactivePrompt?: {
-    forRole?: string; // If undefined, applies to all
-    title: string;
-    description: string;
-    choices: StoryChoice[];
-  };
-  /** Optional voting phase at the end of the chapter */
-  hasVoting?: boolean;
-  votingPrompt?: string;
-  votingTargetFilter?: (candidate: StoryPlayer, voter: StoryPlayer) => boolean;
-}
-
-export interface StoryGameDefinition {
+/** Anzeigedaten für Katalog und Lobby. Kein Spielinhalt. */
+export interface StoryGameMeta {
   id: StoryGameId;
   title: string;
   subtitle: string;
@@ -70,16 +28,120 @@ export interface StoryGameDefinition {
   icon: string;
   tagline: string;
   description: string;
-  assignRoles: (players: StoryPlayer[]) => RoleAssignment[];
-  chapters: StoryChapter[];
-  evaluateFinale: (
-    players: StoryPlayer[],
-    votes: Record<string, string>,
-    customVars: Record<string, any>
-  ) => {
-    winnerTeam: string;
+}
+
+// ─── Raumzustand, wie der Server ihn liefert ────────────────────────────────
+
+export interface RoomPlayer {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  isHost: boolean;
+  isReady: boolean;
+  points: number;
+  sipsTaken: number;
+  hasSubmittedAction: boolean;
+  /** Hat im aktuellen Kapitel gewählt — was, bleibt geheim. */
+  hasChosen: boolean;
+  /** Nur die eigene Rolle, oder alle im Finale. */
+  role: string | null;
+  allegiance: "town" | "traitor" | "neutral" | null;
+  secretPrompt: string | null;
+  /**
+   * Der Teil der Wahrheit, den nur diese Person kennt. Kommt ausschließlich
+   * in der eigenen Sicht — sonst wäre die Asymmetrie hin, aus der die
+   * Diskussionen entstehen.
+   */
+  observation: string | null;
+  /** Ausgeschieden: redet und stimmt weiter mit, handelt aber nicht mehr. */
+  eliminated: boolean;
+}
+
+export interface ChapterChoice {
+  id: string;
+  label: string;
+  /** Verlangt die Auswahl einer Zielperson. */
+  targetRequired: boolean;
+}
+
+export interface CurrentChapter {
+  id: string;
+  act: number;
+  index: number;
+  title: string;
+  atmosphereHint: string | null;
+  /** Fertig gerendert — die Namen stehen schon drin. */
+  text: string;
+  prompt: {
     title: string;
-    summary: string;
-    drinkPenalties: { playerName: string; sips: number; reason: string }[];
+    description: string;
+    /** Rollenszene: nur diese Rolle handelt, alle anderen sehen zu und reden. */
+    forRole: string | null;
+    choices: ChapterChoice[];
+  } | null;
+  /** Reine Redezeit mit Frist, ohne Eingabe. */
+  discussion: { seconds: number; prompt: string } | null;
+  voting: { prompt: string } | null;
+}
+
+/**
+ * Aktuelle Phase mit absoluter Frist.
+ *
+ * `deadlineAt` ist ein Zeitstempel der SERVERUHR. Der Client bildet aus
+ * `StoryRoom.serverTime` seinen Versatz und rechnet den Countdown daraus —
+ * niemals gegen die eigene Uhr, sonst laufen acht Geräte auseinander.
+ */
+export interface PhaseInfo {
+  kind: "choice" | "reveal" | "vote" | "discussion";
+  startedAt: number;
+  deadlineAt: number;
+  seconds: number;
+}
+
+/** Was jemand gewählt hat. Erst in der Auflösungsphase gefüllt. */
+export interface ChoiceReveal {
+  playerId: string;
+  playerName: string;
+  /** null = hat die Frist verstreichen lassen. */
+  choiceId: string | null;
+  label: string | null;
+  outcomeText: string | null;
+  targetName: string | null;
+}
+
+export interface FinaleResult {
+  outcomeKey: string;
+  winnerTeam: string;
+  title: string;
+  summary: string;
+  drinkPenalties: { playerName: string; sips: number; reason: string }[];
+}
+
+export interface StoryRoom {
+  code: string;
+  gameId: StoryGameId;
+  hostId: string;
+  status: "lobby" | "role_reveal" | "story_chapter" | "finale";
+  /** Erhöht sich bei jedem echten Zustandswechsel. */
+  revision: number;
+  currentChapterIndex: number;
+  players: RoomPlayer[];
+  gameState: {
+    storyLog: string[];
+    currentChapter: CurrentChapter | null;
+    variables: Record<string, number>;
+    healthPoints?: number;
+    phase: PhaseInfo | null;
+    reveals: ChoiceReveal[] | null;
+    /** Aktueller Akt im Storylet-Format. */
+    act?: number;
+    myChoice: { choiceId: string; outcomeText: string; targetPlayerId: string | null } | null;
+    choiceCount: number;
+    voteCount: number;
+    finalVotes?: Record<string, string>;
+    finale: FinaleResult | null;
   };
+  isHost: boolean;
+  myPlayerId: string;
+  serverTime: number;
 }

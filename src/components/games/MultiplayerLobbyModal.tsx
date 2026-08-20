@@ -88,29 +88,11 @@ export function MultiplayerLobbyModal({
     triggerHaptic("heavy");
 
     try {
-      // 1. Procedural role assignment
-      const assignedRoles = selectedGame.assignRoles(room.players);
-      const firstChapter = selectedGame.chapters[0];
-
-      const gameSetupData = {
-        playerRoles: assignedRoles,
-        firstChapter: {
-          id: firstChapter.id,
-          act: firstChapter.act,
-          title: firstChapter.title,
-          atmosphereHint: firstChapter.atmosphereHint,
-          text: firstChapter.generateText(room.players, {}),
-          interactivePrompt: firstChapter.interactivePrompt,
-          hasVoting: firstChapter.hasVoting,
-          votingPrompt: firstChapter.votingPrompt,
-        },
-        customVariables: {
-          gameId: selectedGameId,
-          healthPoints: 100,
-        },
-      };
-
-      const res = await apiService.startGameRoom(roomCode, myPlayerToken, gameSetupData);
+      // Rollenverteilung und Kapitel 1 macht der Server. Bis August 2026
+      // stand hier beides: der Host würfelte die Rollen auf seinem Gerät aus
+      // und schickte sie mit — er konnte sich also selbst zum Detektiv und
+      // einen Mitspieler zum Mörder erklären.
+      const res = await apiService.startGameRoom(roomCode, myPlayerToken, {});
       if (res && res.success && res.room) {
         triggerHaptic("success");
         onGameStarted(res.room);

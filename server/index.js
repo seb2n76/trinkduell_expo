@@ -3830,6 +3830,27 @@ app.post("/api/game-rooms/:code/action", async (req, res) => {
     if (err.message === "PLAYER_NOT_IN_ROOM") {
       return res.status(403).json({ error: "Kein gültiger Spieler-Nachweis für diesen Raum." });
     }
+    if (err.message === "ALREADY_CHOSE") {
+      return res.status(409).json({ error: "In diesem Kapitel hast du schon entschieden." });
+    }
+    if (err.message === "PHASE_CLOSED") {
+      return res.status(409).json({ error: "Diese Phase ist vorbei." });
+    }
+    if (err.message === "UNKNOWN_CHOICE" || err.message === "NO_PROMPT_IN_CHAPTER") {
+      return res.status(400).json({ error: "Diese Auswahl gibt es im aktuellen Kapitel nicht." });
+    }
+    if (err.message === "TARGET_REQUIRED") {
+      return res.status(400).json({ error: "Für diese Auswahl musst du eine Person bestimmen." });
+    }
+    if (err.message === "NOT_YOUR_SCENE") {
+      return res.status(403).json({ error: "Diese Szene gehört einer anderen Rolle." });
+    }
+    if (err.message === "ELIMINATED") {
+      return res.status(403).json({ error: "Du bist raus — aber du redest und stimmst weiter mit." });
+    }
+    if (err.message === "NO_STORY_FOR_GAME") {
+      return res.status(400).json({ error: "Für dieses Spiel gibt es keine Story-Definition." });
+    }
     serverError(res, err, "submitAction");
   }
 });
@@ -3850,6 +3871,38 @@ app.post("/api/game-rooms/:code/next", async (req, res) => {
       return res.status(403).json({ error: "Nur der Host kann die Story vorantreiben." });
     }
     serverError(res, err, "nextChapter");
+  }
+});
+
+// Spiel-XP nach dem Finale gutschreiben.
+//
+// Braucht BEIDES: ein JWT (wem wird gutgeschrieben) und den Raum-Token (war
+// die Person wirklich dabei). Gäste ohne Account spielen normal mit, bekommen
+// aber nichts gutgeschrieben — es gibt kein Konto dafür.
+app.post("/api/game-rooms/:code/claim", authenticate, async (req, res) => {
+  const { code } = req.params;
+
+  try {
+    const claim = gameRooms.claimablePoints(code, roomToken(req));
+    const result = await db.awardGamePoints(claim.roomCode, req.userId, claim.points);
+    res.json({
+      success: true,
+      // false heißt: für diese Runde war schon abgerechnet. Kein Fehler —
+      // ein Reconnect oder ein zweiter Tap landet genau hier.
+      awarded: result.awarded,
+      points: result.points,
+    });
+  } catch (err) {
+    if (err.message === "ROOM_NOT_FOUND") {
+      return res.status(404).json({ error: "Raum nicht gefunden." });
+    }
+    if (err.message === "PLAYER_NOT_IN_ROOM") {
+      return res.status(403).json({ error: "Kein gültiger Spieler-Nachweis für diesen Raum." });
+    }
+    if (err.message === "GAME_NOT_FINISHED") {
+      return res.status(400).json({ error: "Das Spiel ist noch nicht beendet." });
+    }
+    serverError(res, err, "claimGamePoints");
   }
 });
 
@@ -3909,5 +3962,13 @@ app.listen(PORT, "0.0.0.0", async () => {
     // hier ginge am Wrapper vorbei. Ein fehlgeschlagener Migrationslauf darf
     // den gerade gestarteten Server nicht sofort wieder umwerfen.
     console.error("[TrinkDuell] Passwort-Migration beim Start fehlgeschlagen:", err);
+  }
+  try {
+    // Laufende Spielrunden zurückholen. Ohne diesen Schritt beendet jeder
+    // Neustart — und auto-update.sh baut den Container bei jedem Commit neu —
+    // sämtliche Sitzungen, die gerade gespielt werden.
+    await gameRooms.restoreRooms();
+  } catch (err) {
+    console.error("[TrinkDuell] Spielräume konnten nicht wiederhergestellt werden:", err);
   }
 });

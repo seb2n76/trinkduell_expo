@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { Intensity, INTENSITY_LABELS } from "@/games/content";
 import { ProofPhotoButton } from "./ProofPhotoButton";
+import { SessionBar } from "./SessionBar";
 import { useThemeColors } from "@/services/theme";
 
 interface GameShellProps {
@@ -55,6 +56,10 @@ export function GameShell({
       <View className="items-center mb-4">
         <ProofPhotoButton context={title} />
       </View>
+
+      {/* Der Rahmen der laufenden Nacht. Rendert sich selbst weg, wenn keine
+          Session läuft — dann verhalten sich die Spiele wie vorher. */}
+      <SessionBar />
 
       {intensity && onIntensityChange && (
         <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-5">

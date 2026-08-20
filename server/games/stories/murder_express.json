@@ -1,0 +1,675 @@
+{
+  "id": "murder_express",
+  "format": "storylets",
+  "title": "Mord im Mitternachts-Express",
+  "subtitle": "1920s Noir Whodunnit & Kreuzverhör",
+  "genre": "Krimi & Social Deduction",
+  "durationMinutes": 40,
+  "minPlayers": 3,
+  "maxPlayers": 12,
+  "themeColor": "#0284c7",
+  "accentColor": "#38bdf8",
+  "icon": "train",
+  "tagline": "Ein Schneesturm, ein Toter und kein Alibi.",
+  "description": "Der Luxuszug steht tief im Gebirge still. Baron von Falkenstein liegt tot im Salonwagen! Jeder Passagier verbirgt ein dunkles Geheimnis — und einer von euch hat ihn umgebracht.",
+
+  "variables": {
+    "hinweise": 0,
+    "verdacht": 0,
+    "panik": 0
+  },
+
+  "structure": {
+    "acts": [
+      {
+        "act": 1,
+        "count": 4,
+        "title": "Akt I: Der Schrei im Tunnel",
+        "atmosphereHint": "Der Zug steht. Draußen tobt der Schneesturm, drinnen flackert das Notlicht."
+      },
+      {
+        "act": 2,
+        "count": 5,
+        "title": "Akt II: Das eisige Kreuzverhör",
+        "atmosphereHint": "Eisblumen an den Scheiben. Jeder Blick ist voller Argwohn."
+      },
+      {
+        "act": 3,
+        "count": 3,
+        "title": "Akt III: Die Entlarvung",
+        "atmosphereHint": "Der Zug setzt sich in Bewegung. Die Endstation naht."
+      }
+    ]
+  },
+
+  "roles": {
+    "fixed": [
+      {
+        "name": "Der Mörder 🪓",
+        "allegiance": "traitor",
+        "secretPrompt": "Du hast den Baron ermordet. Überstehe das Kreuzverhör, und du entkommst unerkannt. Punkte bekommst du für alles, was Verdacht auf andere lenkt — aber übertreib es nicht, Eifer macht verdächtig."
+      },
+      {
+        "name": "Meisterdetektiv 🕵️‍♂️",
+        "allegiance": "town",
+        "secretPrompt": "Du leitest die Ermittlung. In Akt II gehört dir eine eigene Szene: Du befragst eine Person deiner Wahl, und die ganze Runde hört zu. Achte auf Widersprüche."
+      },
+      {
+        "name": "Die Erbin 💎",
+        "allegiance": "town",
+        "secretPrompt": "Der Baron schuldete dir ein Vermögen. Du bist unschuldig — hast aber das stärkste Motiv am ganzen Zug. Sei vorsichtig, wie viel du zugibst."
+      },
+      {
+        "name": "Der Leibarzt 🩺",
+        "allegiance": "town",
+        "secretPrompt": "Du hast die Leiche untersucht. In Akt I gehört dir eine eigene Szene: Dein Befund verschiebt die Ermittlung — und du entscheidest, wie viel du davon preisgibst."
+      },
+      {
+        "name": "Der Schaffner 🎫",
+        "allegiance": "town",
+        "secretPrompt": "Du kennst jeden Wagen und jede Abteilnummer. In Akt II darfst du ein Abteil durchsuchen lassen. Was dabei herauskommt, hängt davon ab, wo du suchst."
+      }
+    ],
+    "pool": [
+      { "name": "Der Schmuggler 💼", "allegiance": "town", "secretPrompt": "Du reist als {{role}}. In deinem Koffer liegt etwas, das niemand sehen darf — mit dem Mord hat es nichts zu tun. Erklär das mal einer Runde Verdächtiger." },
+      { "name": "Die Reporterin 📰", "allegiance": "town", "secretPrompt": "Du reist als {{role}} und witterst die Geschichte deines Lebens. Frag laut, frag unbequem — aber vergiss nicht, dass auch du ein Alibi brauchst." },
+      { "name": "Die Baroness 👒", "allegiance": "town", "secretPrompt": "Du reist als {{role}}. Der Tote war dir nicht fremd, und die halbe Runde weiß das. Deine Würde ist deine beste Verteidigung." },
+      { "name": "Der Casino-Betrüger 🃏", "allegiance": "town", "secretPrompt": "Du reist als {{role}}. Lügen ist dein Handwerk — was dir hier gefährlich wird, sobald es jemand merkt." },
+      { "name": "Der Geheimagent 🕶️", "allegiance": "town", "secretPrompt": "Du reist als {{role}} unter falschem Namen. Dein Auftrag hat nichts mit dem Baron zu tun. Deine Papiere halten keiner Prüfung stand." },
+      { "name": "Der Opernsänger 🎭", "allegiance": "town", "secretPrompt": "Du reist als {{role}} und kannst jede Emotion spielen. Nutze das — oder lass es, wenn du glaubwürdig wirken willst." },
+      { "name": "Die Wahrsagerin 🔮", "allegiance": "town", "secretPrompt": "Du reist als {{role}}. Man wird dich um Antworten bitten, die du nicht hast. Was du behauptest, glaubt die Runde vielleicht trotzdem." },
+      { "name": "Der Nachtportier 🛎️", "allegiance": "town", "secretPrompt": "Du reist als {{role}} und warst als Einziger die ganze Nacht wach. Leider hast du gedöst — nur wann genau, weißt du nicht mehr." }
+    ]
+  },
+
+  "pinholes": {
+    "witness": "Du hast etwas gesehen: {{traitor}} kam kurz vor dem Schrei aus dem Salonwagen. Beweisen kannst du es nicht — und wenn du es zu früh sagst, stehst du allein da.",
+    "traitor": "Du hattest das Gefühl, dass dich jemand gesehen hat. Wer, weißt du nicht. Finde heraus, wer zu viel redet.",
+    "noise": [
+      "Dir ist aufgefallen, dass {{other}} den ganzen Abend nichts getrunken hat. Das muss nichts heißen.",
+      "{{other}} stand um Mitternacht am Buffet. Das schließt praktisch nichts aus.",
+      "Du hast {{other}} im Gang gesehen, kurz nachdem das Licht ausging. Oder war es davor?",
+      "{{other}} hat den Baron am Nachmittag laut angesprochen. Worum es ging, hast du nicht verstanden.",
+      "Die Handschuhe von {{other}} lagen im Speisewagen. Wahrscheinlich einfach vergessen.",
+      "{{other}} kennt sich im Zug auffällig gut aus. Vielleicht fährt die Strecke ja öfter."
+    ]
+  },
+
+  "storylets": [
+    {
+      "id": "a1_leiche",
+      "act": 1,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "title": "Der Fund im Salonwagen",
+      "picks": {
+        "weapon": ["einem schweren Schürhaken", "einem Seidenschal", "einem goldenen Brieföffner", "einer Dosis Arsen", "einer zerbrochenen Champagnerflasche"]
+      },
+      "textTemplate": "Draußen tobt der Schneesturm, als der Express mit quietschenden Bremsen im Tunnel hält.\nEin gellender Schrei zerreißt die Stille. Als das Notlicht aufflackert, liegt Baron von Falkenstein leblos über dem Schachtisch — ermordet mit {{pick:weapon}}.\n{{player:1|Ein Passagier}} hält ein blutbeflecktes Tuch in der Hand. {{player:2|Eine Dame}} starrt bleich auf die Schlafwagentür.\nNiemand verlässt diesen Zug, bevor der Täter gefunden ist.",
+      "prompt": {
+        "title": "Schock im Salonwagen",
+        "description": "Wie verhältst du dich beim Fund der Leiche?",
+        "choices": [
+          {
+            "id": "inspect_scene",
+            "label": "Den Tatort absuchen",
+            "outcomeText": "Du findest eine zerrissene Fahrkarte mit halb abgerissenen Initialen.",
+            "effects": [{ "points": 15 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "drink_shock",
+            "label": "Erstmal einen Schluck gegen das Zittern (1 Schluck)",
+            "outcomeText": "Du trinkst. Deine Hand wird ruhiger, dein Kopf nicht.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 10 }, { "variable": "panik", "delta": 1 }]
+          },
+          {
+            "id": "fake_alibi",
+            "label": "Lautstark dein Alibi beteuern",
+            "outcomeText": "Du erklärst ungefragt, dass du die ganze Zeit am Buffet standest. Ungefragt.",
+            "effects": [{ "points": 12 }, { "variable": "verdacht", "delta": 2 }, { "remember": "beteuert" }]
+          },
+          {
+            "id": "calm_others",
+            "label": "Die Panik im Wagen dämpfen",
+            "outcomeText": "Du redest ruhig auf die anderen ein, bis das Kreischen aufhört.",
+            "effects": [{ "points": 12 }, { "variable": "panik", "delta": -2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_arzt",
+      "act": 1,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Leibarzt 🩺" }],
+      "title": "Der Befund des Leibarztes",
+      "textTemplate": "Der Leibarzt kniet neben dem Toten und schlägt das Jackett zurück.\nDie ganze Runde schweigt. Was jetzt gesagt wird, bestimmt, in welche Richtung alle denken.",
+      "prompt": {
+        "title": "Nur der Leibarzt handelt",
+        "description": "Alle anderen hören zu. Was verkündest du?",
+        "forRole": "Der Leibarzt 🩺",
+        "choices": [
+          {
+            "id": "truth",
+            "label": "Die Wahrheit: Der Tod trat vor dem Schrei ein",
+            "outcomeText": "„Der Baron war schon tot, als geschrien wurde. Der Schrei war Theater.\" Ein Raunen geht durch den Wagen.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 3 }]
+          },
+          {
+            "id": "vague",
+            "label": "Vage bleiben und die Runde raten lassen",
+            "outcomeText": "„Schwer zu sagen. Die Kälte verfälscht alles.\" Niemand ist klüger als vorher.",
+            "effects": [{ "points": 10 }, { "variable": "verdacht", "delta": 1 }]
+          },
+          {
+            "id": "dramatic",
+            "label": "Es maximal dramatisch verkünden (alle trinken 1 Schluck)",
+            "outcomeText": "„MORD! Kaltblütig und geplant!\" Der halbe Wagen greift zum Glas.",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 18 }, { "variable": "panik", "delta": 3 }, { "variable": "hinweise", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_gepaeck",
+      "act": 1,
+      "weight": 6,
+      "title": "Das Gepäcknetz",
+      "textTemplate": "Im Gepäcknetz über Platz 14 liegt ein Koffer, der dort nicht hingehört.\nEr ist nicht abgeschlossen. Der Gang ist im Moment leer.",
+      "prompt": {
+        "title": "Der fremde Koffer",
+        "description": "Was tust du?",
+        "choices": [
+          {
+            "id": "open",
+            "label": "Aufmachen und nachsehen",
+            "outcomeText": "Herrenhemden, ein Flachmann — und ganz unten ein Bündel Briefe mit dem Siegel des Barons.",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "report",
+            "label": "Laut rufen, dass hier ein Koffer steht",
+            "outcomeText": "Alle drängen sich um das Gepäcknetz. Ordentlich, aber jetzt weiß es auch der Täter.",
+            "effects": [{ "points": 12 }, { "variable": "hinweise", "delta": 1 }, { "variable": "panik", "delta": 1 }]
+          },
+          {
+            "id": "pocket",
+            "label": "Unauffällig etwas einstecken",
+            "outcomeText": "Du lässt etwas in deiner Manteltasche verschwinden. Niemand hat es gesehen. Hoffst du.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }, { "remember": "eingesteckt" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_licht",
+      "act": 1,
+      "weight": 6,
+      "title": "Drei Minuten Dunkelheit",
+      "textTemplate": "Der Schaffner rechnet nach: Zwischen Stromausfall und Notlicht lagen genau drei Minuten.\nDrei Minuten, in denen niemand irgendwen gesehen hat. Jeder im Wagen weiß: Für diese drei Minuten hat keiner ein Alibi.",
+      "prompt": {
+        "title": "Wo warst du?",
+        "description": "Die Runde will es hören.",
+        "choices": [
+          {
+            "id": "honest",
+            "label": "Ehrlich sagen, dass du allein warst",
+            "outcomeText": "„Ich war allein. Kein Alibi.\" Ehrlich — und unbequem.",
+            "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 1 }]
+          },
+          {
+            "id": "alibi_partner",
+            "label": "Dir ein Alibi mit jemandem geben (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Ihr wart zusammen. Sagt ihr. Jetzt hängt ihr beide mit drin.",
+            "effects": [{ "points": 20 }, { "remember": "alibi" }]
+          },
+          {
+            "id": "drink_through",
+            "label": "Die Frage wegtrinken (1 Schluck)",
+            "outcomeText": "Du hebst das Glas statt zu antworten. Auch eine Antwort.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 8 }, { "variable": "verdacht", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a1_erste_runde",
+      "act": 1,
+      "closing": true,
+      "weight": 10,
+      "title": "Erste Verdächtigungen",
+      "textTemplate": "Der Schneesturm rüttelt an den Fenstern. Der Speisewagen füllt sich.\nNoch ist nichts bewiesen — aber alle haben eine Meinung.",
+      "discussion": {
+        "seconds": 90,
+        "prompt": "Redet. Wer wirkt zu ruhig, wer zu eifrig? Wer hat schon von sich aus ein Alibi angeboten, ohne dass jemand gefragt hat?"
+      }
+    },
+    {
+      "id": "a1_notbremse",
+      "act": 1,
+      "weight": 4,
+      "requires": [{ "var": "panik", "atLeast": 3 }],
+      "title": "Jemand zieht die Notbremse",
+      "textTemplate": "Ein Ruck geht durch den Zug. Irgendwo hat jemand die Notbremse gezogen.\nDer Schaffner rennt den Gang hinunter und brüllt, dass niemand den Wagen verlässt.",
+      "prompt": {
+        "title": "Aufruhr im Gang",
+        "description": "Die Lage kippt. Was machst du?",
+        "choices": [
+          {
+            "id": "block_door",
+            "label": "Dich in die Tür stellen",
+            "outcomeText": "Du versperrst den Ausgang. Niemand kommt raus — auch der Täter nicht.",
+            "effects": [{ "points": 20 }, { "variable": "panik", "delta": -2 }]
+          },
+          {
+            "id": "watch_faces",
+            "label": "Nicht auf die Tür schauen, sondern auf die Gesichter",
+            "outcomeText": "Während alle zur Tür starren, siehst du, wer als Einziger ruhig bleibt.",
+            "effects": [{ "points": 22 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "join_chaos",
+            "label": "Im Chaos mitmischen (verteile 1 Schluck)",
+            "targetRequired": true,
+            "outcomeText": "Du schiebst die Schuld lautstark in eine Richtung. Ein Strafschluck für die betroffene Person.",
+            "sips": { "target": 1 },
+            "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 2 }]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "a2_verhoer",
+      "act": 2,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "title": "Das Kreuzverhör beginnt",
+      "textTemplate": "Der Speisewagen ist zum Verhörraum geworden. Die Tischlampen werfen harte Schatten.\n{{lastPlayer|Der Schaffner}} legt eine Liste auf den Tisch: jeder Name, jede Abteilnummer.\nJetzt wird nicht mehr geflüstert, jetzt wird gefragt.",
+      "prompt": {
+        "title": "Deine Taktik im Verhör",
+        "description": "Wie gehst du in diese Runde?",
+        "choices": [
+          {
+            "id": "accuse",
+            "label": "Gegenbeschuldigung erheben (verteile 2 Schlucke)",
+            "targetRequired": true,
+            "outcomeText": "Du greifst jemanden frontal an. Zwei Strafschlucke — und alle Augen sind für einen Moment nicht auf dir.",
+            "sips": { "target": 2 },
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": 2 }, { "remember": "angeklagt" }]
+          },
+          {
+            "id": "cold_logic",
+            "label": "Nüchtern die Widersprüche aufzählen",
+            "outcomeText": "Du legst zwei Aussagen nebeneinander, die sich ausschließen. Es wird still.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "whiskey",
+            "label": "Ein Glas Whiskey leeren und schweigen (1 Schluck)",
+            "outcomeText": "Du sagst nichts. Manchmal ist das die stärkste Aussage.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "toast_truth",
+            "label": "Auf die Wahrheit anstoßen (alle trinken 1 Schluck)",
+            "outcomeText": "Ihr trinkt gemeinsam. Für einen Moment ist der Zug wieder eine Gesellschaft.",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 20 }, { "variable": "panik", "delta": -1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_detektiv",
+      "act": 2,
+      "once": true,
+      "weight": 9,
+      "requires": [{ "roleAlive": "Meisterdetektiv 🕵️‍♂️" }],
+      "title": "Der Detektiv befragt",
+      "textTemplate": "Der Meisterdetektiv erhebt sich und geht langsam die Reihe der Passagiere ab.\nEine Person wird jetzt befragt — vor allen anderen. Und alle hören genau zu.",
+      "prompt": {
+        "title": "Nur der Detektiv handelt",
+        "description": "Wen nimmst du dir vor, und wie?",
+        "forRole": "Meisterdetektiv 🕵️‍♂️",
+        "choices": [
+          {
+            "id": "grill",
+            "label": "Jemanden hart in die Zange nehmen (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Du fragst dreimal dasselbe auf drei Arten. Die Antworten weichen voneinander ab.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 2 }, { "variable": "verdacht", "delta": 1 }, { "remember": "verhoert" }]
+          },
+          {
+            "id": "trust",
+            "label": "Jemandem öffentlich dein Vertrauen aussprechen (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "„Diese Person war es nicht.\" Eine steile Ansage — und deine Glaubwürdigkeit hängt jetzt daran.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": -2 }, { "remember": "vertraut" }]
+          },
+          {
+            "id": "silent_watch",
+            "label": "Niemanden befragen, nur beobachten",
+            "outcomeText": "Du stellst keine Frage. Du siehst nur zu, wer erleichtert ausatmet.",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": 3 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_abteil",
+      "act": 2,
+      "once": true,
+      "weight": 8,
+      "requires": [{ "roleAlive": "Der Schaffner 🎫" }],
+      "title": "Die Durchsuchung",
+      "textTemplate": "Der Schaffner klimpert mit dem Generalschlüssel. Ein Abteil darf durchsucht werden — eines.\nDanach ist der Zug in Bewegung, und die Gelegenheit ist vorbei.",
+      "prompt": {
+        "title": "Nur der Schaffner handelt",
+        "description": "Wessen Abteil lässt du öffnen?",
+        "forRole": "Der Schaffner 🎫",
+        "choices": [
+          {
+            "id": "search_suspect",
+            "label": "Das Abteil der verdächtigsten Person (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Unter der Matratze liegt ein Taschentuch mit dunklen Flecken. Es beweist nichts. Es sieht aber schlecht aus.",
+            "effects": [{ "points": 22 }, { "variable": "hinweise", "delta": 2 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "search_baron",
+            "label": "Das Abteil des Barons selbst",
+            "outcomeText": "Der Schreibtisch ist durchwühlt. Wer auch immer hier war, suchte ein Dokument.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 3 }]
+          },
+          {
+            "id": "search_none",
+            "label": "Niemandes Abteil — die Privatsphäre wahren",
+            "outcomeText": "„Solange ich Dienst habe, wird hier nicht gewühlt.\" Würdevoll. Und wenig hilfreich.",
+            "effects": [{ "points": 12 }, { "variable": "panik", "delta": -2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_brief",
+      "act": 2,
+      "weight": 7,
+      "requires": [{ "var": "hinweise", "atLeast": 4 }],
+      "title": "Der Brief",
+      "textTemplate": "Aus dem Bündel im Koffer fällt ein Brief. Die Handschrift ist zittrig, das Datum von gestern.\n„Ich weiß, was Sie getan haben. Der Zug ist ein guter Ort für ein Gespräch unter vier Augen.\"\nUnterschrieben ist er nicht.",
+      "prompt": {
+        "title": "Ein Erpresserbrief",
+        "description": "Was macht ihr damit?",
+        "choices": [
+          {
+            "id": "read_aloud",
+            "label": "Laut vorlesen",
+            "outcomeText": "Du liest ihn vor. Eine Person am Tisch wird sehr still.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 2 }, { "variable": "verdacht", "delta": 2 }]
+          },
+          {
+            "id": "burn",
+            "label": "In der Kerze verbrennen",
+            "outcomeText": "Das Papier kräuselt sich. Was auch immer darin stand, ist jetzt weg.",
+            "effects": [{ "points": 20 }, { "variable": "hinweise", "delta": -2 }, { "remember": "verbrannt" }]
+          },
+          {
+            "id": "hand_detective",
+            "label": "Dem Detektiv geben",
+            "outcomeText": "Du reichst ihn weiter, ohne ihn selbst gelesen zu haben. Vertrauen oder Feigheit?",
+            "effects": [{ "points": 18 }, { "variable": "hinweise", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_kaelte",
+      "act": 2,
+      "weight": 6,
+      "title": "Die Heizung fällt aus",
+      "textTemplate": "Der Dampf versiegt, die Temperatur fällt. Der Atem steht sichtbar im Wagen.\nMan rückt zusammen — auch mit Leuten, denen man nicht traut.",
+      "prompt": {
+        "title": "Frost im Speisewagen",
+        "description": "Wie hältst du dich warm?",
+        "choices": [
+          {
+            "id": "share_blanket",
+            "label": "Eine Decke mit jemandem teilen (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Ihr sitzt jetzt unter einer Decke. Sehr eng für zwei Menschen, die sich verdächtigen.",
+            "effects": [{ "points": 20 }, { "variable": "panik", "delta": -2 }, { "remember": "geteilt" }]
+          },
+          {
+            "id": "brandy",
+            "label": "Zum Cognac greifen (1 Schluck)",
+            "outcomeText": "Der Cognac wärmt. Und lockert Zungen, auch deine.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }, { "variable": "verdacht", "delta": 1 }]
+          },
+          {
+            "id": "search_warmth",
+            "label": "Die Kälte nutzen und den Zug durchgehen",
+            "outcomeText": "Während alle frieren, gehst du die Wagen ab. Im letzten steht eine Tür offen, die zu sein sollte.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_gefluester",
+      "act": 2,
+      "weight": 6,
+      "requires": [{ "var": "verdacht", "atLeast": 4 }],
+      "title": "Das Lager spaltet sich",
+      "textTemplate": "Es hat sich eine Meinung gebildet. Zwei, um genau zu sein.\nDie eine Hälfte des Wagens ist sich sicher, die andere hält das für Unsinn — und beide werden lauter.",
+      "discussion": {
+        "seconds": 90,
+        "prompt": "Zwei Minuten. Wer überzeugt wen? Wer hat bisher nur Fragen gestellt und nie selbst etwas gesagt?"
+      }
+    },
+    {
+      "id": "a2_gestaendnis",
+      "act": 2,
+      "weight": 5,
+      "title": "Ein halbes Geständnis",
+      "textTemplate": "Der Druck wird zu groß. Irgendwer muss jetzt etwas zugeben — irgendetwas.\nEs muss ja nicht der Mord sein.",
+      "prompt": {
+        "title": "Was gibst du zu?",
+        "description": "Jede Beichte macht menschlich. Und angreifbar.",
+        "choices": [
+          {
+            "id": "confess_small",
+            "label": "Eine harmlose Lüge einräumen",
+            "outcomeText": "Du gibst zu, bei einer Kleinigkeit geschwindelt zu haben. Der Rest glaubt dir jetzt eher — oder weniger.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": -1 }, { "remember": "gestanden" }]
+          },
+          {
+            "id": "confess_motive",
+            "label": "Zugeben, dass du ein Motiv hattest",
+            "outcomeText": "„Ja, ich hatte einen Grund, ihn zu hassen.\" Mutig. Sehr mutig.",
+            "effects": [{ "points": 28 }, { "variable": "verdacht", "delta": 3 }, { "remember": "motiv" }]
+          },
+          {
+            "id": "confess_nothing",
+            "label": "Nichts zugeben (1 Schluck)",
+            "outcomeText": "Du trinkst statt zu reden. Die Runde zieht ihre eigenen Schlüsse.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 12 }, { "variable": "verdacht", "delta": 1 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_zweiter_toter",
+      "act": 2,
+      "closing": true,
+      "weight": 10,
+      "requires": [{ "minPlayers": 5 }],
+      "title": "Es gibt einen zweiten Toten",
+      "textTemplate": "Ein dumpfer Schlag aus dem Schlafwagen. Als ihr die Tür aufbrecht, ist es zu spät.\nWer auch immer das war — er wusste zu viel.\n{{memory:beteuert|Jemand}} hatte noch vor einer Stunde sein Alibi beteuert. Jetzt wird nachgezählt.",
+      "prompt": {
+        "title": "Wer geht als Nächstes?",
+        "description": "Die Runde bestimmt, wer im Schlafwagen gefunden wird. Wer geht, spielt als Geist weiter — mit halber Stimme und vollem Rederecht.",
+        "choices": [
+          {
+            "id": "sacrifice_self",
+            "label": "Dich selbst anbieten",
+            "outcomeText": "Du gehst. Aber du bist nicht weg — von jetzt an redest du aus dem Off mit.",
+            "effects": [{ "points": 30 }, { "eliminate": "self" }, { "variable": "panik", "delta": 2 }]
+          },
+          {
+            "id": "point_at",
+            "label": "Auf jemanden zeigen (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Die Runde folgt deinem Finger. Eine Person weniger am Tisch.",
+            "targetEliminates": true,
+            "effects": [{ "points": 20 }, { "eliminate": "target" }, { "variable": "verdacht", "delta": 2 }, { "remember": "geopfert" }]
+          },
+          {
+            "id": "protect",
+            "label": "Dagegenhalten — niemand geht (1 Schluck)",
+            "outcomeText": "„Wir verlieren niemanden mehr.\" Du trinkst darauf, und der Wagen beruhigt sich.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 22 }, { "variable": "panik", "delta": -2 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a2_stille",
+      "act": 2,
+      "closing": true,
+      "weight": 4,
+      "title": "Der Zug ruckt an",
+      "textTemplate": "Die Räder greifen wieder. Der Express setzt sich in Bewegung.\nBis zur Endstation bleibt Zeit für genau eine Entscheidung — und die will gut überlegt sein.",
+      "discussion": {
+        "seconds": 75,
+        "prompt": "Letzte Absprache vor der Endstation. Fasst zusammen, was ihr wirklich wisst — und was ihr nur glaubt."
+      }
+    },
+
+    {
+      "id": "a3_speisewagen",
+      "act": 3,
+      "opening": true,
+      "once": true,
+      "weight": 10,
+      "title": "Alle in den Speisewagen",
+      "textTemplate": "Der Detektiv versammelt alle im Speisewagen. Die Lichter der Endstation ziehen schon vorbei.\nEs gibt kein Entkommen mehr — nur noch eine letzte Gelegenheit, etwas zu sagen, was alles ändert.",
+      "prompt": {
+        "title": "Dein letztes Wort",
+        "description": "Was legst du auf den Tisch, bevor abgestimmt wird?",
+        "choices": [
+          {
+            "id": "final_evidence",
+            "label": "Deinen stärksten Hinweis nennen",
+            "outcomeText": "Du legst offen, was du weißt. Jetzt weiß es auch der Täter.",
+            "effects": [{ "points": 25 }, { "variable": "hinweise", "delta": 2 }]
+          },
+          {
+            "id": "final_accusation",
+            "label": "Eine offene Anklage (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Du zeigst auf eine Person und nennst sie beim Namen. Kein Zurück mehr.",
+            "effects": [{ "points": 25 }, { "variable": "verdacht", "delta": 3 }, { "remember": "angeklagt" }]
+          },
+          {
+            "id": "final_defense",
+            "label": "Dich selbst verteidigen",
+            "outcomeText": "Du erklärst deine Nacht Minute für Minute. Ob es reicht, entscheidet gleich die Runde.",
+            "effects": [{ "points": 20 }, { "variable": "verdacht", "delta": -2 }]
+          },
+          {
+            "id": "final_drink",
+            "label": "Auf den Baron trinken und schweigen (1 Schluck)",
+            "outcomeText": "Du hebst das Glas auf den Toten. Mehr sagst du nicht.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a3_letzte_beratung",
+      "act": 3,
+      "weight": 8,
+      "title": "Die letzte Beratung",
+      "textTemplate": "Draußen ziehen die ersten Bahnsteiglaternen vorbei. Auf dem Gleis warten Uniformen.\nWen ihr ihnen übergebt, entscheidet ihr jetzt.",
+      "discussion": {
+        "seconds": 90,
+        "prompt": "Letzte Runde. Jeder sagt in einem Satz, wen er für den Täter hält — und warum. Wer nichts sagt, macht sich verdächtig."
+      }
+    },
+    {
+      "id": "a3_alibi_faellt",
+      "act": 3,
+      "weight": 6,
+      "requires": [{ "var": "hinweise", "atLeast": 6 }],
+      "title": "Ein Alibi bricht",
+      "textTemplate": "Der Schaffner blättert ein letztes Mal in seiner Liste — und stutzt.\nEine Abteilnummer passt nicht zu einer Aussage von vorhin. Nur eine.\nEs ist kein Beweis. Aber es ist ein Riss.",
+      "prompt": {
+        "title": "Der Riss im Alibi",
+        "description": "Was macht ihr in den letzten Minuten damit?",
+        "choices": [
+          {
+            "id": "press",
+            "label": "Sofort nachbohren (Ziel wählen)",
+            "targetRequired": true,
+            "outcomeText": "Du hakst nach, bis die Person sich in einen Widerspruch redet.",
+            "effects": [{ "points": 30 }, { "variable": "hinweise", "delta": 2 }, { "variable": "verdacht", "delta": 3 }]
+          },
+          {
+            "id": "sit_on_it",
+            "label": "Für dich behalten",
+            "outcomeText": "Du sagst nichts. Wenn du richtig liegst, weißt du es gleich als Einziger.",
+            "effects": [{ "points": 22 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "a3_urteil",
+      "act": 3,
+      "closing": true,
+      "once": true,
+      "weight": 10,
+      "title": "Die Entlarvung",
+      "textTemplate": "Der Express läuft in die Endstation ein. Auf dem Bahnsteig warten die Gendarmen.\nEs gibt keine Zeit mehr für Fragen. Nur noch für ein Urteil.\nWer von euch hat den Baron auf dem Gewissen?",
+      "voting": {
+        "prompt": "Wer ist der Mörder im Mitternachts-Express?"
+      }
+    }
+  ],
+
+  "finale": {
+    "traitorRole": "Der Mörder 🪓",
+    "outcomes": {
+      "caught": {
+        "winnerTeam": "Die Passagiere & der Detektiv 🕵️‍♂️",
+        "title": "Fall gelöst!",
+        "summary": "Hervorragende Deduktion! {{traitor}} wurde als Mörder entlarvt und auf dem Bahnsteig den Gendarmen übergeben. Der Baron kann in Frieden ruhen — mit {{var:hinweise}} gesammelten Hinweisen habt ihr euch das redlich verdient.",
+        "penalties": [
+          { "who": "traitor", "sips": 4, "reason": "Als überführter Mörder im Express!" }
+        ]
+      },
+      "escaped": {
+        "winnerTeam": "Der Mörder 🪓",
+        "title": "Der Mörder entkommt!",
+        "summary": "Fatale Fehlentscheidung! {{condemned}} wurde fälschlicherweise abgeführt, während {{traitor}} mit den Juwelen des Barons im Schneetreiben verschwindet.",
+        "penalties": [
+          { "who": "condemned", "sips": 3, "reason": "Unschuldig im Zug verhaftet!" },
+          { "who": "others", "sips": 2, "reason": "Den echten Täter entkommen lassen!" }
+        ]
+      }
+    }
+  }
+}

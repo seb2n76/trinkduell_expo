@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Modal,
   View,
@@ -13,7 +13,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
 import { apiService } from "@/services/api";
 import { getStoryGame } from "@/games/stories";
-import { StoryGameId } from "@/games/storyEngine/types";
+import { ChapterChoice, PhaseInfo, StoryGameId, StoryRoom } from "@/games/storyEngine/types";
 import { ProofPhotoButton } from "./ProofPhotoButton";
 
 interface StoryGameShellProps {
@@ -26,6 +26,17 @@ interface StoryGameShellProps {
   onExit: () => void;
 }
 
+/**
+ * Anzeige einer laufenden Story-Runde.
+ *
+ * Der Server ist die Spielinstanz: er verteilt Rollen, rendert Kapitel,
+ * rechnet Punkte und Team-Variablen und wertet das Finale aus. Diese
+ * Komponente zeigt an und schickt Absichten zurück — mehr nicht.
+ *
+ * Bis August 2026 lag die Logik hier: der Client des Hosts baute die Kapitel
+ * und berechnete das Finale. Die Punkte einer Auswahl kamen deshalb nie an,
+ * die HP-Leiste bewegte sich nie, und wer Host war, bestimmte den Ausgang.
+ */
 export function StoryGameShell({
   visible,
   roomCode,
@@ -35,26 +46,68 @@ export function StoryGameShell({
   onExit,
 }: StoryGameShellProps) {
   const c = useThemeColors();
-  const [room, setRoom] = useState<any>(initialRoomData);
+  const [room, setRoom] = useState<StoryRoom | null>(initialRoomData);
   const [showSecretRole, setShowSecretRole] = useState(false);
   const [selectedVoteTarget, setSelectedVoteTarget] = useState<string | null>(null);
-  const [actionDone, setActionDone] = useState(false);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-  const [advancing, setAdvancing] = useState(false);
+  const [pendingChoice, setPendingChoice] = useState<ChapterChoice | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [claimedPoints, setClaimedPoints] = useState<number | null>(null);
+  // Abrechnen genau einmal pro Runde, auch wenn der Poll das Finale mehrfach
+  // liefert. Der Server ist zwar idempotent, aber ein Request alle 2,5 s wäre
+  // trotzdem Unsinn.
+  const claimAttempted = useRef(false);
+
+  // Versatz zwischen dieser Geraeteuhr und der Serveruhr. Die Fristen kommen
+  // als absolute Serverzeit; ohne diesen Abgleich zeigt jedes Handy einen
+  // anderen Countdown, und in einer Gruppe faellt genau das sofort auf.
+  const serverOffset = useRef(0);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!visible) return;
+    const tick = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(tick);
+  }, [visible]);
 
   const gameId = (room?.gameId || "court_treason") as StoryGameId;
-  const gameDef = getStoryGame(gameId);
+  const meta = getStoryGame(gameId);
 
-  const me = room?.players?.find((p: any) => p.id === myPlayerId);
-  const isHost = me?.isHost || room?.hostId === myPlayerId;
-  const currentChapter = room?.gameState?.currentChapter;
+  const me = room?.players?.find((p) => p.id === myPlayerId);
+  const isHost = room?.isHost || room?.hostId === myPlayerId;
+  const chapter = room?.gameState?.currentChapter || null;
+  const isFinale = room?.status === "finale";
+  const finale = room?.gameState?.finale || null;
+  const myChoice = room?.gameState?.myChoice || null;
+  const healthPoints = room?.gameState?.healthPoints;
+  const phase: PhaseInfo | null = room?.gameState?.phase || null;
+  const reveals = room?.gameState?.reveals || null;
 
-  // Poll room updates
+  const msLeft = phase ? Math.max(0, phase.deadlineAt - (now + serverOffset.current)) : 0;
+  const secondsLeft = Math.ceil(msLeft / 1000);
+  const phaseProgress = phase ? Math.max(0, Math.min(1, msLeft / (phase.seconds * 1000))) : 0;
+  const isChoicePhase = phase?.kind === "choice";
+  const isRevealPhase = phase?.kind === "reveal";
+  const isVotePhase = phase?.kind === "vote";
+  const isDiscussionPhase = phase?.kind === "discussion";
+
+  // Rollenszene: nur eine bestimmte Rolle handelt. Wer sie nicht hat, sieht
+  // zu und redet mit — das ist die Asymmetrie, aus der Diskussion entsteht.
+  const forRole = chapter?.prompt?.forRole || null;
+  const isMyScene = !forRole || me?.role === forRole;
+  const sceneOwner = forRole
+    ? room?.players?.find((p) => p.role === forRole) || null
+    : null;
+  const amGhost = !!me?.eliminated;
+  const canAct = isChoicePhase && isMyScene && !amGhost;
+
   const fetchRoomState = useCallback(async () => {
     if (!roomCode) return;
     try {
       const res = await apiService.getGameRoom(roomCode, myPlayerToken);
       if (res && res.success && res.room) {
+        if (res.room.serverTime) {
+          serverOffset.current = res.room.serverTime - Date.now();
+        }
         setRoom(res.room);
       }
     } catch (err) {
@@ -68,93 +121,77 @@ export function StoryGameShell({
     return () => clearInterval(interval);
   }, [visible, roomCode, fetchRoomState]);
 
-  // Handle player action submission
-  const handleAction = async (choice: any, targetId?: string) => {
-    triggerHaptic("medium");
-    setActionDone(true);
-    setActionFeedback(choice.outcomeText);
+  // Punkte gutschreiben, sobald das Finale steht.
+  useEffect(() => {
+    if (!isFinale || claimAttempted.current) return;
+    claimAttempted.current = true;
+    apiService
+      .claimGameRoomPoints(roomCode, myPlayerToken)
+      .then((res) => {
+        if (res.awarded) setClaimedPoints(res.points);
+      })
+      .catch(() => {
+        // Gäste ohne Konto bekommen hier eine Absage — das ist kein Fehler,
+        // sie haben nur nichts, wo die Punkte hinkönnten.
+      });
+  }, [isFinale, roomCode, myPlayerToken]);
 
+  /** Auswahl abschicken. Braucht die Auswahl ein Ziel, kommt erst der Picker. */
+  const chooseOption = async (choice: ChapterChoice, targetId?: string) => {
+    if (choice.targetRequired && !targetId) {
+      triggerHaptic("light");
+      setPendingChoice(choice);
+      return;
+    }
+
+    triggerHaptic("medium");
+    setBusy(true);
+    setError(null);
     try {
-      await apiService.submitGameRoomAction(roomCode, myPlayerToken, "player_choice", {
+      const res = await apiService.submitGameRoomAction(roomCode, myPlayerToken, "choice", {
         choiceId: choice.id,
         targetPlayerId: targetId,
-        sips: choice.sips || 0,
-        damage: choice.damage || 0,
       });
-
-      if (choice.sips && choice.sips > 0) {
-        await apiService.submitGameRoomAction(roomCode, myPlayerToken, "drink", {
-          count: choice.sips,
-        });
-      }
-    } catch (err) {
-      console.warn("Error submitting action:", err);
+      if (res?.room) setRoom(res.room);
+      setPendingChoice(null);
+    } catch (err: any) {
+      setError(err?.message || "Die Auswahl kam nicht durch.");
+    } finally {
+      setBusy(false);
     }
   };
 
-  // Handle vote submission
   const handleVote = async (targetPlayerId: string) => {
     triggerHaptic("heavy");
     setSelectedVoteTarget(targetPlayerId);
-
     try {
-      await apiService.submitGameRoomAction(roomCode, myPlayerToken, "vote", {
+      const res = await apiService.submitGameRoomAction(roomCode, myPlayerToken, "vote", {
         targetPlayerId,
       });
+      if (res?.room) setRoom(res.room);
     } catch (err) {
       console.warn("Error submitting vote:", err);
     }
   };
 
-  // Host advances chapter
-  const handleNextChapter = async () => {
-    if (!isHost || !room) return;
-    setAdvancing(true);
+  /**
+   * Der Host löst den Wechsel aus — welches Kapitel folgt und wie das Finale
+   * ausgeht, entscheidet der Server.
+   */
+  const handleNext = async () => {
+    if (!isHost) return;
+    setBusy(true);
     triggerHaptic("medium");
-
     try {
-      const nextIndex = (room.currentChapterIndex || 0) + 1;
-
-      if (nextIndex >= gameDef.chapters.length) {
-        // Finale reached! Evaluate votes and end
-        const finaleResult = gameDef.evaluateFinale(
-          room.players,
-          room.gameState?.votes || {},
-          room.gameState?.customVariables || {}
-        );
-
-        await apiService.nextGameRoomChapter(roomCode, myPlayerToken, {
-          nextStatus: "finale",
-          outcomeSummary: finaleResult.summary,
-        });
-      } else {
-        // Next chapter
-        const nextChap = gameDef.chapters[nextIndex];
-        const nextChapterData = {
-          id: nextChap.id,
-          act: nextChap.act,
-          title: nextChap.title,
-          atmosphereHint: nextChap.atmosphereHint,
-          text: nextChap.generateText(room.players, room.gameState?.customVariables || {}),
-          interactivePrompt: nextChap.interactivePrompt,
-          hasVoting: nextChap.hasVoting,
-          votingPrompt: nextChap.votingPrompt,
-        };
-
-        await apiService.nextGameRoomChapter(roomCode, myPlayerToken, {
-          nextStatus: "story_chapter",
-          nextChapterData,
-          outcomeSummary: `Kapitel ${nextChap.act} erreicht`,
-        });
-        setActionDone(false);
-        setActionFeedback(null);
-        setSelectedVoteTarget(null);
-      }
-      await fetchRoomState();
+      const res = await apiService.nextGameRoomChapter(roomCode, myPlayerToken, {});
+      if (res?.room) setRoom(res.room);
+      setSelectedVoteTarget(null);
+      setPendingChoice(null);
+      setError(null);
     } catch (err: any) {
-      console.error("Error advancing chapter:", err);
+      setError(err?.message || "Der Wechsel hat nicht geklappt.");
     } finally {
-      setAdvancing(false);
+      setBusy(false);
     }
   };
 
@@ -168,14 +205,11 @@ export function StoryGameShell({
     onExit();
   };
 
-  const isFinale = room?.status === "finale";
-  const finaleData = isFinale
-    ? gameDef.evaluateFinale(
-        room.players,
-        room.gameState?.finalVotes || room.gameState?.votes || {},
-        room.gameState?.customVariables || {}
-      )
-    : null;
+  const others = (room?.players || []).filter((p) => p.id !== myPlayerId);
+  const chosenCount = room?.gameState?.choiceCount || 0;
+  const totalPlayers = room?.players?.length || 0;
+  // Geister entscheiden nicht mehr mit — sie dürfen den Zähler nicht blockieren.
+  const livingCount = (room?.players || []).filter((p) => !p.eliminated).length;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
@@ -183,204 +217,409 @@ export function StoryGameShell({
         <View className="w-full max-w-2xl flex-1">
           {/* Top Bar */}
           <View className="flex-row items-center justify-between mb-3">
-          <TouchableOpacity onPress={handleExit} className="flex-row items-center p-1">
-            <Ionicons name="close-circle-outline" size={20} color={c.warning} />
-            <Text className="text-warning text-xs font-black uppercase ml-1">Beenden</Text>
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handleExit} className="flex-row items-center p-1">
+              <Ionicons name="close-circle-outline" size={20} color={c.warning} />
+              <Text className="text-warning text-xs font-black uppercase ml-1">Beenden</Text>
+            </TouchableOpacity>
 
-          <View className="items-center">
-            <Text className="text-content text-xs font-black uppercase tracking-wider">
-              {gameDef.title}
-            </Text>
-            <Text className="text-content-faint text-[9px] font-bold">
-              Raum: {roomCode}
-            </Text>
-          </View>
-
-          <View className="items-center mb-1">
-            <ProofPhotoButton context={gameDef.title} />
-          </View>
-        </View>
-
-        {/* Co-Op Health Bar (e.g. Haunted Manor) */}
-        {room?.gameState?.healthPoints !== undefined && (
-          <View className="bg-surface border border-line rounded-2xl p-2.5 mb-3 flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              <Ionicons name="heart" size={16} color={c.danger} />
-              <Text className="text-content text-xs font-black ml-1.5">Team-HP</Text>
+            <View className="items-center">
+              <Text className="text-content text-xs font-black uppercase tracking-wider">
+                {meta.title}
+              </Text>
+              <Text className="text-content-faint text-[9px] font-bold">Raum: {roomCode}</Text>
             </View>
-            <View className="flex-1 mx-3 h-2 bg-bg rounded-full overflow-hidden">
-              <View
-                style={{ width: `${Math.max(0, Math.min(100, room.gameState.healthPoints))}%` }}
-                className={`h-full rounded-full ${
-                  room.gameState.healthPoints > 40 ? "bg-success" : "bg-danger"
-                }`}
-              />
-            </View>
-            <Text className="text-content text-xs font-black">{room.gameState.healthPoints}%</Text>
-          </View>
-        )}
 
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          {/* Secret Role Card */}
-          {me?.role && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                triggerHaptic("light");
-                setShowSecretRole(!showSecretRole);
-              }}
-              className="bg-surface border border-accent/40 rounded-2xl p-3.5 mb-4 shadow-md"
-            >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <Ionicons
-                    name={showSecretRole ? "eye-outline" : "eye-off-outline"}
-                    size={18}
-                    color={c.accent}
-                  />
-                  <Text className="text-accent text-xs font-black uppercase tracking-wider ml-2">
-                    {showSecretRole ? "Geheime Rolle: " + me.role : "Geheime Rolle ansehen (Tippen)"}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={showSecretRole ? "chevron-up" : "chevron-down"}
-                  size={14}
-                  color={c.contentFaint}
+            <View className="items-center mb-1">
+              <ProofPhotoButton context={meta.title} />
+            </View>
+          </View>
+
+          {/* Phasenuhr. Ersetzt das frühere "Warte auf die Entscheidung des
+              Hosts..." — alle entscheiden gleichzeitig, der Server löst
+              gebündelt auf, sobald alle durch sind oder die Frist abläuft. */}
+          {phase && !isFinale && (
+            <View className="mb-3">
+              <View className="flex-row items-center justify-between mb-1.5">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest">
+                  {isDiscussionPhase
+                    ? "Redet miteinander"
+                    : isChoicePhase
+                      ? forRole
+                        ? `${forRole} ist am Zug`
+                        : "Alle entscheiden gleichzeitig"
+                      : isRevealPhase
+                        ? "Auflösung"
+                        : "Abstimmung läuft"}
+                </Text>
+                <Text
+                  className={`text-[10px] font-black ${
+                    secondsLeft <= 5 ? "text-danger" : "text-content-faint"
+                  }`}
+                >
+                  {secondsLeft}s
+                </Text>
+              </View>
+              <View className="h-1.5 bg-surface rounded-full overflow-hidden">
+                <View
+                  style={{ width: `${phaseProgress * 100}%` }}
+                  className={`h-full rounded-full ${
+                    secondsLeft <= 5 ? "bg-danger" : "bg-accent"
+                  }`}
                 />
               </View>
-
-              {showSecretRole && me.secretPrompt && (
-                <View className="mt-2.5 pt-2.5 border-t border-line">
-                  <Text className="text-content text-xs font-medium leading-relaxed">
-                    {me.secretPrompt}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
+            </View>
           )}
 
-          {/* FINALE SCREEN */}
-          {isFinale && finaleData ? (
-            <View className="bg-surface border-2 border-accent rounded-3xl p-6 shadow-2xl mb-6 items-center">
-              <View className="w-14 h-14 rounded-full bg-accent/20 border border-accent items-center justify-center mb-3">
-                <Ionicons name="trophy" size={28} color={c.accent} />
+          {/* Team-HP — bewegt sich jetzt wirklich, weil der Server rechnet. */}
+          {healthPoints !== undefined && (
+            <View className="bg-surface border border-line rounded-2xl p-2.5 mb-3 flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <Ionicons name="heart" size={16} color={c.danger} />
+                <Text className="text-content text-xs font-black ml-1.5">Team-HP</Text>
               </View>
-              <Text className="text-accent text-[10px] font-black uppercase tracking-widest mb-1">
-                Gewinner-Team
-              </Text>
-              <Text className="text-content text-xl font-black text-center mb-2">
-                {finaleData.winnerTeam}
-              </Text>
-              <Text className="text-content-faint text-xs font-medium text-center leading-relaxed mb-5">
-                {finaleData.summary}
-              </Text>
+              <View className="flex-1 mx-3 h-2 bg-bg rounded-full overflow-hidden">
+                <View
+                  style={{ width: `${Math.max(0, Math.min(100, healthPoints))}%` }}
+                  className={`h-full rounded-full ${
+                    healthPoints > 40 ? "bg-success" : "bg-danger"
+                  }`}
+                />
+              </View>
+              <Text className="text-content text-xs font-black">{healthPoints}%</Text>
+            </View>
+          )}
 
-              {/* Drinking Penalties */}
-              <View className="w-full bg-bg border border-line rounded-2xl p-4">
-                <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-2.5">
-                  Trink-Urteile 🍻
+          <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+            {/* Geheime Rolle */}
+            {me?.role && (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  triggerHaptic("light");
+                  setShowSecretRole(!showSecretRole);
+                }}
+                className="bg-surface border border-accent/40 rounded-2xl p-3.5 mb-4 shadow-md"
+              >
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center flex-1 mr-2">
+                    <Ionicons
+                      name={showSecretRole ? "eye-outline" : "eye-off-outline"}
+                      size={18}
+                      color={c.accent}
+                    />
+                    <Text className="text-accent text-xs font-black uppercase tracking-wider ml-2 flex-1">
+                      {showSecretRole ? "Geheime Rolle: " + me.role : "Geheime Rolle ansehen (Tippen)"}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={showSecretRole ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color={c.contentFaint}
+                  />
+                </View>
+
+                {showSecretRole && (
+                  <View className="mt-2.5 pt-2.5 border-t border-line">
+                    {me.secretPrompt && (
+                      <Text className="text-content text-xs font-medium leading-relaxed">
+                        {me.secretPrompt}
+                      </Text>
+                    )}
+                    {/* Die eigene Beobachtung. Jede Person sieht einen anderen
+                        Ausschnitt — genau eine hat wirklich etwas gesehen. */}
+                    {me.observation && (
+                      <View className="mt-3 pt-3 border-t border-line">
+                        <View className="flex-row items-center mb-1.5">
+                          <Ionicons name="eye-outline" size={13} color={c.warning} />
+                          <Text className="text-warning text-[9px] font-black uppercase tracking-widest ml-1.5">
+                            Was du gesehen hast
+                          </Text>
+                        </View>
+                        <Text className="text-content text-xs font-medium leading-relaxed">
+                          {me.observation}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Geisterstatus. Wer raus ist, legt sonst das Handy weg — und
+                zieht die halbe Runde mit. */}
+            {amGhost && !isFinale && (
+              <View className="bg-surface border border-warning/40 rounded-2xl p-3.5 mb-4">
+                <View className="flex-row items-center mb-1">
+                  <Ionicons name="skull-outline" size={16} color={c.warning} />
+                  <Text className="text-warning text-xs font-black uppercase tracking-wider ml-2">
+                    Du bist raus — aber nicht weg
+                  </Text>
+                </View>
+                <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                  Du handelst nicht mehr mit, redest aber weiter mit und stimmst
+                  am Ende ab. Deine Stimme zählt halb.
                 </Text>
-                {finaleData.drinkPenalties.map((penalty, idx) => (
-                  <View
-                    key={idx}
-                    className="flex-row items-center justify-between py-1.5 border-b border-line last:border-0"
-                  >
-                    <View className="flex-1 mr-2">
-                      <Text className="text-content text-xs font-bold">{penalty.playerName}</Text>
-                      <Text className="text-content-faint text-[9px]">{penalty.reason}</Text>
+              </View>
+            )}
+
+            {isFinale && finale ? (
+              /* ── FINALE ─────────────────────────────────────────────── */
+              <View className="bg-surface border-2 border-accent rounded-3xl p-6 shadow-2xl mb-6 items-center">
+                <View className="w-14 h-14 rounded-full bg-accent/20 border border-accent items-center justify-center mb-3">
+                  <Ionicons name="trophy" size={28} color={c.accent} />
+                </View>
+                <Text className="text-accent text-[10px] font-black uppercase tracking-widest mb-1">
+                  {finale.title}
+                </Text>
+                <Text className="text-content text-xl font-black text-center mb-2">
+                  {finale.winnerTeam}
+                </Text>
+                <Text className="text-content-faint text-xs font-medium text-center leading-relaxed mb-5">
+                  {finale.summary}
+                </Text>
+
+                {claimedPoints !== null && (
+                  <View className="w-full bg-success/10 border border-success/30 rounded-2xl p-3 mb-4 flex-row items-center justify-center">
+                    <Ionicons name="star" size={16} color={c.success} />
+                    <Text className="text-success text-xs font-black ml-2">
+                      +{claimedPoints} XP für dein Profil
+                    </Text>
+                  </View>
+                )}
+
+                <View className="w-full bg-bg border border-line rounded-2xl p-4">
+                  <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-2.5">
+                    Trink-Urteile 🍻
+                  </Text>
+                  {finale.drinkPenalties.map((penalty, idx) => (
+                    <View
+                      key={idx}
+                      className="flex-row items-center justify-between py-1.5 border-b border-line last:border-0"
+                    >
+                      <View className="flex-1 mr-2">
+                        <Text className="text-content text-xs font-bold">{penalty.playerName}</Text>
+                        <Text className="text-content-faint text-[9px]">{penalty.reason}</Text>
+                      </View>
+                      <View className="bg-danger/20 px-2 py-0.5 rounded-md">
+                        <Text className="text-danger text-xs font-black">
+                          {penalty.sips}x Schluck
+                        </Text>
+                      </View>
                     </View>
-                    <View className="bg-danger/20 px-2 py-0.5 rounded-md">
-                      <Text className="text-danger text-xs font-black">{penalty.sips}x Schluck</Text>
+                  ))}
+                  <Text className="text-content-faint text-[9px] font-medium mt-3 leading-relaxed">
+                    Wasser zählt genauso. Wer aussetzen will, setzt aus.
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              /* ── KAPITEL ────────────────────────────────────────────── */
+              <View>
+                {chapter && (
+                  <View className="bg-surface border border-line rounded-3xl p-6 shadow-xl mb-4">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <Text className="text-accent text-[10px] font-black uppercase tracking-wider flex-1 mr-2">
+                        {chapter.title}
+                      </Text>
+                      <View className="bg-bg px-2 py-0.5 rounded-full border border-line">
+                        <Text className="text-content-faint text-[9px] font-bold">
+                          Akt {chapter.act}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text className="text-content text-base font-bold leading-relaxed mb-3">
+                      {chapter.text}
+                    </Text>
+
+                    {chapter.atmosphereHint && (
+                      <Text className="text-content-faint text-[11px] italic font-medium">
+                        &quot;{chapter.atmosphereHint}&quot;
+                      </Text>
+                    )}
+                  </View>
+                )}
+
+                {error && (
+                  <View className="bg-danger/10 border border-danger/30 p-3.5 rounded-2xl mb-4 flex-row items-center">
+                    <Ionicons name="alert-circle" size={18} color={c.danger} />
+                    <Text className="text-danger text-xs font-bold ml-2 flex-1">{error}</Text>
+                  </View>
+                )}
+
+                {/* Ergebnis der eigenen Auswahl — kommt vom Server und
+                    ueberlebt damit auch einen Reconnect. */}
+                {myChoice && (
+                  <View className="bg-success/10 border border-success/30 p-3.5 rounded-2xl mb-4 flex-row items-center">
+                    <Ionicons name="checkmark-circle" size={18} color={c.success} />
+                    <Text className="text-success text-xs font-bold ml-2 flex-1">
+                      {myChoice.outcomeText}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Ziel-Auswahl fuer Optionen, die jemanden bestimmen */}
+                {pendingChoice && (
+                  <View className="bg-surface border-2 border-accent/50 rounded-3xl p-5 mb-4 shadow-lg">
+                    <Text className="text-content text-xs font-black uppercase tracking-wide mb-1">
+                      Wen trifft es?
+                    </Text>
+                    <Text className="text-content-faint text-[11px] font-medium mb-3">
+                      {pendingChoice.label}
+                    </Text>
+                    <View className="gap-2">
+                      {others.map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          activeOpacity={0.85}
+                          disabled={busy}
+                          onPress={() => chooseOption(pendingChoice, p.id)}
+                          className="bg-bg border border-line p-3 rounded-xl flex-row items-center justify-between"
+                        >
+                          <Text className="text-content text-xs font-bold">{p.name}</Text>
+                          <Ionicons name="arrow-forward" size={14} color={c.accent} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TouchableOpacity onPress={() => setPendingChoice(null)} className="mt-3 py-2">
+                      <Text className="text-content-faint text-[11px] font-bold text-center">
+                        Doch etwas anderes wählen
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Auflösung: alle Entscheidungen auf einmal. Der Moment, auf
+                    den die Runde wartet — vorher gab es ihn gar nicht, weil
+                    jeder seine Wahl nur für sich sah. */}
+                {isRevealPhase && reveals && (
+                  <View className="bg-surface border-2 border-accent/50 rounded-3xl p-5 mb-4 shadow-lg">
+                    <Text className="text-accent text-[10px] font-black uppercase tracking-widest mb-3">
+                      So hat die Runde entschieden
+                    </Text>
+                    <View className="gap-2.5">
+                      {reveals.map((r) => (
+                        <View key={r.playerId} className="bg-bg border border-line rounded-2xl p-3">
+                          <View className="flex-row items-center justify-between mb-1">
+                            <Text className="text-content text-xs font-black">{r.playerName}</Text>
+                            {r.targetName && (
+                              <View className="bg-warning/20 px-2 py-0.5 rounded-md">
+                                <Text className="text-warning text-[9px] font-black">
+                                  → {r.targetName}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          {r.choiceId ? (
+                            <>
+                              <Text className="text-content-muted text-[11px] font-bold mb-1">
+                                {r.label}
+                              </Text>
+                              <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                                {r.outcomeText}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text className="text-content-faint text-[11px] italic font-medium">
+                              Hat sich nicht entschieden.
+                            </Text>
+                          )}
+                        </View>
+                      ))}
                     </View>
                   </View>
-                ))}
-              </View>
-            </View>
-          ) : (
-            /* STORY CHAPTER VIEW */
-            <View>
-              {/* Chapter Header */}
-              {currentChapter && (
-                <View className="bg-surface border border-line rounded-3xl p-6 shadow-xl mb-4">
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-accent text-[10px] font-black uppercase tracking-wider">
-                      {currentChapter.title}
-                    </Text>
-                    <View className="bg-bg px-2 py-0.5 rounded-full border border-line">
-                      <Text className="text-content-faint text-[9px] font-bold">
-                        Akt {currentChapter.act}
+                )}
+
+                {/* Diskussionsphase: keine Eingabe, nur Redezeit mit Frist.
+                    Ohne die versandet die Runde oder redet gar nicht erst. */}
+                {isDiscussionPhase && chapter?.discussion && (
+                  <View className="bg-surface border-2 border-accent/40 rounded-3xl p-5 mb-4 shadow-lg">
+                    <View className="flex-row items-center mb-2">
+                      <Ionicons name="chatbubbles-outline" size={16} color={c.accent} />
+                      <Text className="text-accent text-[10px] font-black uppercase tracking-widest ml-2">
+                        Redezeit
                       </Text>
                     </View>
-                  </View>
-
-                  <Text className="text-content text-base font-bold leading-relaxed mb-3">
-                    {currentChapter.text}
-                  </Text>
-
-                  {currentChapter.atmosphereHint && (
-                    <Text className="text-content-faint text-[11px] italic font-medium">
-                      &quot;{currentChapter.atmosphereHint}&quot;
-                    </Text>
-                  )}
-                </View>
-              )}
-
-              {/* Feedback after action */}
-              {actionFeedback && (
-                <View className="bg-success/10 border border-success/30 p-3.5 rounded-2xl mb-4 flex-row items-center">
-                  <Ionicons name="checkmark-circle" size={18} color={c.success} />
-                  <Text className="text-success text-xs font-bold ml-2 flex-1">
-                    {actionFeedback}
-                  </Text>
-                </View>
-              )}
-
-              {/* Interactive Choices (if available in this chapter) */}
-              {currentChapter?.interactivePrompt && !actionDone && (
-                <View className="bg-surface border border-line rounded-3xl p-5 mb-4 shadow-lg">
-                  <Text className="text-content text-xs font-black uppercase tracking-wide mb-1">
-                    {currentChapter.interactivePrompt.title}
-                  </Text>
-                  <Text className="text-content-faint text-[11px] font-medium mb-3">
-                    {currentChapter.interactivePrompt.description}
-                  </Text>
-
-                  <View className="gap-2">
-                    {currentChapter.interactivePrompt.choices.map((choice: any) => (
-                      <TouchableOpacity
-                        key={choice.id}
-                        activeOpacity={0.85}
-                        onPress={() => handleAction(choice)}
-                        className="bg-bg border border-line p-3 rounded-xl flex-row items-center justify-between active:border-accent"
-                      >
-                        <Text className="text-content text-xs font-bold flex-1 mr-2">
-                          {choice.label}
-                        </Text>
-                        <Ionicons name="arrow-forward" size={14} color={c.accent} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Voting Phase (if active in this chapter) */}
-              {currentChapter?.hasVoting && (
-                <View className="bg-surface border-2 border-warning/40 rounded-3xl p-5 mb-4 shadow-xl">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="finger-print" size={16} color={c.warning} />
-                    <Text className="text-warning text-xs font-black uppercase tracking-wider ml-1.5">
-                      Abstimmung
+                    <Text className="text-content text-sm font-bold leading-relaxed">
+                      {chapter.discussion.prompt}
                     </Text>
                   </View>
-                  <Text className="text-content text-sm font-black mb-3">
-                    {currentChapter.votingPrompt || "Wen wählst du?"}
-                  </Text>
+                )}
 
-                  <View className="gap-2">
-                    {room?.players
-                      ?.filter((p: any) => p.id !== myPlayerId)
-                      ?.map((candidate: any) => {
+                {/* Rollenszene, aber nicht deine: zusehen und mitreden. */}
+                {isChoicePhase && forRole && !isMyScene && (
+                  <View className="bg-surface border border-line rounded-3xl p-5 mb-4">
+                    <View className="flex-row items-center mb-1.5">
+                      <Ionicons name="hourglass-outline" size={15} color={c.contentFaint} />
+                      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest ml-2">
+                        Nicht deine Szene
+                      </Text>
+                    </View>
+                    <Text className="text-content text-sm font-bold leading-relaxed mb-1">
+                      {sceneOwner ? `${sceneOwner.name} entscheidet als ${forRole}.` : `${forRole} entscheidet.`}
+                    </Text>
+                    <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                      Hör genau zu. Was hier gesagt wird, kannst du später gegen
+                      jemanden verwenden.
+                    </Text>
+                  </View>
+                )}
+
+                {/* Auswahl des Kapitels */}
+                {canAct && chapter?.prompt && !myChoice && !pendingChoice && (
+                  <View className="bg-surface border border-line rounded-3xl p-5 mb-4 shadow-lg">
+                    <Text className="text-content text-xs font-black uppercase tracking-wide mb-1">
+                      {chapter.prompt.title}
+                    </Text>
+                    <Text className="text-content-faint text-[11px] font-medium mb-3">
+                      {chapter.prompt.description}
+                    </Text>
+
+                    <View className="gap-2">
+                      {chapter.prompt.choices.map((choice) => (
+                        <TouchableOpacity
+                          key={choice.id}
+                          activeOpacity={0.85}
+                          disabled={busy}
+                          onPress={() => chooseOption(choice)}
+                          className="bg-bg border border-line p-3 rounded-xl flex-row items-center justify-between active:border-accent"
+                        >
+                          <Text className="text-content text-xs font-bold flex-1 mr-2">
+                            {choice.label}
+                          </Text>
+                          <Ionicons
+                            name={choice.targetRequired ? "person-add-outline" : "arrow-forward"}
+                            size={14}
+                            color={c.accent}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Wer ist schon durch? Ohne zu verraten, womit. */}
+                {isChoicePhase && chapter?.prompt && !forRole && (
+                  <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-4">
+                    {chosenCount} von {livingCount} haben entschieden
+                  </Text>
+                )}
+
+                {/* Abstimmung */}
+                {isVotePhase && chapter?.voting && (
+                  <View className="bg-surface border-2 border-warning/40 rounded-3xl p-5 mb-4 shadow-xl">
+                    <View className="flex-row items-center mb-1">
+                      <Ionicons name="finger-print" size={16} color={c.warning} />
+                      <Text className="text-warning text-xs font-black uppercase tracking-wider ml-1.5">
+                        Abstimmung
+                      </Text>
+                    </View>
+                    <Text className="text-content text-sm font-black mb-3">
+                      {chapter.voting.prompt}
+                    </Text>
+
+                    <View className="gap-2">
+                      {others.map((candidate) => {
                         const isSelected = selectedVoteTarget === candidate.id;
                         return (
                           <TouchableOpacity
@@ -388,21 +627,26 @@ export function StoryGameShell({
                             activeOpacity={0.85}
                             onPress={() => handleVote(candidate.id)}
                             className={`flex-row items-center justify-between p-3 rounded-xl border ${
-                              isSelected
-                                ? "bg-warning/20 border-warning"
-                                : "bg-bg border-line"
+                              isSelected ? "bg-warning/20 border-warning" : "bg-bg border-line"
                             }`}
                           >
                             <View className="flex-row items-center">
                               <View className="w-7 h-7 rounded-full bg-surface border border-line items-center justify-center mr-2.5 overflow-hidden">
                                 {candidate.avatar ? (
-                                  <Image source={{ uri: candidate.avatar }} className="w-full h-full" />
+                                  <Image
+                                    source={{ uri: candidate.avatar }}
+                                    className="w-full h-full"
+                                  />
                                 ) : (
                                   <Ionicons name="person" size={14} color={c.contentFaint} />
                                 )}
                               </View>
-                              <Text className="text-content text-xs font-bold">
-                                {candidate.name}
+                              <Text
+                                className={`text-xs font-bold ${
+                                  candidate.eliminated ? "text-content-faint" : "text-content"
+                                }`}
+                              >
+                                {candidate.eliminated ? `💀 ${candidate.name}` : candidate.name}
                               </Text>
                             </View>
                             {isSelected ? (
@@ -413,47 +657,74 @@ export function StoryGameShell({
                           </TouchableOpacity>
                         );
                       })}
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+                    </View>
 
-        {/* Host Control Action Bar */}
-        <View className="py-4 border-t border-line">
-          {isHost ? (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={isFinale ? handleExit : handleNextChapter}
-              disabled={advancing}
-              className="w-full bg-accent py-4 rounded-2xl items-center justify-center flex-row shadow-lg disabled:opacity-40"
-            >
-              {advancing ? (
-                <ActivityIndicator size="small" color={c.onAccent} />
-              ) : (
-                <>
-                  <Ionicons
-                    name={isFinale ? "checkmark-done" : "arrow-forward"}
-                    size={18}
-                    color={c.onAccent}
-                  />
+                    <Text className="text-content-faint text-[10px] font-bold text-center mt-3">
+                      {room?.gameState?.voteCount || 0} von {totalPlayers} haben abgestimmt
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Fußleiste.
+              Der Host taktet die Runde nicht mehr — das macht die Frist. Sein
+              Knopf ist nur noch die Notbremse, wenn die Gruppe schneller fertig
+              ist als die Uhr oder jemand weggegangen ist und blockiert. */}
+          <View className="py-4 border-t border-line">
+            {isFinale ? (
+              isHost ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleExit}
+                  className="w-full bg-accent py-4 rounded-2xl items-center justify-center flex-row shadow-lg"
+                >
+                  <Ionicons name="checkmark-done" size={18} color={c.onAccent} />
                   <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-2">
-                    {isFinale ? "Spiel beenden" : "Nächstes Kapitel ➔"}
+                    Spiel beenden
                   </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <View className="items-center py-2">
-              <Text className="text-content-faint text-[11px] font-bold">
-                {isFinale
-                  ? "Das Spiel ist beendet!"
-                  : "Warte auf die Entscheidung des Hosts..."}
-              </Text>
-            </View>
-          )}
-        </View>
+                </TouchableOpacity>
+              ) : (
+                <View className="items-center py-2">
+                  <Text className="text-content-faint text-[11px] font-bold">
+                    Das Spiel ist beendet!
+                  </Text>
+                </View>
+              )
+            ) : (
+              <View className="items-center">
+                <Text className="text-content-faint text-[11px] font-bold text-center">
+                  {isDiscussionPhase
+                    ? "Redet. Weiter geht es, wenn die Zeit um ist."
+                    : myChoice && isChoicePhase
+                      ? "Entschieden. Es geht weiter, sobald alle durch sind."
+                      : isRevealPhase
+                        ? "Gleich geht es weiter …"
+                        : "Es läuft — keiner wartet auf keinen."}
+                </Text>
+                {isHost && (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleNext}
+                    disabled={busy}
+                    className="mt-2 px-4 py-2 rounded-xl border border-line flex-row items-center disabled:opacity-40"
+                  >
+                    {busy ? (
+                      <ActivityIndicator size="small" color={c.contentFaint} />
+                    ) : (
+                      <>
+                        <Ionicons name="play-skip-forward" size={14} color={c.contentFaint} />
+                        <Text className="text-content-faint font-black text-[10px] uppercase tracking-wider ml-1.5">
+                          Phase überspringen
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
         </View>
       </View>
     </Modal>
