@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
 import { useNightSession } from "@/games/session";
+import { SessionReport } from "./SessionReport";
 
 /**
  * Der Kopf der laufenden Nacht: Akt, Punktestand, aktive Regeln, Joker.
@@ -17,6 +18,7 @@ export function SessionBar() {
   const c = useThemeColors();
   const session = useNightSession();
   const [expanded, setExpanded] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   if (!session || !session.active) return null;
 
@@ -156,7 +158,7 @@ export function SessionBar() {
             onPress={() => {
               if (session.waterRound()) triggerHaptic("success");
             }}
-            className={`py-2.5 rounded-xl items-center justify-center flex-row border ${
+            className={`py-2.5 rounded-xl items-center justify-center flex-row border mb-2 ${
               waterRoundAvailable ? "bg-success/10 border-success/40" : "bg-bg border-line opacity-50"
             }`}
           >
@@ -175,8 +177,25 @@ export function SessionBar() {
                 : `Wasserrunde in Akt ${act} schon gelaufen`}
             </Text>
           </TouchableOpacity>
+
+          {/* Runden-Abschluss: Session Report öffnen */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              triggerHaptic("medium");
+              setShowReport(true);
+            }}
+            className="py-2.5 rounded-xl items-center justify-center flex-row bg-accent/15 border border-accent/40 active:scale-95"
+          >
+            <Ionicons name="trophy-outline" size={14} color={c.accent} />
+            <Text className="text-accent text-[10px] font-black uppercase tracking-wider ml-1.5">
+              Runde beenden &amp; Auswertung anzeigen
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      <SessionReport visible={showReport} onClose={() => setShowReport(false)} />
     </View>
   );
 }
