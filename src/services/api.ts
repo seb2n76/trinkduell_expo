@@ -1065,75 +1065,82 @@ export const apiService = {
   },
 
   // ─── Admin Console Endpoints ───────────────────────────────────────────────
-  getAdminStats: async (): Promise<AdminDashboardData> => {
-    const res = await axiosInstance.get<AdminDashboardData>("/admin/stats");
-    return res.data;
-  },
+  getAdminStats: (): Promise<AdminDashboardData> =>
+    executeApiCall(
+      () => axiosInstance.get<AdminDashboardData>("/admin/stats"),
+      () => db.getAdminStatsLocal()
+    ),
 
-  getAdminUsers: async (params?: { q?: string; filter?: string }): Promise<AdminUser[]> => {
-    const query = new URLSearchParams();
-    if (params?.q) query.append("q", params.q);
-    if (params?.filter) query.append("filter", params.filter);
-    const qs = query.toString();
-    const res = await axiosInstance.get<AdminUser[]>(`/admin/users${qs ? `?${qs}` : ""}`);
-    return res.data;
-  },
+  getAdminUsers: (params?: { q?: string; filter?: string }): Promise<AdminUser[]> =>
+    executeApiCall(
+      () => {
+        const query = new URLSearchParams();
+        if (params?.q) query.append("q", params.q);
+        if (params?.filter) query.append("filter", params.filter);
+        const qs = query.toString();
+        return axiosInstance.get<AdminUser[]>(`/admin/users${qs ? `?${qs}` : ""}`);
+      },
+      () => db.getAdminUsersLocal(params?.q, params?.filter)
+    ),
 
-  banUser: async (userId: string, banned: boolean): Promise<{ success: boolean; userId: string; banned: boolean }> => {
-    const res = await axiosInstance.post<{ success: boolean; userId: string; banned: boolean }>(
-      `/admin/users/${userId}/ban`,
-      { banned }
-    );
-    return res.data;
-  },
+  banUser: (userId: string, banned: boolean): Promise<{ success: boolean; userId: string; banned: boolean }> =>
+    executeApiCall(
+      () =>
+        axiosInstance.post<{ success: boolean; userId: string; banned: boolean }>(
+          `/admin/users/${userId}/ban`,
+          { banned }
+        ),
+      () => db.banUserLocal(userId, banned)
+    ),
 
-  resetUserStats: async (userId: string): Promise<{ success: boolean; userId: string }> => {
-    const res = await axiosInstance.post<{ success: boolean; userId: string }>(
-      `/admin/users/${userId}/reset-stats`,
-      {}
-    );
-    return res.data;
-  },
+  resetUserStats: (userId: string): Promise<{ success: boolean; userId: string }> =>
+    executeApiCall(
+      () => axiosInstance.post<{ success: boolean; userId: string }>(`/admin/users/${userId}/reset-stats`, {}),
+      () => db.resetUserStatsLocal(userId)
+    ),
 
-  cleanUserProfile: async (userId: string, resetName?: string): Promise<{ success: boolean; userId: string }> => {
-    const res = await axiosInstance.post<{ success: boolean; userId: string }>(
-      `/admin/users/${userId}/clean-profile`,
-      { resetName }
-    );
-    return res.data;
-  },
+  cleanUserProfile: (userId: string, resetName?: string): Promise<{ success: boolean; userId: string }> =>
+    executeApiCall(
+      () =>
+        axiosInstance.post<{ success: boolean; userId: string }>(`/admin/users/${userId}/clean-profile`, {
+          resetName,
+        }),
+      () => db.cleanUserProfileLocal(userId, resetName)
+    ),
 
-  adminDeletePost: async (postId: string): Promise<{ success: boolean; id: string }> => {
-    const res = await axiosInstance.delete<{ success: boolean; id: string }>(`/admin/posts/${postId}`);
-    return res.data;
-  },
+  adminDeletePost: (postId: string): Promise<{ success: boolean; id: string }> =>
+    executeApiCall(
+      () => axiosInstance.delete<{ success: boolean; id: string }>(`/admin/posts/${postId}`),
+      () => db.adminDeletePostLocal(postId)
+    ),
 
-  getAdminDrinks: async (): Promise<db.Drink[]> => {
-    const res = await axiosInstance.get<db.Drink[]>("/admin/drinks");
-    return res.data;
-  },
+  getAdminDrinks: (): Promise<db.Drink[]> =>
+    executeApiCall(
+      () => axiosInstance.get<db.Drink[]>("/admin/drinks"),
+      () => db.getDrinks()
+    ),
 
-  adminUpdateDrink: async (drinkId: string, updates: Partial<db.Drink>): Promise<db.Drink> => {
-    const res = await axiosInstance.patch<db.Drink>(`/admin/drinks/${drinkId}`, updates);
-    return res.data;
-  },
+  adminUpdateDrink: (drinkId: string, updates: Partial<db.Drink>): Promise<db.Drink> =>
+    executeApiCall(
+      () => axiosInstance.patch<db.Drink>(`/admin/drinks/${drinkId}`, updates),
+      () => db.adminUpdateDrinkLocal(drinkId, updates)
+    ),
 
-  getAdminRooms: async (): Promise<AdminRoom[]> => {
-    const res = await axiosInstance.get<AdminRoom[]>("/admin/rooms");
-    return res.data;
-  },
+  getAdminRooms: (): Promise<AdminRoom[]> =>
+    executeApiCall(
+      () => axiosInstance.get<AdminRoom[]>("/admin/rooms"),
+      () => Promise.resolve([])
+    ),
 
-  adminDeleteRoom: async (code: string): Promise<{ success: boolean; code: string; removed: boolean }> => {
-    const res = await axiosInstance.delete<{ success: boolean; code: string; removed: boolean }>(
-      `/admin/rooms/${code}`
-    );
-    return res.data;
-  },
+  adminDeleteRoom: (code: string): Promise<{ success: boolean; code: string; removed: boolean }> =>
+    executeApiCall(
+      () => axiosInstance.delete<{ success: boolean; code: string; removed: boolean }>(`/admin/rooms/${code}`),
+      () => Promise.resolve({ success: true, code, removed: true })
+    ),
 
-  sendAdminBroadcast: async (message: string): Promise<{ success: boolean; post: any }> => {
-    const res = await axiosInstance.post<{ success: boolean; post: any }>("/admin/broadcast", {
-      message,
-    });
-    return res.data;
-  },
+  sendAdminBroadcast: (message: string): Promise<{ success: boolean; post: any }> =>
+    executeApiCall(
+      () => axiosInstance.post<{ success: boolean; post: any }>("/admin/broadcast", { message }),
+      () => db.sendAdminBroadcastLocal(message)
+    ),
 };

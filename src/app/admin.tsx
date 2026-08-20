@@ -68,13 +68,15 @@ export default function AdminConsoleScreen() {
   const [editDrinkHidden, setEditDrinkHidden] = useState(false);
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load Tab Data
   const loadData = useCallback(async () => {
+    setLoadError(null);
     try {
       if (activeTab === "dashboard") {
         const [dash, rooms] = await Promise.all([
-          apiService.getAdminStats().catch(() => null),
+          apiService.getAdminStats(),
           apiService.getAdminRooms().catch(() => []),
         ]);
         setDashboardData(dash);
@@ -93,8 +95,9 @@ export default function AdminConsoleScreen() {
         const drinkList = await apiService.getAdminDrinks();
         setDrinks(drinkList);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Fehler beim Laden der Admin-Daten:", err);
+      setLoadError(err?.message || "Daten konnten nicht geladen werden.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -357,6 +360,24 @@ export default function AdminConsoleScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.warning} />
         }
       >
+        {loadError && (
+          <View className="bg-danger/10 border border-danger/30 rounded-2xl p-3.5 mb-4 flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1 mr-2">
+              <Ionicons name="alert-circle" size={18} color={c.danger} />
+              <Text className="text-danger text-xs font-semibold ml-2 flex-1">
+                {loadError}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onRefresh}
+              className="bg-danger/20 px-2.5 py-1 rounded-xl"
+            >
+              <Text className="text-danger text-[10px] font-black uppercase">
+                Neu laden
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {/* ========================================================================= */}
         {/* TAB 1: DASHBOARD                                                          */}
         {/* ========================================================================= */}
@@ -525,7 +546,25 @@ export default function AdminConsoleScreen() {
                   </View>
                 </View>
               </>
-            ) : null}
+            ) : (
+              <View className="bg-surface border border-line rounded-3xl p-6 items-center justify-center my-6">
+                <Ionicons name="cloud-offline-outline" size={36} color={c.warning} style={{ marginBottom: 12 }} />
+                <Text className="text-content text-sm font-black text-center mb-1">
+                  Dashboard-Daten nicht verfügbar
+                </Text>
+                <Text className="text-content-muted text-xs text-center font-medium mb-4">
+                  {loadError || "Die Verbindung zum Server konnte nicht hergestellt werden oder du hast keine Admin-Rechte."}
+                </Text>
+                <TouchableOpacity
+                  onPress={onRefresh}
+                  className="bg-warning/20 border border-warning/40 px-4 py-2 rounded-2xl active:scale-95"
+                >
+                  <Text className="text-warning text-xs font-black uppercase tracking-wider">
+                    Erneut versuchen
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
