@@ -166,6 +166,35 @@ async function recalculateUserStats(user, logs, drinks, groups) {
   const isAdmin = groups.some((g) => g.adminId === user.id);
   if (isAdmin) unlockAchievement("ANFUEHRER");
 
+  // ── Spiel-Erfolge ──────────────────────────────────────────────────────────
+  let userSettlements = [];
+  if (pool) {
+    const res = await pool.query("SELECT * FROM game_settlements WHERE user_id = $1", [user.id]);
+    userSettlements = res.rows;
+  } else if (db && Array.isArray(db.gameSettlements)) {
+    userSettlements = db.gameSettlements.filter((s) => s.user_id === user.id);
+  }
+
+  const completedRounds = userSettlements.length;
+  if (completedRounds >= 1) unlockAchievement("GAME_FIRST_ROUND");
+  if (completedRounds >= 5) unlockAchievement("GAME_FIVE_ROUNDS");
+  if (completedRounds >= 10) unlockAchievement("GAME_TEN_ROUNDS");
+  if ((user.gamePoints || 0) >= 100) unlockAchievement("GAME_HUNDRED_XP");
+
+  const dayPoints = {};
+  for (const s of userSettlements) {
+    const day = s.timestamp ? s.timestamp.slice(0, 10) : "";
+    if (day) dayPoints[day] = (dayPoints[day] || 0) + (s.points || 0);
+  }
+  if (Object.values(dayPoints).some((total) => total >= 300)) {
+    unlockAchievement("GAME_DAILY_CAP");
+  }
+
+  const distinctRooms = new Set(userSettlements.map((s) => s.room_code));
+  if (distinctRooms.size >= 3) {
+    unlockAchievement("GAME_MASTER");
+  }
+
   // Getränke-XP plus Spiel-XP. Die beiden Quellen MÜSSEN getrennt bleiben:
   // diese Funktion läuft bei praktisch jedem Nutzer-Abruf und setzt `points`
   // jedes Mal komplett neu. Alles, was direkt nach `points` geschrieben

@@ -612,3 +612,55 @@ test("Tagesobergrenze für Spiel-XP (300 Punkte pro Kalendertag)", async (t) => 
   });
 });
 
+test("Erfolge für Spiele schalten wie vorgesehen frei", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call, register } = server;
+
+  const konto = await register("party_spieler");
+
+  // Hilfsfunktion: Spielrunde bis Finale und Claim
+  async function spieleUndClaim(gameId = "court_treason") {
+    const created = await call("POST", "/game-rooms", { gameId, hostName: "Host" }, konto.token);
+    const code = created.json.code;
+    const hostToken = created.json.playerToken;
+    await call("POST", `/game-rooms/${code}/join`, { playerName: "Gast1" });
+    await call("POST", `/game-rooms/${code}/join`, { playerName: "Gast2" });
+    await call("POST", `/game-rooms/${code}/start`, { playerToken: hostToken });
+
+    // Bis zum Finale skippen
+    for (let i = 0; i < 40; i++) {
+      const sicht = await call("GET", `/game-rooms/${code}?playerToken=${hostToken}`);
+      if (sicht.json.room.status === "finale") break;
+      await call("POST", `/game-rooms/${code}/next`, { playerToken: hostToken });
+    }
+
+    const claimRes = await call("POST", `/game-rooms/${code}/claim`, { playerToken: hostToken }, konto.token);
+    return { code, claimRes };
+  }
+
+  await t.test("Erste Runde schaltet GAME_FIRST_ROUND frei", async () => {
+    await spieleUndClaim("court_treason");
+    const me = await call("GET", "/users/me", undefined, konto.token);
+    const achIds = me.json.achievements.map((a) => a.id);
+    assert.ok(achIds.includes("GAME_FIRST_ROUND"), "Erster Spielabend freigeschaltet");
+  });
+
+  await t.test("Nach 3 verschiedenen Räumen schaltet GAME_MASTER frei", async () => {
+    await spieleUndClaim("murder_express");
+    await spieleUndClaim("haunted_manor");
+    const me = await call("GET", "/users/me", undefined, konto.token);
+    const achIds = me.json.achievements.map((a) => a.id);
+    assert.ok(achIds.includes("GAME_MASTER"), "Meister aller Runden freigeschaltet");
+  });
+
+  await t.test("Nach 5 Runden schaltet GAME_FIVE_ROUNDS frei", async () => {
+    await spieleUndClaim("court_treason");
+    await spieleUndClaim("murder_express");
+    const me = await call("GET", "/users/me", undefined, konto.token);
+    const achIds = me.json.achievements.map((a) => a.id);
+    assert.ok(achIds.includes("GAME_FIVE_ROUNDS"), "Spielratte freigeschaltet");
+  });
+});
+
+
