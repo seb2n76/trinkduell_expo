@@ -22,31 +22,37 @@ function spieler(n) {
   }));
 }
 
-test("Storylet-Format wird erkannt und ist vollständig", () => {
-  assert.ok(engine.isStoryletFormat(story), "murder_express läuft im Storylet-Format");
+const storyletIds = ["murder_express", "court_treason"];
 
-  for (const akt of story.structure.acts) {
-    const pool = story.storylets.filter((s) => s.act === akt.act);
-    assert.ok(
-      pool.length >= akt.count,
-      `Akt ${akt.act} braucht mindestens ${akt.count} Szenen, hat aber ${pool.length}`
-    );
-    assert.ok(
-      pool.some((s) => s.opening),
-      `Akt ${akt.act} braucht eine Eröffnungsszene`
-    );
-    assert.ok(
-      pool.some((s) => s.closing),
-      `Akt ${akt.act} braucht eine Abschlussszene`
-    );
-  }
+test("Storylet-Format wird erkannt und ist vollständig (alle Storylet-Spiele)", () => {
+  for (const storyId of storyletIds) {
+    const s = engine.getStory(storyId);
+    assert.ok(s, `Story ${storyId} existiert`);
+    assert.ok(engine.isStoryletFormat(s), `${storyId} läuft im Storylet-Format`);
 
-  // Jede Auswahl braucht einen Ergebnistext — sonst steht der Spieler nach
-  // seiner Entscheidung vor einer leeren Karte.
-  for (const s of story.storylets) {
-    for (const c of (s.prompt && s.prompt.choices) || []) {
-      assert.ok(c.outcomeText, `${s.id}/${c.id} hat keinen outcomeText`);
-      assert.ok(c.label, `${s.id}/${c.id} hat keine Beschriftung`);
+    for (const akt of s.structure.acts) {
+      const pool = s.storylets.filter((scene) => scene.act === akt.act);
+      assert.ok(
+        pool.length >= akt.count,
+        `${storyId}: Akt ${akt.act} braucht mindestens ${akt.count} Szenen, hat aber ${pool.length}`
+      );
+      assert.ok(
+        pool.some((scene) => scene.opening),
+        `${storyId}: Akt ${akt.act} braucht eine Eröffnungsszene`
+      );
+      assert.ok(
+        pool.some((scene) => scene.closing),
+        `${storyId}: Akt ${akt.act} braucht eine Abschlussszene`
+      );
+    }
+
+    // Jede Auswahl braucht einen Ergebnistext — sonst steht der Spieler nach
+    // seiner Entscheidung vor einer leeren Karte.
+    for (const scene of s.storylets) {
+      for (const c of (scene.prompt && scene.prompt.choices) || []) {
+        assert.ok(c.outcomeText, `${storyId}/${scene.id}/${c.id} hat keinen outcomeText`);
+        assert.ok(c.label, `${storyId}/${scene.id}/${c.id} hat keine Beschriftung`);
+      }
     }
   }
 });
@@ -245,3 +251,77 @@ test("Jeder bekommt eine eigene Beobachtung, genau einer hat wirklich etwas gese
     "Die Beobachtung nennt den echten Täter — sonst wäre sie wertlos"
   );
 });
+
+const { startTestServer } = require("./helpers/server");
+
+async function raumMitFuenfSpielern(call, gameId) {
+  const created = await call("POST", "/game-rooms", { gameId, hostName: "Königin" });
+  const code = created.json.code;
+  const namen = ["Baron", "Graf", "Herzog", "Fürst"];
+  const spieler = [{ id: created.json.hostId, token: created.json.playerToken, name: "Königin" }];
+  for (const n of namen) {
+    const joined = await call("POST", `/game-rooms/${code}/join`, { playerName: n });
+    spieler.push({ id: joined.json.playerId, token: joined.json.playerToken, name: n });
+  }
+  return { code, spieler };
+}
+
+test("Der Verrat am Königshof: Vollständiger Durchlauf mit 5 Spielern", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call } = server;
+
+  const { code, spieler } = await raumMitFuenfSpielern(call, "court_treason");
+  const host = spieler[0];
+
+  await call("POST", `/game-rooms/${code}/start`, { playerToken: host.token });
+
+  const geseheneAkte = new Set();
+
+  for (let schritt = 0; schritt < 50; schritt++) {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    const room = sicht.json.room;
+    if (room.status === "finale") break;
+
+    if (room.gameState.currentChapter && room.gameState.currentChapter.act) {
+      geseheneAkte.add(room.gameState.currentChapter.act);
+    }
+
+    if (room.gameState.phase && room.gameState.phase.kind === "choice") {
+      const prompt = room.gameState.currentChapter.prompt;
+      if (prompt && prompt.choices && prompt.choices.length > 0) {
+        const choice = prompt.choices[0];
+        for (const s of spieler) {
+          await call("POST", `/game-rooms/${code}/action`, {
+            playerToken: s.token,
+            actionType: "choice",
+            payload: {
+              choiceId: choice.id,
+              targetPlayerId: choice.targetRequired ? spieler[1].id : undefined,
+            },
+          });
+        }
+      }
+    } else if (room.gameState.phase && room.gameState.phase.kind === "vote") {
+      for (const s of spieler) {
+        await call("POST", `/game-rooms/${code}/action`, {
+          playerToken: s.token,
+          actionType: "vote",
+          payload: { targetPlayerId: spieler[1].id },
+        });
+      }
+    }
+
+    await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
+  }
+
+  const finaleSicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+  assert.equal(finaleSicht.json.room.status, "finale", "Spiel erreicht das Finale");
+  assert.ok(finaleSicht.json.room.gameState.finale, "Finale hat ein Ergebnis");
+  assert.ok(finaleSicht.json.room.gameState.finale.winnerTeam, "Ein Gewinnerteam steht fest");
+  assert.ok(finaleSicht.json.room.gameState.finale.summary, "Eine Zusammenfassung existiert");
+  assert.ok(geseheneAkte.has(1), "Akt 1 wurde durchlaufen");
+  assert.ok(geseheneAkte.has(2), "Akt 2 wurde durchlaufen");
+  assert.ok(geseheneAkte.has(3), "Akt 3 wurde durchlaufen");
+});
+
