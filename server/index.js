@@ -341,9 +341,18 @@ function rateLimit({ scope, ipMax, accountMax, windowMs, accountKey }) {
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
-// Backstop against a client (or a script) flooding the API. Generous enough
-// that normal use — including the app's polling — never comes close.
-app.use("/api", rateLimit({ scope: "global", ipMax: 1200, windowMs: MINUTE }));
+// Backstop against a client (or a script) flooding the API.
+//
+// Die Zahl folgt aus dem vorgesehenen Fall, nicht aus dem Bauch: Ein ganzes
+// Lokal teilt sich eine IP, und die Multi-Device-Spielraeume fragen alle
+// 2,5 s nach. Eine Runde mit 16 Leuten erzeugt damit allein 384 Abrufe je
+// Minute, dazu die uebrige Abfrage der App (ungelesene Nachrichten,
+// Benachrichtigungen, Feed) mit rund 160 — zusammen etwa 550 pro Minute FUER
+// EINE Party. Mit 1200 waeren zwei gleichzeitige Runden hinter demselben
+// Anschluss am Limit gewesen und die App haette fuer alle dort aufgehoert zu
+// funktionieren. 3000 laesst vier Runden zu und ist mit 50 Anfragen je
+// Sekunde immer noch eine harte Grenze gegen eine echte Flut.
+app.use("/api", rateLimit({ scope: "global", ipMax: 3000, windowMs: MINUTE }));
 
 // Body parsing happens here, after the limiter above: the big avatar limit is
 // scoped to exactly the two routes that carry an image, everything else gets
@@ -3485,8 +3494,22 @@ function optionalAuthenticate(req) {
   }
 }
 
+// Ein Raumcode hat 4 Zeichen aus 32 (rund 1 Mio. Moeglichkeiten) und ist der
+// einzige Schutz eines Raums. Ohne Bremse liesse er sich durchprobieren.
+//
+// Der Kniff ist derselbe wie beim Login: gezaehlt wird jeder Versuch, aber ein
+// ERFOLG loescht den Zaehler. Damit trifft das Limit nur Fehlversuche —
+// eine Party, die alle denselben richtigen Code eingibt, laeuft nie hinein,
+// waehrend Durchprobieren nach wenigen Dutzend Fehlgriffen endet.
+const roomJoinLimit = rateLimit({ scope: "roomjoin", ipMax: 30, windowMs: 10 * MINUTE });
+const roomLookupLimit = rateLimit({ scope: "roomlookup", ipMax: 40, windowMs: MINUTE });
+
+// Raeume liegen im Speicher (bis zu 16 Spieler je Raum). Das Anlegen ist
+// deshalb selbst ein Erschoepfungsziel und wird fuer sich begrenzt.
+const roomCreateLimit = rateLimit({ scope: "roomcreate", ipMax: 30, windowMs: HOUR });
+
 // Raum erstellen
-app.post("/api/game-rooms", async (req, res) => {
+app.post("/api/game-rooms", roomCreateLimit, async (req, res) => {
   const { gameId, hostName, hostAvatar } = req.body || {};
   // Nur die per JWT nachgewiesene Identitaet. Eine frei gesetzte hostId
   // liesse jeden einen Raum im Namen eines beliebigen Nutzers eroeffnen.
@@ -3503,7 +3526,7 @@ app.post("/api/game-rooms", async (req, res) => {
 });
 
 // Raum beitreten
-app.post("/api/game-rooms/:code/join", async (req, res) => {
+app.post("/api/game-rooms/:code/join", roomJoinLimit, async (req, res) => {
   const { code } = req.params;
   const { playerName, playerAvatar } = req.body || {};
 
@@ -3514,6 +3537,9 @@ app.post("/api/game-rooms/:code/join", async (req, res) => {
       playerName: (playerName || "Mitspieler").slice(0, 32),
       playerAvatar: playerAvatar || null,
     });
+    // Wer richtig geraten hat, war kein Angreifer: Budget zurueckgeben, damit
+    // ein voller Raum die naechste Gruppe am selben WLAN nicht aussperrt.
+    clearRateLimit(`roomjoin:ip:${clientIp(req)}`);
     res.json({ success: true, ...joined });
   } catch (err) {
     if (err.message === "ROOM_NOT_FOUND") {
@@ -3530,7 +3556,7 @@ app.post("/api/game-rooms/:code/join", async (req, res) => {
 });
 
 // Raum-Status abfragen (Sync / Polling)
-app.get("/api/game-rooms/:code", async (req, res) => {
+app.get("/api/game-rooms/:code", roomLookupLimit, async (req, res) => {
   const { code } = req.params;
 
   const room = gameRooms.getRoom(code, roomToken(req));
@@ -3538,6 +3564,9 @@ app.get("/api/game-rooms/:code", async (req, res) => {
     return res.status(404).json({ error: "Raum nicht gefunden oder abgelaufen." });
   }
 
+  // Treffer: Zaehler leeren. Die Clients fragen alle 2,5 s nach — ohne das
+  // liefe schon eine normale Runde ins Limit.
+  clearRateLimit(`roomlookup:ip:${clientIp(req)}`);
   res.json({ success: true, room });
 });
 

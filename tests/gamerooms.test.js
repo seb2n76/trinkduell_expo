@@ -237,3 +237,65 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     assert.equal(sync.json.room.players.length, 1, "Der Host ist noch da");
   });
 });
+
+test("Spielraeume: Bremse gegen das Durchprobieren von Codes", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call } = server;
+
+  await t.test("blockt das Raten falscher Raum-Codes", async () => {
+    let letzterStatus = 0;
+    let versuche = 0;
+
+    // Ein Angreifer probiert Codes durch. Alle sind falsch, der Zaehler
+    // laeuft deshalb voll und wird nie zurueckgesetzt.
+    for (let i = 0; i < 40; i++) {
+      const code = `Z${String(i).padStart(3, "0")}`.slice(0, 4).toUpperCase();
+      const res = await call("POST", `/game-rooms/${code}/join`, { playerName: "Angreifer" });
+      letzterStatus = res.status;
+      versuche++;
+      if (res.status === 429) break;
+    }
+
+    assert.equal(letzterStatus, 429, "Nach genug Fehlgriffen muss 429 kommen");
+    assert.ok(versuche <= 35, `Sollte frueh greifen, brauchte aber ${versuche} Versuche`);
+  });
+});
+
+test("Spielraeume: die Bremse trifft eine echte Party nicht", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call } = server;
+
+  const erstellt = await call("POST", "/game-rooms", { hostName: "Gastgeber" });
+  const code = erstellt.json.code;
+  const hostToken = erstellt.json.playerToken;
+
+  await t.test("viele Beitritte mit dem RICHTIGEN Code bleiben erlaubt", async () => {
+    // 15 Gaeste treten demselben Raum bei — alle vom selben Anschluss.
+    // Jeder Erfolg gibt das Budget zurueck, deshalb greift nichts.
+    for (let i = 0; i < 15; i++) {
+      const res = await call("POST", `/game-rooms/${code}/join`, { playerName: `Gast ${i}` });
+      assert.equal(res.status, 200, `Gast ${i} wurde abgewiesen (${res.status})`);
+    }
+  });
+
+  await t.test("dauerndes Abfragen des Raumzustands bleibt erlaubt", async () => {
+    // Die Clients fragen alle 2,5 s nach. 60 Abrufe entsprechen gut zwei
+    // Minuten einer einzigen Sitzung — das darf nie ins Limit laufen.
+    for (let i = 0; i < 60; i++) {
+      const res = await call("GET", `/game-rooms/${code}?playerToken=${hostToken}`);
+      assert.equal(res.status, 200, `Abruf ${i} wurde abgewiesen (${res.status})`);
+    }
+  });
+
+  await t.test("Abfragen auf einen unbekannten Raum werden dagegen gebremst", async () => {
+    let letzterStatus = 0;
+    for (let i = 0; i < 60; i++) {
+      const res = await call("GET", `/game-rooms/QQ${String(i).padStart(2, "0")}`);
+      letzterStatus = res.status;
+      if (res.status === 429) break;
+    }
+    assert.equal(letzterStatus, 429, "Blindes Abfragen muss auf 429 laufen");
+  });
+});
