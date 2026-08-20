@@ -1,9 +1,18 @@
 const crypto = require("crypto");
+const db = require("./db");
+const storyEngine = require("./games/storyEngine");
 
 /**
- * In-Memory Game Room Manager for Multi-Device Party & Story RPG Games.
- * Manages active party rooms, room codes, live player states, secret roles,
- * and synchronized story phases.
+ * Raumverwaltung für die Multi-Device-Party- und Story-Spiele.
+ *
+ * Der Server ist die Spielinstanz: er verteilt die Rollen, rendert die
+ * Kapitel, rechnet Punkte und Story-Variablen und wertet das Finale aus.
+ * Der Client schickt nur noch Absichten ("ich wähle Option B") und rendert
+ * das Ergebnis.
+ *
+ * Vor August 2026 lag diese Logik im Client des Hosts. Das hatte drei
+ * Folgen: die Punkte und der Schaden einer Auswahl kamen nie an, die
+ * Team-HP-Leiste bewegte sich nie, und der Host bestimmte den Ausgang.
  */
 
 // Room expiration timeout (3 hours of inactivity)
@@ -47,6 +56,66 @@ function generateRoomCode() {
   return code;
 }
 
+// ─── Persistenz ──────────────────────────────────────────────────────────────
+//
+// Räume lagen bis August 2026 ausschließlich im RAM. Das reichte für
+// Fünf-Minuten-Spiele — aber auto-update.sh baut den Container bei jedem
+// Commit auf main neu, und ein Neustart löschte damit JEDE laufende Sitzung.
+// Bei einer 45-Minuten-Runde ist das der schlimmste denkbare Abbruch.
+//
+// Deshalb wandert der Raumzustand bei jedem Phasenwechsel in die Datenbank
+// und wird beim Start zurückgeladen. Die Spieler-Tokens stehen mit drin —
+// ohne sie könnte nach einem Neustart niemand mehr in seinen eigenen Raum
+// zurück. Sie sind Raum-Geheimnisse, keine Account-Zugänge: der schlimmste
+// Fall bei einem Datenbankleck ist ein fremder Sitzplatz in einem Spiel, das
+// spätestens nach drei Stunden ohnehin verfällt.
+
+let persistFailureLogged = false;
+
+function persist(room) {
+  db.saveGameRoom(room.code, room).catch((err) => {
+    // Einmal laut, danach still: ein kaputtes Persistenz-Backend darf nicht
+    // bei jeder Aktion eine Zeile ins Log schreiben. Das Spiel läuft im RAM
+    // weiter — nur ein Neustart würde es dann verlieren.
+    if (!persistFailureLogged) {
+      persistFailureLogged = true;
+      console.error("[GameRooms] Raum konnte nicht gesichert werden:", err.message);
+    }
+  });
+}
+
+function forget(code) {
+  db.deleteGameRoom(code).catch(() => {
+    /* Der Raum ist aus dem RAM entfernt; ein Waisenkind in der DB verfällt per TTL. */
+  });
+}
+
+/**
+ * Lädt beim Serverstart die Räume zurück, die den Neustart überlebt haben.
+ * Wird von index.js aufgerufen.
+ */
+async function restoreRooms() {
+  try {
+    const rows = await db.getGameRooms();
+    const now = Date.now();
+    let restored = 0;
+    for (const room of rows) {
+      if (!room || !room.code) continue;
+      if (now - (room.lastActivity || 0) > ROOM_TTL_MS) {
+        forget(room.code);
+        continue;
+      }
+      activeRooms.set(room.code, room);
+      restored += 1;
+    }
+    if (restored > 0) {
+      console.log(`[GameRooms] ${restored} laufende Spielräume nach Neustart wiederhergestellt.`);
+    }
+  } catch (err) {
+    console.error("[GameRooms] Räume konnten nicht wiederhergestellt werden:", err.message);
+  }
+}
+
 /**
  * Clean up expired rooms periodically.
  */
@@ -55,12 +124,43 @@ function cleanupExpiredRooms() {
   for (const [code, room] of activeRooms.entries()) {
     if (now - room.lastActivity > ROOM_TTL_MS) {
       activeRooms.delete(code);
+      forget(code);
     }
   }
 }
 
 // Run cleanup every 15 minutes
 setInterval(cleanupExpiredRooms, 15 * 60 * 1000).unref();
+
+function newPlayer({ id, token, name, avatar, isHost }) {
+  return {
+    id,
+    token,
+    name,
+    avatar: avatar || null,
+    isHost: !!isHost,
+    isReady: true,
+    role: null,
+    allegiance: null,
+    secretPrompt: null,
+    points: 0,
+    sipsTaken: 0,
+    joinedAt: Date.now(),
+    submittedAction: null,
+  };
+}
+
+function freshGameState() {
+  return {
+    storyLog: [],
+    currentChapter: null,
+    votes: {}, // playerId -> targetPlayerId
+    actions: {}, // playerId -> actionData
+    choices: {}, // playerId -> { choiceId, outcomeText } fuer das AKTUELLE Kapitel
+    variables: {}, // Story-Variablen, z. B. healthPoints
+    finale: null,
+  };
+}
 
 /**
  * Create a new Game Room.
@@ -75,37 +175,28 @@ function createRoom({ gameId, hostId, hostName, hostAvatar }) {
     code,
     gameId: gameId || "court_treason",
     hostId: hostPlayerId,
-    status: "lobby", // "lobby" | "role_reveal" | "story_chapter" | "action_phase" | "voting" | "finale"
+    status: "lobby", // "lobby" | "role_reveal" | "story_chapter" | "finale"
     createdAt: now,
     lastActivity: now,
     currentChapterIndex: 0,
+    // Zaehler fuer den Client: aendert sich bei jedem echten Zustandswechsel,
+    // damit ein Poll ohne Neuigkeit nicht die ganze Ansicht neu aufbaut.
+    revision: 0,
     players: [
-      {
+      newPlayer({
         id: hostPlayerId,
         token: hostToken,
         name: hostName || "Host",
-        avatar: hostAvatar || null,
+        avatar: hostAvatar,
         isHost: true,
-        isReady: true,
-        role: null,
-        secretPrompt: null,
-        points: 0,
-        sipsTaken: 0,
-        joinedAt: now,
-        submittedAction: null,
-      },
+      }),
     ],
-    gameState: {
-      storyLog: [],
-      currentChapter: null,
-      votes: {}, // playerId -> targetPlayerId
-      actions: {}, // playerId -> actionData
-      healthPoints: 100, // For co-op games like Haunted Manor
-      customVariables: {},
-    },
+    gameState: freshGameState(),
   };
 
   activeRooms.set(code, room);
+  persist(room);
+
   return {
     code,
     hostId: hostPlayerId,
@@ -148,31 +239,28 @@ function joinRoom(code, { playerToken, playerName, playerAvatar }) {
 
   const assignedPlayerId = `p_${crypto.randomBytes(4).toString("hex")}`;
   const assignedToken = generatePlayerToken();
-  
+
   // Check if player name already taken in room, append number if so
   let finalName = (playerName || `Gast ${room.players.length + 1}`).trim();
-  const nameExists = room.players.some((p) => p.name.toLowerCase() === finalName.toLowerCase() && p.id !== assignedPlayerId);
+  const nameExists = room.players.some(
+    (p) => p.name.toLowerCase() === finalName.toLowerCase() && p.id !== assignedPlayerId
+  );
   if (nameExists) {
     finalName = `${finalName} #${room.players.length + 1}`;
   }
 
-  const newPlayer = {
-    id: assignedPlayerId,
-    token: assignedToken,
-    name: finalName,
-    avatar: playerAvatar || null,
-    isHost: false,
-    isReady: true,
-    role: null,
-    secretPrompt: null,
-    points: 0,
-    sipsTaken: 0,
-    joinedAt: Date.now(),
-    submittedAction: null,
-  };
-
-  room.players.push(newPlayer);
+  room.players.push(
+    newPlayer({
+      id: assignedPlayerId,
+      token: assignedToken,
+      name: finalName,
+      avatar: playerAvatar,
+      isHost: false,
+    })
+  );
   room.lastActivity = Date.now();
+  room.revision += 1;
+  persist(room);
 
   return {
     code: room.code,
@@ -201,7 +289,13 @@ function getRoom(code, playerToken) {
 }
 
 /**
- * Start the game session and assign procedural roles.
+ * Start the game session and assign roles.
+ *
+ * Die Rollen kommen aus der Story-Definition auf dem Server. Frueher schickte
+ * der Host sie mit (`gameSetupData.playerRoles`) — er konnte sich also selbst
+ * zum Detektiv und einen Mitspieler zum Moerder erklaeren. Das Feld wird
+ * weiterhin akzeptiert, aber nur fuer Spiele OHNE hinterlegte Story
+ * (freie Partyspiele ueber einen Raum-Code).
  */
 function startGame(code, playerToken, gameSetupData) {
   const normalizedCode = (code || "").trim().toUpperCase();
@@ -217,20 +311,32 @@ function startGame(code, playerToken, gameSetupData) {
     throw new Error("NOT_ENOUGH_PLAYERS");
   }
 
+  const story = storyEngine.getStory(room.gameId);
+
   room.status = "role_reveal";
   room.currentChapterIndex = 0;
   room.lastActivity = Date.now();
-  room.gameState = {
-    storyLog: [],
-    currentChapter: gameSetupData?.firstChapter || null,
-    votes: {},
-    actions: {},
-    healthPoints: 100,
-    customVariables: gameSetupData?.customVariables || {},
-  };
+  room.revision += 1;
+  room.gameState = freshGameState();
 
-  // If roles were generated/provided in gameSetupData, assign them
-  if (gameSetupData?.playerRoles && Array.isArray(gameSetupData.playerRoles)) {
+  if (story) {
+    if (room.players.length < story.minPlayers) {
+      throw new Error("NOT_ENOUGH_PLAYERS");
+    }
+    room.gameState.variables = storyEngine.initialVariables(story);
+
+    for (const assignment of storyEngine.assignRoles(story, room.players)) {
+      const p = room.players.find((pl) => pl.id === assignment.playerId);
+      if (p) {
+        p.role = assignment.role;
+        p.allegiance = assignment.allegiance;
+        p.secretPrompt = assignment.secretPrompt;
+      }
+    }
+
+    room.gameState.currentChapter = storyEngine.buildChapter(story, 0, room.players);
+    room.status = "story_chapter";
+  } else if (Array.isArray(gameSetupData?.playerRoles)) {
     for (const assignment of gameSetupData.playerRoles) {
       const p = room.players.find((pl) => pl.id === assignment.playerId);
       if (p) {
@@ -240,6 +346,7 @@ function startGame(code, playerToken, gameSetupData) {
     }
   }
 
+  persist(room);
   return sanitizeRoomForPlayer(room, requester.id);
 }
 
@@ -264,23 +371,52 @@ function submitAction(code, playerToken, { actionType, payload }) {
   room.lastActivity = Date.now();
   player.submittedAction = { actionType, payload, timestamp: Date.now() };
 
-  if (actionType === "vote" && payload?.targetPlayerId) {
+  if (actionType === "choice") {
+    const story = storyEngine.getStory(room.gameId);
+    if (!story) {
+      throw new Error("NO_STORY_FOR_GAME");
+    }
+    // Genau eine Entscheidung pro Kapitel. Ohne diese Sperre koennte jeder
+    // dieselbe Option beliebig oft schicken und sich Punkte anhaeufen.
+    if (room.gameState.choices[playerId]) {
+      throw new Error("ALREADY_CHOSE");
+    }
+
+    const result = storyEngine.applyChoice(
+      story,
+      room.currentChapterIndex,
+      { players: room.players, variables: room.gameState.variables },
+      playerId,
+      payload?.choiceId,
+      payload?.targetPlayerId
+    );
+
+    room.gameState.choices[playerId] = {
+      choiceId: payload.choiceId,
+      outcomeText: result.outcomeText,
+      targetPlayerId: result.targetPlayerId,
+    };
+  } else if (actionType === "vote" && payload?.targetPlayerId) {
+    // Eine Stimme pro Spieler; Umentscheiden ist erlaubt, Stapeln nicht.
     room.gameState.votes[playerId] = payload.targetPlayerId;
   } else if (actionType === "drink") {
     player.sipsTaken = (player.sipsTaken || 0) + (payload?.count || 1);
-  } else if (actionType === "coop_damage") {
-    room.gameState.healthPoints = Math.max(0, (room.gameState.healthPoints || 100) - (payload?.damage || 10));
   } else {
     room.gameState.actions[playerId] = { actionType, payload, timestamp: Date.now() };
   }
 
+  room.revision += 1;
+  persist(room);
   return sanitizeRoomForPlayer(room, playerId);
 }
 
 /**
- * Advance to next chapter / story phase (Host only).
+ * Naechste Phase (nur Host).
+ *
+ * Der Host loest den Wechsel aus, berechnet ihn aber nicht: welches Kapitel
+ * folgt, was drinsteht und wie das Finale ausgeht, entscheidet der Server.
  */
-function nextChapter(code, playerToken, { nextStatus, nextChapterData, outcomeSummary }) {
+function nextChapter(code, playerToken, { nextStatus, nextChapterData, outcomeSummary } = {}) {
   const normalizedCode = (code || "").trim().toUpperCase();
   const room = activeRooms.get(normalizedCode);
   if (!room) {
@@ -292,23 +428,49 @@ function nextChapter(code, playerToken, { nextStatus, nextChapterData, outcomeSu
   }
 
   room.lastActivity = Date.now();
-  if (nextStatus) {
-    room.status = nextStatus;
-  }
-  if (nextChapterData) {
-    room.currentChapterIndex += 1;
-    room.gameState.currentChapter = nextChapterData;
-  }
-  if (outcomeSummary) {
-    room.gameState.storyLog.push(outcomeSummary);
+  const story = storyEngine.getStory(room.gameId);
+
+  if (story) {
+    if (room.status === "finale") {
+      return sanitizeRoomForPlayer(room, requester.id);
+    }
+
+    const nextIndex = room.currentChapterIndex + 1;
+
+    if (storyEngine.isLastChapter(story, room.currentChapterIndex)) {
+      room.gameState.finale = storyEngine.evaluateFinale(
+        story,
+        room.players,
+        room.gameState.votes,
+        room.gameState.variables
+      );
+      room.status = "finale";
+      room.gameState.storyLog.push(room.gameState.finale.title);
+    } else {
+      room.currentChapterIndex = nextIndex;
+      room.gameState.currentChapter = storyEngine.buildChapter(story, nextIndex, room.players);
+      room.status = "story_chapter";
+      room.gameState.storyLog.push(room.gameState.currentChapter.title);
+      // Entscheidungen und Stimmen gelten immer nur fuer EIN Kapitel.
+      room.gameState.choices = {};
+      room.gameState.votes = {};
+      for (const p of room.players) p.submittedAction = null;
+    }
+  } else {
+    // Spiele ohne hinterlegte Story: der Host gibt die Phase weiterhin vor.
+    if (nextStatus) room.status = nextStatus;
+    if (nextChapterData) {
+      room.currentChapterIndex += 1;
+      room.gameState.currentChapter = nextChapterData;
+    }
+    if (outcomeSummary) room.gameState.storyLog.push(outcomeSummary);
+    room.gameState.choices = {};
+    room.gameState.votes = {};
+    for (const p of room.players) p.submittedAction = null;
   }
 
-  // Clear transient votes and action submissions for the new chapter
-  room.gameState.votes = {};
-  for (const p of room.players) {
-    p.submittedAction = null;
-  }
-
+  room.revision += 1;
+  persist(room);
   return sanitizeRoomForPlayer(room, requester.id);
 }
 
@@ -333,12 +495,15 @@ function leaveRoom(code, playerToken) {
       room.players[0].isHost = true;
     } else {
       activeRooms.delete(normalizedCode);
+      forget(normalizedCode);
       return { success: true, roomClosed: true };
     }
   } else {
     room.players = room.players.filter((p) => p.id !== playerId);
   }
 
+  room.revision += 1;
+  persist(room);
   return { success: true, room: sanitizeRoomForPlayer(room, playerId) };
 }
 
@@ -347,6 +512,7 @@ function leaveRoom(code, playerToken) {
  */
 function sanitizeRoomForPlayer(room, requestingPlayerId) {
   const isHost = room.hostId === requestingPlayerId;
+  const isFinale = room.status === "finale";
 
   const sanitizedPlayers = room.players.map((p) => {
     const isSelf = p.id === requestingPlayerId;
@@ -359,37 +525,83 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
       points: p.points,
       sipsTaken: p.sipsTaken,
       hasSubmittedAction: !!p.submittedAction,
+      // Wer im aktuellen Kapitel schon gewaehlt hat, ist oeffentlich — was
+      // er gewaehlt hat, nicht. Das erlaubt eine "3 von 5 haben gewaehlt"-
+      // Anzeige, ohne die Entscheidung zu verraten.
+      hasChosen: !!room.gameState.choices[p.id],
       // Reveal role only to the player themself OR if the game has reached the finale
-      role: isSelf || room.status === "finale" ? p.role : null,
+      role: isSelf || isFinale ? p.role : null,
+      allegiance: isSelf || isFinale ? p.allegiance : null,
       secretPrompt: isSelf ? p.secretPrompt : null,
     };
   });
+
+  const myChoice = requestingPlayerId
+    ? room.gameState.choices[requestingPlayerId] || null
+    : null;
 
   return {
     code: room.code,
     gameId: room.gameId,
     hostId: room.hostId,
     status: room.status,
+    revision: room.revision,
     currentChapterIndex: room.currentChapterIndex,
     players: sanitizedPlayers,
     gameState: {
       storyLog: room.gameState.storyLog,
       currentChapter: room.gameState.currentChapter,
-      healthPoints: room.gameState.healthPoints,
-      customVariables: room.gameState.customVariables,
+      variables: room.gameState.variables,
+      // Bestandsschutz fuer die bestehende HP-Leiste im Client.
+      healthPoints: room.gameState.variables.healthPoints,
+      // Eigene Entscheidung ja, fremde nein.
+      myChoice,
+      choiceCount: Object.keys(room.gameState.choices).length,
       // Total vote count only during active voting, detailed votes only in finale
       voteCount: Object.keys(room.gameState.votes || {}).length,
-      finalVotes: room.status === "finale" ? room.gameState.votes : undefined,
+      finalVotes: isFinale ? room.gameState.votes : undefined,
+      finale: isFinale ? room.gameState.finale : null,
     },
     isHost,
     myPlayerId: requestingPlayerId,
+    serverTime: Date.now(),
+  };
+}
+
+/**
+ * Was ein Spieler nach dem Finale gutgeschrieben bekommt.
+ *
+ * Getrennt von getRoom(), weil hier der Token gegen den ECHTEN Raum geprüft
+ * wird und nicht gegen die maskierte Ansicht. Wirft, statt null zu liefern,
+ * damit ein Fehlversuch im Endpunkt unterscheidbar bleibt.
+ */
+function claimablePoints(code, playerToken) {
+  const normalizedCode = (code || "").trim().toUpperCase();
+  const room = activeRooms.get(normalizedCode);
+  if (!room) {
+    throw new Error("ROOM_NOT_FOUND");
+  }
+  const player = playerByToken(room, playerToken);
+  if (!player) {
+    throw new Error("PLAYER_NOT_IN_ROOM");
+  }
+  if (room.status !== "finale") {
+    throw new Error("GAME_NOT_FINISHED");
+  }
+  return {
+    roomCode: room.code,
+    playerId: player.id,
+    // Obergrenze als billige Versicherung. Die Punkte rechnet inzwischen der
+    // Server, sie sind also nicht mehr fälschbar — aber eine Story mit einem
+    // Tippfehler in den Effekten soll auch nicht das Level-System sprengen.
+    points: Math.min(player.points || 0, 150),
   };
 }
 
 function getActiveRoomsSummary() {
   cleanupExpiredRooms();
   const summary = [];
-  for (const [code, room] of activeRooms.entries()) {
+  for (const room of activeRooms.values()) {
     const host = room.players.find((p) => p.isHost);
     summary.push({
       code: room.code,
@@ -406,7 +618,9 @@ function getActiveRoomsSummary() {
 }
 
 function deleteRoom(code) {
-  return activeRooms.delete(code.toUpperCase());
+  const normalized = code.toUpperCase();
+  forget(normalized);
+  return activeRooms.delete(normalized);
 }
 
 module.exports = {
@@ -418,6 +632,8 @@ module.exports = {
   nextChapter,
   leaveRoom,
   getActiveRoomsSummary,
+  claimablePoints,
   deleteRoom,
+  restoreRooms,
   _activeRooms: activeRooms, // for testing inspection
 };

@@ -1,0 +1,157 @@
+{
+  "id": "court_treason",
+  "title": "Der Verrat am Königshof",
+  "subtitle": "Game of Thrones trifft Social Deduction & Trink-Diplomatie",
+  "genre": "Intrigen & Rollenspiel",
+  "durationMinutes": 25,
+  "minPlayers": 3,
+  "maxPlayers": 12,
+  "themeColor": "#b45309",
+  "accentColor": "#fbbf24",
+  "icon": "crown",
+  "tagline": "Wer goss das Gift in den königlichen Kelch?",
+  "description": "Der König liegt vergiftet auf dem Thronsaal. Ein Attentäter sitzt mit am Tisch! Schafft es der Inquisitor, die Wahrheit ans Licht zu bringen, oder verurteilt der Kronrat die Falschen?",
+
+  "roles": {
+    "fixed": [
+      {
+        "name": "Attentäter 🗡️",
+        "allegiance": "traitor",
+        "secretPrompt": "Du hast den König vergiftet! Dein Ziel: Lenke den Verdacht unauffällig auf {{player:2|andere}} oder {{player:3|deine Nachbarn}}. Lass dich beim Tribunal um keinen Preis wählen!"
+      },
+      {
+        "name": "Großinquisitor ⚖️",
+        "allegiance": "town",
+        "secretPrompt": "Du leitest die königliche Untersuchung. Beobachte genau, wer nervös trinkt, zögert oder Ausflüchte sucht. Deine Stimme wiegt im Kronrat schwer!"
+      },
+      {
+        "name": "Hofalchemist 🧪",
+        "allegiance": "town",
+        "secretPrompt": "Du kennst alle Gifte des Reiches. Du darfst im Rat eine Person auswählen und sie zwingen, ihren Trinkbecher vorzukosten."
+      },
+      {
+        "name": "Der Hofnarr 🃏",
+        "allegiance": "neutral",
+        "secretPrompt": "Du genießt Narrenfreiheit! Verwirre die anderen mit kühnen Thesen und mache die Runde betrunken."
+      }
+    ],
+    "pool": [
+      { "name": "Haus Löwenstein 🦁", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Drachenfels 🐉", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Schattenwacht 🦅", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Silberquell 🌊", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Nachtdorn 🌹", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Sonnenfels ☀️", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Eisengard 🛡️", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" },
+      { "name": "Haus Rabenkron 🐦", "allegiance": "town", "secretPrompt": "Du bist das stolze Oberhaupt von {{role}}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!" }
+    ]
+  },
+
+  "chapters": [
+    {
+      "id": "act_1_poison",
+      "act": 1,
+      "title": "Akt I: Der goldene Kelch",
+      "atmosphereHint": "Der Thronsaal verstummt. Die Hofwache verriegelt mit lautem Rasseln die Flügeltüren.",
+      "picks": {
+        "poison": ["Nachtschatten-Extrakt", "Basilisken-Träne", "Zyankali-Wein", "Schlangengift"]
+      },
+      "textTemplate": "Das Festmahl war auf dem Höhepunkt, als der König plötzlich nach seiner Kehle griff und zu Boden sank!\n{{player:1|Ein Adliger}} war der Letzte, der am Weinfass gesehen wurde. {{player:2|Ein Gast}} schwört jedoch, dass {{player:3|Der Mundschenk}} kurz zuvor mit einem Fläschchen {{pick:poison}} hantierte.\nDie Hofwache riegelt alle Burgtore ab: Niemand verlässt den Saal, bis der Mörder überführt ist!",
+      "prompt": {
+        "title": "Das kaiserliche Dekret",
+        "description": "Wie reagierst du auf das Entsetzen im Thronsaal?",
+        "choices": [
+          {
+            "id": "toast_king",
+            "label": "Auf den gefallenen König anstoßen (1 Schluck)",
+            "outcomeText": "Du hebst deinen Kelch und beweist deine scheinbare Treue zum Thron.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 10 }]
+          },
+          {
+            "id": "blame_other",
+            "label": "Laut Verdacht gegen die Tischnachbarn erheben",
+            "outcomeText": "Du lenkst die Blicke geschickt von dir ab auf die anderen!",
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "swear_oath",
+            "label": "Einen heiligen Treueeid schwören (Verteile 1 Schluck)",
+            "outcomeText": "Deine feierlichen Worte überzeugen die Wachen – du darfst 1 Schluck verteilen!",
+            "targetRequired": true,
+            "sips": { "target": 1 },
+            "effects": [{ "points": 20 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "act_2_investigation",
+      "act": 2,
+      "title": "Akt II: Das Kreuzverhör im Kronrat",
+      "atmosphereHint": "Fackellicht flackert an den kalten Steinmauern. Die Gesichter spiegeln Misstrauen wider.",
+      "textTemplate": "Der Großinquisitor tritt mit gezogenem Richtschwert vor den Rat!\n{{lastPlayer|Ein Zeuge}} meldet sich mit zittriger Stimme: \"Ich habe gesehen, wie {{randomPlayer|Jemand}} heimlich Pulver in den Pokal streute!\"\nDie Stimmung kippt bedrohlich. Wer die Wahrheit spricht, weiß niemand – doch die Gläser füllen sich für die nächsten Anschuldigungen!",
+      "prompt": {
+        "title": "Geheime Verhöre & Bestechung",
+        "description": "Wähle deine Taktik vor den Inquisitoren:",
+        "choices": [
+          {
+            "id": "bribe_council",
+            "label": "Kronrat bestechen (Verteile 2 Schlucke)",
+            "outcomeText": "Mit gezielten Anschuldigungen verteilst du 2 Strafschlucke an einen Mitspieler!",
+            "targetRequired": true,
+            "sips": { "target": 2 },
+            "effects": [{ "points": 20 }]
+          },
+          {
+            "id": "drink_proof",
+            "label": "Unschuldstrunk leeren (1 Schluck)",
+            "outcomeText": "Du trinkst deinen Becher zügig und beweist deinen unschuldigen Magen.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "demand_silence",
+            "label": "Zum Schweigen verdonnern (Alle trinken 1 Schluck)",
+            "outcomeText": "Du rufst nach Ruhe im Saal – die gesamte Runde trinkt gemeinsam 1 Schluck!",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 25 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "act_3_tribunal",
+      "act": 3,
+      "title": "Akt III: Das Tribunal des Schafotts",
+      "atmosphereHint": "Die Henkersaxt wird geschliffen. Alle Augen richten sich aufeinander.",
+      "textTemplate": "Die Stunde des Urteils ist da!\nJeder Adlige am Tisch muss nun Farbe bekennen. Wer ist der wahre Mörder des Königs?\nWählt jetzt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!",
+      "voting": {
+        "prompt": "Wen verdächtigst du als Attentäter des Königs?"
+      }
+    }
+  ],
+
+  "finale": {
+    "traitorRole": "Attentäter 🗡️",
+    "outcomes": {
+      "caught": {
+        "winnerTeam": "Die Getreuen der Krone 👑",
+        "title": "Gerechtigkeit siegt!",
+        "summary": "Der Kronrat hat {{traitor}} als wahren Attentäter überführt! Der Verrat ist gerächt und das Reich gerettet.",
+        "penalties": [
+          { "who": "traitor", "sips": 4, "reason": "Als entlarvter Attentäter auf dem Schafott!" }
+        ]
+      },
+      "escaped": {
+        "winnerTeam": "Der Attentäter 🗡️",
+        "title": "Der Verrat war vollkommen!",
+        "summary": "Der Kronrat hat fälschlicherweise {{condemned}} verurteilt, während {{traitor}} triumphierend im Schatten lacht!",
+        "penalties": [
+          { "who": "condemned", "sips": 3, "reason": "Unschuldig auf dem Schafott gelandet!" },
+          { "who": "others", "sips": 2, "reason": "Auf die Intrige des Attentäters hereingefallen!" }
+        ]
+      }
+    }
+  }
+}

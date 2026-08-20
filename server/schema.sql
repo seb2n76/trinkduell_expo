@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS users (
   -- als Standardauswahl zurück.
   quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE,
   -- Banned status for moderation
-  banned BOOLEAN NOT NULL DEFAULT FALSE
+  banned BOOLEAN NOT NULL DEFAULT FALSE,
+  -- XP aus Trinkspielen. MUSS eine eigene Spalte sein: recalculateUserStats()
+  -- setzt `points` bei jedem Aufruf komplett aus den Getränke-Logs neu und
+  -- würde alles überschreiben, was direkt dort hineingeschrieben wird.
+  game_points INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS drinks (
@@ -231,3 +235,27 @@ CREATE INDEX IF NOT EXISTS idx_feed_reactions_target ON feed_reactions(target_id
 -- idx_drinks_ean liegt aus diesem Grund in db.js. tests/schema.test.js
 -- prüft die Regel.
 
+
+-- ─── Spielräume & Spiel-Punkte ───────────────────────────────────────────────
+-- Laufende Multi-Device-Spiele. Räume lagen früher ausschließlich im RAM; ein
+-- Neustart durch auto-update.sh löschte damit jede laufende Sitzung mitten im
+-- Spiel. Der Zustand ist ein vollständiger Raum-Schnappschuss als JSON, damit
+-- das Schema nicht bei jeder Spielmechanik nachgezogen werden muss.
+CREATE TABLE IF NOT EXISTS game_rooms (
+  code TEXT PRIMARY KEY,
+  state JSONB NOT NULL,
+  last_activity BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_game_rooms_activity ON game_rooms(last_activity);
+
+-- Bereits ausgezahlte Spiel-Punkte. Der Primärschlüssel ist "raum:spieler",
+-- damit ein wiederholter Aufruf — Reconnect, doppelter Tap, erneuter Poll —
+-- nicht ein zweites Mal gutschreibt.
+CREATE TABLE IF NOT EXISTS game_settlements (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  room_code TEXT NOT NULL,
+  points INTEGER NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_game_settlements_user ON game_settlements(user_id);

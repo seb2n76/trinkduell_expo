@@ -166,7 +166,12 @@ async function recalculateUserStats(user, logs, drinks, groups) {
   const isAdmin = groups.some((g) => g.adminId === user.id);
   if (isAdmin) unlockAchievement("ANFUEHRER");
 
-  user.points = totalPoints;
+  // Getränke-XP plus Spiel-XP. Die beiden Quellen MÜSSEN getrennt bleiben:
+  // diese Funktion läuft bei praktisch jedem Nutzer-Abruf und setzt `points`
+  // jedes Mal komplett neu. Alles, was direkt nach `points` geschrieben
+  // würde, wäre beim nächsten Request spurlos weg — deshalb liegt der
+  // Spiel-Anteil in einer eigenen Spalte und wird hier nur addiert.
+  user.points = totalPoints + (user.gamePoints || 0);
   user.alcoholGrams = Number(totalAlcohol.toFixed(2));
   user.rank = rank;
   user.achievements = activeAchievements;
@@ -284,6 +289,9 @@ async function initPgSchema() {
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE");
     // Gesperrte Accounts (Moderation)
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE");
+    // XP aus Trinkspielen — getrennt von `points`, weil recalculateUserStats()
+    // `points` bei jedem Aufruf komplett aus den Getränke-Logs neu berechnet.
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS game_points INTEGER NOT NULL DEFAULT 0");
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
@@ -360,7 +368,7 @@ async function loadDb() {
     db = JSON.parse(data);
     // Auto-heal collections added after a database file was first written.
     let healed = false;
-  for (const key of ["friendships", "blocks", "reports", "userDrinks", "conversationReads"]) {
+  for (const key of ["friendships", "blocks", "reports", "userDrinks", "conversationReads", "gameRooms", "gameSettlements"]) {
       if (!db[key]) {
         db[key] = [];
         healed = true;
@@ -383,7 +391,9 @@ async function loadDb() {
       userDrinks: [],
       conversationReads: [],
       blocks: [],
-      reports: []
+      reports: [],
+      gameRooms: [],
+      gameSettlements: []
     };
     await saveDb();
   }
@@ -415,6 +425,7 @@ module.exports = {
         level: row.level !== undefined && row.level !== null ? row.level : 1,
         active_quest: row.active_quest || null,
         banned: Boolean(row.banned),
+        gamePoints: row.game_points || 0,
         // Needed by authenticate() to reject tokens from before a password
         // reset. Stripped again in enrichUserProgress before any response.
         sessionValidAfter: row.session_valid_after
@@ -440,6 +451,7 @@ module.exports = {
       level: u.level || 1,
       active_quest: u.active_quest || null,
       banned: Boolean(u.banned),
+      gamePoints: u.gamePoints || 0,
       sessionValidAfter: u.sessionValidAfter || null
     }));
   },
@@ -975,7 +987,11 @@ module.exports = {
           password: rawUser.password,
           selected_title: rawUser.selected_title,
           level: rawUser.level !== undefined && rawUser.level !== null ? rawUser.level : 1,
-          active_quest: rawUser.active_quest || null
+          active_quest: rawUser.active_quest || null,
+          // MUSS mit: recalculateUserStats() addiert die Spiel-XP auf `points`.
+          // Fehlt das Feld, schreibt das anschliessende saveUser() einen um
+          // die Spiel-XP verminderten Punktestand zurueck.
+          gamePoints: rawUser.game_points || 0
         };
         const allLogs = await module.exports.getLogs();
         const allDrinks = await module.exports.getDrinks();
@@ -1017,7 +1033,11 @@ module.exports = {
           password: rawUser.password,
           selected_title: rawUser.selected_title,
           level: rawUser.level !== undefined && rawUser.level !== null ? rawUser.level : 1,
-          active_quest: rawUser.active_quest || null
+          active_quest: rawUser.active_quest || null,
+          // MUSS mit: recalculateUserStats() addiert die Spiel-XP auf `points`.
+          // Fehlt das Feld, schreibt das anschliessende saveUser() einen um
+          // die Spiel-XP verminderten Punktestand zurueck.
+          gamePoints: rawUser.game_points || 0
         };
         const allLogs = await module.exports.getLogs();
         const allDrinks = await module.exports.getDrinks();
@@ -1078,7 +1098,11 @@ module.exports = {
           password: rawUser.password,
           selected_title: rawUser.selected_title,
           level: rawUser.level !== undefined && rawUser.level !== null ? rawUser.level : 1,
-          active_quest: rawUser.active_quest || null
+          active_quest: rawUser.active_quest || null,
+          // MUSS mit: recalculateUserStats() addiert die Spiel-XP auf `points`.
+          // Fehlt das Feld, schreibt das anschliessende saveUser() einen um
+          // die Spiel-XP verminderten Punktestand zurueck.
+          gamePoints: rawUser.game_points || 0
         };
         const allLogs = await module.exports.getLogs();
         const allDrinks = await module.exports.getDrinks();
@@ -1894,6 +1918,113 @@ module.exports = {
         (m.group_id && gruppen.has(m.group_id) && m.sender_id !== userId)
     );
   },
+  // ─── Spielräume ────────────────────────────────────────────────────────────
+  //
+  // Ein Raum wird als ganzer Schnappschuss gespeichert, nicht in Spalten
+  // zerlegt: die Spielmechanik ändert sich in den nächsten Ausbaustufen
+  // laufend, und ein Schema, das jeder neuen Mechanik hinterherzieht, wäre
+  // nur eine Migrationsbremse. Gespeichert wird bei Phasenwechseln, nicht
+  // bei jeder Abfrage.
+
+  saveGameRoom: async (code, room) => {
+    await loadDb();
+    const lastActivity = room.lastActivity || Date.now();
+    if (pool) {
+      await pool.query(
+        `INSERT INTO game_rooms (code, state, last_activity)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (code) DO UPDATE SET state = EXCLUDED.state, last_activity = EXCLUDED.last_activity`,
+        [code, JSON.stringify(room), lastActivity]
+      );
+      return;
+    }
+    db.gameRooms = (db.gameRooms || []).filter((r) => r.code !== code);
+    db.gameRooms.push(room);
+    await saveDb();
+  },
+
+  deleteGameRoom: async (code) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("DELETE FROM game_rooms WHERE code = $1", [code]);
+      return;
+    }
+    db.gameRooms = (db.gameRooms || []).filter((r) => r.code !== code);
+    await saveDb();
+  },
+
+  getGameRooms: async () => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query("SELECT state FROM game_rooms");
+      return res.rows.map((r) => (typeof r.state === "string" ? JSON.parse(r.state) : r.state));
+    }
+    return db.gameRooms || [];
+  },
+
+  // ─── Spiel-Punkte ──────────────────────────────────────────────────────────
+
+  /**
+   * Schreibt einem Nutzer die Punkte aus einer Spielrunde gut — genau einmal.
+   *
+   * Der Schlüssel ist "raum:nutzer". Ein zweiter Aufruf für dieselbe Runde
+   * (Reconnect, doppelter Tap, wiederholter Poll) prallt am Primärschlüssel
+   * ab und ändert nichts. Rückgabe sagt, ob wirklich gutgeschrieben wurde.
+   */
+  awardGamePoints: async (roomCode, userId, points) => {
+    await loadDb();
+    const id = `${roomCode}:${userId}`;
+    const amount = Math.max(0, Math.round(points || 0));
+    const timestamp = new Date().toISOString();
+
+    if (pool) {
+      const inserted = await pool.query(
+        `INSERT INTO game_settlements (id, user_id, room_code, points, timestamp)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`,
+        [id, userId, roomCode, amount, timestamp]
+      );
+      if (inserted.rowCount === 0) {
+        return { awarded: false, points: 0 };
+      }
+      await pool.query(
+        "UPDATE users SET game_points = COALESCE(game_points, 0) + $1 WHERE id = $2",
+        [amount, userId]
+      );
+    } else {
+      db.gameSettlements = db.gameSettlements || [];
+      if (db.gameSettlements.some((s) => s.id === id)) {
+        return { awarded: false, points: 0 };
+      }
+      db.gameSettlements.push({ id, user_id: userId, room_code: roomCode, points: amount, timestamp });
+      const stored = db.users.find((u) => u.id === userId);
+      if (stored) {
+        stored.gamePoints = (stored.gamePoints || 0) + amount;
+      }
+      await saveDb();
+    }
+
+    // Den Punktestand direkt nachziehen. `points` wird sonst ausschließlich
+    // von recalculateUserStats() geschrieben — die Gutschrift wäre also erst
+    // sichtbar, wenn der Nutzer irgendwann das nächste Getränk einträgt.
+    // Über den regulären Weg statt per Direktaddition, damit Rang, Level-
+    // Sperre und Erfolge konsistent bleiben.
+    const users = await module.exports.getUsers();
+    const user = users.find((u) => u.id === userId);
+    if (user) {
+      const [allLogs, allDrinks, allGroups] = await Promise.all([
+        module.exports.getLogs(),
+        module.exports.getDrinks(),
+        module.exports.getGroups(),
+      ]);
+      const updated = await recalculateUserStats(user, allLogs, allDrinks, allGroups);
+      await module.exports.saveUser(updated);
+    }
+
+    return { awarded: true, points: amount };
+  },
+
   getCumulativeXpForLevel,
   getUserProgress
 };

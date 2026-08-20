@@ -1,0 +1,155 @@
+{
+  "id": "murder_express",
+  "title": "Mord im Mitternachts-Express",
+  "subtitle": "1920s Noir Whodunnit & Kreuzverhör",
+  "genre": "Krimi & Social Deduction",
+  "durationMinutes": 25,
+  "minPlayers": 3,
+  "maxPlayers": 12,
+  "themeColor": "#0284c7",
+  "accentColor": "#38bdf8",
+  "icon": "train",
+  "tagline": "Ein Schneesturm, ein Toter und kein Alibi.",
+  "description": "Der Luxuszug steht tief im Gebirge still. Baron von Falkenstein liegt tot im Salonwagen! Jeder Passagier verbirgt ein dunkles Geheimnis.",
+
+  "roles": {
+    "fixed": [
+      {
+        "name": "Der Mörder 🪓",
+        "allegiance": "traitor",
+        "secretPrompt": "Du hast den Baron ermordet! Schiebe die Schuld auf {{player:2|den Detektiv}} oder {{player:3|die anderen Passagiere}}. Wenn du das Kreuzverhör überstehst, entkommst du unerkannt!"
+      },
+      {
+        "name": "Meisterdetektiv 🕵️‍♂️",
+        "allegiance": "town",
+        "secretPrompt": "Du leitest die Ermittlung im Zug. Achte genau auf Widersprüche, Alibis und wer nervös am Glas nippt. Deine Stimme hat Gewicht!"
+      },
+      {
+        "name": "Die Erbin 💎",
+        "allegiance": "town",
+        "secretPrompt": "Der Baron schuldete dir ein Vermögen. Du bist unschuldig, hast aber ein starkes Motiv! Trinke unauffällig und wirke nicht verdächtig."
+      },
+      {
+        "name": "Der Leibarzt 🩺",
+        "allegiance": "town",
+        "secretPrompt": "Du hast die Leiche untersucht. Du darfst im Salonwagen eine Person zwingen, ihren Schluck auf Ex zu trinken."
+      }
+    ],
+    "pool": [
+      { "name": "Der Schaffner 🎫", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Der Schmuggler 💼", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Die Reporterin 📰", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Die Baroness 👒", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Der Casino-Betrüger 🃏", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Der Geheimagent 🕶️", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Der Opernsänger 🎭", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" },
+      { "name": "Die Wahrsagerin 🔮", "allegiance": "town", "secretPrompt": "Du reist als {{role}} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!" }
+    ]
+  },
+
+  "chapters": [
+    {
+      "id": "act_1_blackout",
+      "act": 1,
+      "title": "Akt I: Der Schrei im Tunnel",
+      "atmosphereHint": "Der Zug rast in die Dunkelheit. Die Scheinwerfer flackern unheilsam.",
+      "picks": {
+        "weapon": ["einem schweren Schürhaken", "einem Seidenschal", "einem goldenen Brieföffner", "einer Dosis Arsen"]
+      },
+      "textTemplate": "Draußen tobt der Schneesturm, als der Express plötzlich mit quietschenden Bremsen im Tunnel anhält.\nEin gellender Schrei zerreißt die Stille! Als das Notlicht aufflackert, liegt Baron von Falkenstein leblos über dem Schachtisch – ermordet mit {{pick:weapon}}!\n{{player:1|Ein Passagier}} hält ein blutbeflecktes Tuch in der Hand, während {{player:2|Eine Dame}} bleich auf die Schlafwagen-Tür starrt!",
+      "prompt": {
+        "title": "Schock im Salonwagen",
+        "description": "Wie verhältst du dich beim Fund der Leiche?",
+        "choices": [
+          {
+            "id": "drink_shock",
+            "label": "Einen Schluck zur Beruhigung nehmen (1 Schluck)",
+            "outcomeText": "Du nimmst einen kräftigen Schluck gegen das Zittern.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 10 }]
+          },
+          {
+            "id": "inspect_scene",
+            "label": "Tatort absuchen & Spuren sichern",
+            "outcomeText": "Du findest eine zerrissene Fahrkarte mit verdächtigen Initialen!",
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "fake_alibi",
+            "label": "Lautstark dein Alibi beteuern",
+            "outcomeText": "Du erklärst allen, dass du die ganze Zeit am Buffet standest.",
+            "effects": [{ "points": 12 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "act_2_interrogation",
+      "act": 2,
+      "title": "Akt II: Das eisige Kreuzverhör",
+      "atmosphereHint": "Eisblumen wachsen an den Scheiben. Jeder Blick ist voller Argwohn.",
+      "textTemplate": "Der Meisterdetektiv lässt alle Abteile durchsuchen!\n{{lastPlayer|Der Schaffner}} tritt vor: \"Ich habe {{randomPlayer|Jemand}} kurz vor dem Stromausfall beim Salonwagen herumschleichen sehen!\"\nDie Passagiere verlangen Antworten. Wer nicht redet, muss trinken!",
+      "prompt": {
+        "title": "Verdächtigungen & Verhöre",
+        "description": "Wie reagierst du auf das Kreuzverhör?",
+        "choices": [
+          {
+            "id": "accuse_player",
+            "label": "Gegenbeschuldigung erheben (Verteile 2 Schlucke)",
+            "outcomeText": "Du greifst einen anderen Passagier an und verteilst 2 Strafschlucke!",
+            "targetRequired": true,
+            "sips": { "target": 2 },
+            "effects": [{ "points": 20 }]
+          },
+          {
+            "id": "drink_whiskey",
+            "label": "Ein Glas Whiskey leeren (1 Schluck)",
+            "outcomeText": "Du bleibst betont gelassen und genießt deinen Drink.",
+            "sips": { "self": 1 },
+            "effects": [{ "points": 15 }]
+          },
+          {
+            "id": "team_toast",
+            "label": "Auf die Wahrheit anstoßen (Alle trinken 1 Schluck)",
+            "outcomeText": "Du erhebst das Glas – alle Passagiere trinken gemeinsam!",
+            "sips": { "all": 1 },
+            "effects": [{ "points": 20 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "act_3_verdict",
+      "act": 3,
+      "title": "Akt III: Die Entlarvung des Mörders",
+      "atmosphereHint": "Der Zug setzt sich langsam wieder in Bewegung. Die Endstation naht.",
+      "textTemplate": "Der Detektiv versammelt alle Überlebenden im Speisewagen!\nEs gibt kein Entkommen mehr. Wer von euch ist der kaltblütige Mörder des Barons?\nStimmt jetzt auf eurem Smartphone ab und überführt den Täter!",
+      "voting": {
+        "prompt": "Wer ist der Mörder im Mitternachtsexpress?"
+      }
+    }
+  ],
+
+  "finale": {
+    "traitorRole": "Der Mörder 🪓",
+    "outcomes": {
+      "caught": {
+        "winnerTeam": "Die Passagiere & der Detektiv 🕵️‍♂️",
+        "title": "Fall gelöst!",
+        "summary": "Hervorragende Deduktion! {{traitor}} wurde als Mörder entlarvt und an der nächsten Station der Polizei übergeben.",
+        "penalties": [
+          { "who": "traitor", "sips": 4, "reason": "Als überführter Mörder im Express!" }
+        ]
+      },
+      "escaped": {
+        "winnerTeam": "Der Mörder 🪓",
+        "title": "Der Mörder entkommt!",
+        "summary": "Fatale Fehlentscheidung! {{condemned}} wurde fälschlicherweise beschuldigt, während {{traitor}} mit den Juwelen des Barons unerkannt entkommt!",
+        "penalties": [
+          { "who": "condemned", "sips": 3, "reason": "Unschuldig im Zug verhaftet!" },
+          { "who": "others", "sips": 2, "reason": "Den echten Täter entkommen lassen!" }
+        ]
+      }
+    }
+  }
+}

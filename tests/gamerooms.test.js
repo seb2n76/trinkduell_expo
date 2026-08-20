@@ -68,34 +68,74 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     }
   });
 
-  await t.test("synchronisiert den Raum-Status und maskiert geheime Rollen", async () => {
+  // ── Rollen kommen vom Server, nicht vom Host ────────────────────────────
+  //
+  // Bis August 2026 schickte der Host die Rollenverteilung im Start-Aufruf
+  // mit. Er konnte sich damit selbst zum Inquisitor und einen Mitspieler zum
+  // Mörder erklären — in einem Spiel, dessen ganzer Witz die geheime
+  // Rollenverteilung ist. Jetzt verteilt der Server aus der Story-Definition,
+  // und ein mitgeschicktes playerRoles wird für Story-Spiele ignoriert.
+  await t.test("verteilt Rollen serverseitig und ignoriert die Wunschliste des Hosts", async () => {
+    // court_treason verlangt mindestens 3 Spieler.
+    const dritter = await call("POST", `/game-rooms/${createdCode}/join`, {
+      playerName: "Hofdame Ada",
+    });
+    assert.equal(dritter.status, 200);
+    const drittesToken = dritter.json.playerToken;
+
     const startRes = await call("POST", `/game-rooms/${createdCode}/start`, {
       playerToken: hostToken,
       gameSetupData: {
         playerRoles: [
-          { playerId: hostPlayerId, role: "Inquisitor", secretPrompt: "Finde den Mörder." },
-          { playerId: joinedPlayerId, role: "Mörder", secretPrompt: "Vergifte unauffällig." },
+          { playerId: hostPlayerId, role: "Wunschrolle des Hosts", secretPrompt: "Geht nicht." },
         ],
       },
     });
 
     assert.equal(startRes.status, 200);
-    assert.equal(startRes.json.room.status, "role_reveal");
+    assert.equal(startRes.json.room.status, "story_chapter", "Der Server baut Kapitel 1 direkt mit auf");
 
-    const hostSync = await call("GET", `/game-rooms/${createdCode}?playerToken=${hostToken}`);
-    assert.equal(hostSync.status, 200);
+    const eigene = startRes.json.room.players.find((p) => p.id === hostPlayerId);
+    assert.notEqual(eigene.role, "Wunschrolle des Hosts", "Die Wunschrolle des Hosts darf nicht greifen");
+    assert.ok(eigene.role, "Der Server muss eine Rolle vergeben haben");
+
+    // Jeder sieht genau eine Rolle: die eigene.
+    const sichten = await Promise.all(
+      [hostToken, joinedToken, drittesToken].map((tok) =>
+        call("GET", `/game-rooms/${createdCode}?playerToken=${tok}`)
+      )
+    );
+    const sichtbareRollen = sichten.map(
+      (s) => s.json.room.players.filter((p) => p.role !== null).length
+    );
+    assert.deepEqual(sichtbareRollen, [1, 1, 1], "Jeder sieht ausschließlich die eigene Rolle");
+
+    // Zusammen ergeben die drei Sichten die volle Verteilung — und die muss
+    // genau einen Verräter enthalten.
+    const alleRollen = sichten.map((s, i) => {
+      const meineId = s.json.room.myPlayerId;
+      return s.json.room.players.find((p) => p.id === meineId);
+    });
+    const verraeter = alleRollen.filter((p) => p.allegiance === "traitor");
+    assert.equal(verraeter.length, 1, "Genau ein Attentäter pro Runde");
+    assert.equal(verraeter[0].role, "Attentäter 🗡️");
+
+    const hostSync = sichten[0];
     const hostPlayers = hostSync.json.room.players;
-    assert.equal(hostPlayers.find((p) => p.id === hostPlayerId).role, "Inquisitor");
+    assert.ok(hostPlayers.find((p) => p.id === hostPlayerId).role, "Die eigene Rolle ist sichtbar");
     assert.equal(
       hostPlayers.find((p) => p.id === joinedPlayerId).role,
       null,
       "Fremde Rolle muss für Host maskiert sein"
     );
+    assert.equal(
+      hostPlayers.find((p) => p.id === joinedPlayerId).secretPrompt,
+      null,
+      "Der fremde Geheimauftrag erst recht"
+    );
 
-    const playerSync = await call("GET", `/game-rooms/${createdCode}?playerToken=${joinedToken}`);
-    assert.equal(playerSync.status, 200);
-    const clientPlayers = playerSync.json.room.players;
-    assert.equal(clientPlayers.find((p) => p.id === joinedPlayerId).role, "Mörder");
+    const clientPlayers = sichten[1].json.room.players;
+    assert.ok(clientPlayers.find((p) => p.id === joinedPlayerId).role);
     assert.equal(
       clientPlayers.find((p) => p.id === hostPlayerId).role,
       null,
@@ -224,7 +264,8 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     assert.equal(leaveRes.status, 200);
 
     const roomSync = await call("GET", `/game-rooms/${createdCode}?playerToken=${hostToken}`);
-    assert.equal(roomSync.json.room.players.length, 1);
+    // Host und Hofdame Ada bleiben übrig.
+    assert.equal(roomSync.json.room.players.length, 2);
   });
 
   await t.test("ein fremder Token entfernt niemanden", async () => {
@@ -234,7 +275,7 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     await call("POST", `/game-rooms/${createdCode}/leave`, { playerToken: fremderToken });
 
     const sync = await call("GET", `/game-rooms/${createdCode}?playerToken=${hostToken}`);
-    assert.equal(sync.json.room.players.length, 1, "Der Host ist noch da");
+    assert.equal(sync.json.room.players.length, 2, "Der Host ist noch da");
   });
 });
 

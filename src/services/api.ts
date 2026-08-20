@@ -874,6 +874,22 @@ export const apiService = {
     return res.data;
   },
 
+  /**
+   * Schreibt die Punkte einer beendeten Runde dem angemeldeten Konto gut.
+   *
+   * Braucht beides: das JWT (steckt der Interceptor dazu) und den Raum-Token
+   * als Nachweis, wirklich mitgespielt zu haben. Der Server zahlt pro Runde
+   * nur einmal aus — ein zweiter Aufruf antwortet mit `awarded: false` und
+   * ist kein Fehler.
+   */
+  claimGameRoomPoints: async (code: string, playerToken: string): Promise<{ success: boolean; awarded: boolean; points: number }> => {
+    const res = await axiosInstance.post<{ success: boolean; awarded: boolean; points: number }>(
+      `/game-rooms/${code}/claim`,
+      { playerToken }
+    );
+    return res.data;
+  },
+
   nextGameRoomChapter: async (code: string, playerToken: string, params: { nextStatus?: string; nextChapterData?: any; outcomeSummary?: string }): Promise<{ success: boolean; room: any }> => {
     const res = await axiosInstance.post<{ success: boolean; room: any }>(`/game-rooms/${code}/next`, {
       playerToken,
