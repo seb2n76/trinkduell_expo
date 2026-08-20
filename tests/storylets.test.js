@@ -22,7 +22,7 @@ function spieler(n) {
   }));
 }
 
-const storyletIds = ["murder_express", "court_treason"];
+const storyletIds = ["murder_express", "court_treason", "haunted_manor"];
 
 test("Storylet-Format wird erkannt und ist vollständig (alle Storylet-Spiele)", () => {
   for (const storyId of storyletIds) {
@@ -324,4 +324,64 @@ test("Der Verrat am Königshof: Vollständiger Durchlauf mit 5 Spielern", async 
   assert.ok(geseheneAkte.has(2), "Akt 2 wurde durchlaufen");
   assert.ok(geseheneAkte.has(3), "Akt 3 wurde durchlaufen");
 });
+
+test("Escape the Haunted Manor: Vollständiger Durchlauf mit 5 Spielern", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call } = server;
+
+  const { code, spieler } = await raumMitFuenfSpielern(call, "haunted_manor");
+  const host = spieler[0];
+
+  await call("POST", `/game-rooms/${code}/start`, { playerToken: host.token });
+
+  const geseheneAkte = new Set();
+
+  for (let schritt = 0; schritt < 50; schritt++) {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    const room = sicht.json.room;
+    if (room.status === "finale") break;
+
+    if (room.gameState.currentChapter && room.gameState.currentChapter.act) {
+      geseheneAkte.add(room.gameState.currentChapter.act);
+    }
+
+    if (room.gameState.phase && room.gameState.phase.kind === "choice") {
+      const prompt = room.gameState.currentChapter.prompt;
+      if (prompt && prompt.choices && prompt.choices.length > 0) {
+        const choice = prompt.choices[0];
+        for (const s of spieler) {
+          await call("POST", `/game-rooms/${code}/action`, {
+            playerToken: s.token,
+            actionType: "choice",
+            payload: {
+              choiceId: choice.id,
+              targetPlayerId: choice.targetRequired ? spieler[1].id : undefined,
+            },
+          });
+        }
+      }
+    } else if (room.gameState.phase && room.gameState.phase.kind === "vote") {
+      for (const s of spieler) {
+        await call("POST", `/game-rooms/${code}/action`, {
+          playerToken: s.token,
+          actionType: "vote",
+          payload: { targetPlayerId: spieler[1].id },
+        });
+      }
+    }
+
+    await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
+  }
+
+  const finaleSicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+  assert.equal(finaleSicht.json.room.status, "finale", "Spiel erreicht das Finale");
+  assert.ok(finaleSicht.json.room.gameState.finale, "Finale hat ein Ergebnis");
+  assert.ok(finaleSicht.json.room.gameState.finale.winnerTeam, "Ein Gewinnerteam steht fest");
+  assert.ok(finaleSicht.json.room.gameState.finale.summary, "Eine Zusammenfassung existiert");
+  assert.ok(geseheneAkte.has(1), "Akt 1 wurde durchlaufen");
+  assert.ok(geseheneAkte.has(2), "Akt 2 wurde durchlaufen");
+  assert.ok(geseheneAkte.has(3), "Akt 3 wurde durchlaufen");
+});
+
 
