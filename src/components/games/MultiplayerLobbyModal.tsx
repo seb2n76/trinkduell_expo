@@ -140,195 +140,200 @@ export function MultiplayerLobbyModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <View className="flex-1 bg-bg pt-14 px-5">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-4">
-          <TouchableOpacity onPress={handleLeave} className="flex-row items-center p-1">
-            <Ionicons name="close-circle-outline" size={20} color={c.warning} />
-            <Text className="text-warning text-xs font-black uppercase ml-1">Verlassen</Text>
-          </TouchableOpacity>
+      <View className="flex-1 bg-bg pt-14 px-5 items-center">
+        <View className="w-full max-w-2xl flex-1">
+          {/* Header */}
+          <View className="flex-row items-center justify-between mb-5">
+            <TouchableOpacity onPress={handleLeave} className="flex-row items-center p-1">
+              <Ionicons name="close-circle-outline" size={20} color={c.warning} />
+              <Text className="text-warning text-xs font-black uppercase ml-1">Verlassen</Text>
+            </TouchableOpacity>
 
-          <Text className="text-content text-sm font-black uppercase tracking-wider">
-            Multiplayer-Lobby
-          </Text>
-
-          <View className="w-16" />
-        </View>
-
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          {/* Room Code Showcase */}
-          <View className="bg-surface border-2 border-accent/40 rounded-3xl p-6 items-center shadow-2xl mb-6">
-            <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-1">
-              Raum-Code für Mitspieler
+            <Text className="text-content text-sm font-black uppercase tracking-wider">
+              Multiplayer-Lobby
             </Text>
-            <View className="flex-row items-center justify-center my-2">
-              {roomCode.split("").map((char, index) => (
-                <View
-                  key={index}
-                  className="bg-bg border border-accent/30 w-12 h-14 rounded-2xl items-center justify-center mx-1 shadow-md"
-                >
-                  <Text className="text-accent text-3xl font-black">{char}</Text>
-                </View>
-              ))}
-            </View>
-            <Text className="text-content-faint text-[11px] font-bold text-center mt-2">
-              Freunde öffnen TrinkDuell → <Text className="text-content font-black">„Lobby beitreten“</Text> → Code eingeben
-            </Text>
+
+            <View className="w-16" />
           </View>
 
-          {/* Game Selector (Host only) or Game Preview (Client) */}
-          {isHost ? (
-            <View className="mb-6">
-              <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-2.5">
-                Story-Spiel auswählen
+          <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+            {/* Room Code Showcase */}
+            <View className="bg-surface border border-line rounded-3xl p-6 items-center shadow-sm mb-6">
+              <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2">
+                Raum-Code für Mitspieler
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
-                {STORY_GAMES_LIST.map((game) => {
-                  const isSelected = game.id === selectedGameId;
-                  return (
-                    <TouchableOpacity
-                      key={game.id}
-                      activeOpacity={0.85}
-                      onPress={() => {
-                        triggerHaptic("light");
-                        setSelectedGameId(game.id);
-                      }}
-                      style={{
-                        borderColor: isSelected ? game.accentColor : "transparent",
-                      }}
-                      className={`w-64 bg-surface border-2 rounded-2xl p-4 mr-3 shadow-lg ${
-                        isSelected ? "border-accent" : "border-line"
-                      }`}
-                    >
-                      <View className="flex-row items-center justify-between mb-2">
-                        <View className="px-2 py-0.5 rounded-full bg-accent/20">
-                          <Text className="text-accent text-[8px] font-black uppercase">
-                            {game.genre}
+              <View className="flex-row items-center justify-center my-2">
+                {roomCode.split("").map((char, index) => (
+                  <View
+                    key={index}
+                    className="bg-surface-alt border border-line w-12 h-14 rounded-2xl items-center justify-center mx-1.5 shadow-sm"
+                  >
+                    <Text className="text-amber-400 text-3xl font-black font-mono">{char}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text className="text-content-faint text-[11px] font-bold text-center mt-3">
+                Freunde öffnen TrinkDuell → <Text className="text-content font-black">„Lobby beitreten“</Text> → Code eingeben
+              </Text>
+            </View>
+
+            {/* Game Selector (Host only) or Game Preview (Client) */}
+            {isHost ? (
+              <View className="mb-6">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-3">
+                  Story-Spiel auswählen
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 12, paddingTop: 4, paddingHorizontal: 2 }}
+                >
+                  {STORY_GAMES_LIST.map((game) => {
+                    const isSelected = game.id === selectedGameId;
+                    return (
+                      <TouchableOpacity
+                        key={game.id}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          triggerHaptic("light");
+                          setSelectedGameId(game.id);
+                        }}
+                        className={`w-72 bg-surface rounded-3xl p-5 mr-3 shadow-md ${
+                          isSelected
+                            ? "border-2 border-amber-400 bg-amber-400/5"
+                            : "border border-line"
+                        }`}
+                      >
+                        <View className="flex-row items-center justify-between mb-2.5">
+                          <View className="px-2.5 py-0.5 rounded-full bg-surface-alt border border-line">
+                            <Text className="text-amber-400 text-[8px] font-black uppercase">
+                              {game.genre}
+                            </Text>
+                          </View>
+                          <Text className="text-content-faint text-[9px] font-bold">
+                            {game.minPlayers}–{game.maxPlayers} Spieler
                           </Text>
                         </View>
-                        <Text className="text-content-faint text-[9px] font-bold">
-                          {game.minPlayers}–{game.maxPlayers} Spieler
+                        <Text className="text-content text-sm font-black mb-1.5">{game.title}</Text>
+                        <Text className="text-content-muted text-[11px] font-medium leading-relaxed" numberOfLines={2}>
+                          {game.description}
                         </Text>
-                      </View>
-                      <Text className="text-content text-sm font-black mb-1">{game.title}</Text>
-                      <Text className="text-content-faint text-[10px] font-medium leading-relaxed" numberOfLines={2}>
-                        {game.description}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          ) : (
-            <View className="bg-surface border border-line rounded-2xl p-4 mb-6">
-              <View className="flex-row items-center mb-1">
-                <Ionicons name="sparkles" size={14} color={c.accent} />
-                <Text className="text-content text-xs font-black uppercase ml-1.5">
-                  {selectedGame.title}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : (
+              <View className="bg-surface border border-line rounded-3xl p-5 mb-6 shadow-sm">
+                <View className="flex-row items-center mb-1.5">
+                  <Ionicons name="sparkles" size={16} color="#fbbf24" />
+                  <Text className="text-content text-xs font-black uppercase ml-2">
+                    {selectedGame.title}
+                  </Text>
+                </View>
+                <Text className="text-content-muted text-xs font-medium leading-relaxed">
+                  {selectedGame.description}
                 </Text>
               </View>
-              <Text className="text-content-faint text-[11px] font-medium">
-                {selectedGame.description}
-              </Text>
-            </View>
-          )}
+            )}
 
-          {/* Players in Lobby */}
-          <View className="mb-8">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider">
-                Bereite Spieler ({room?.players?.length || 1})
-              </Text>
-              <View className="flex-row items-center">
-                <View className="w-2 h-2 rounded-full bg-success mr-1.5 animate-pulse" />
-                <Text className="text-success text-[10px] font-bold">Live</Text>
+            {/* Players in Lobby */}
+            <View className="mb-8">
+              <View className="flex-row items-center justify-between mb-3 px-1">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider">
+                  Bereite Spieler ({room?.players?.length || 1})
+                </Text>
+                <View className="flex-row items-center">
+                  <View className="w-2 h-2 rounded-full bg-success mr-1.5" />
+                  <Text className="text-success text-[10px] font-bold">Live</Text>
+                </View>
               </View>
-            </View>
 
-            {loading && !room ? (
-              <ActivityIndicator size="small" color={c.accent} />
-            ) : (
-              <View className="gap-2">
-                {room?.players?.map((player: any, idx: number) => {
-                  const isMe = player.id === myPlayerId;
-                  return (
-                    <View
-                      key={player.id || idx}
-                      className={`flex-row items-center justify-between p-3.5 rounded-2xl border ${
-                        isMe
-                          ? "bg-accent/10 border-accent/40"
-                          : "bg-surface border-line"
-                      }`}
-                    >
-                      <View className="flex-row items-center">
-                        <View className="w-9 h-9 rounded-full bg-bg border border-line items-center justify-center mr-3 overflow-hidden">
-                          {player.avatar ? (
-                            <Image source={{ uri: player.avatar }} className="w-full h-full" />
-                          ) : (
-                            <Ionicons name="person" size={16} color={c.contentFaint} />
-                          )}
-                        </View>
-                        <View>
-                          <View className="flex-row items-center">
-                            <Text className="text-content text-xs font-black mr-2">
-                              {player.name}
-                            </Text>
-                            {player.isHost && (
-                              <View className="bg-warning/20 border border-warning/40 px-1.5 py-0.2 rounded">
-                                <Text className="text-warning text-[8px] font-black uppercase">
-                                  Host 👑
-                                </Text>
-                              </View>
-                            )}
-                            {isMe && (
-                              <Text className="text-accent text-[9px] font-bold ml-1">
-                                (Du)
-                              </Text>
+              {loading && !room ? (
+                <ActivityIndicator size="small" color="#fbbf24" />
+              ) : (
+                <View className="gap-2.5">
+                  {room?.players?.map((player: any, idx: number) => {
+                    const isMe = player.id === myPlayerId;
+                    return (
+                      <View
+                        key={player.id || idx}
+                        className={`flex-row items-center justify-between p-4 rounded-2xl border shadow-sm ${
+                          isMe
+                            ? "bg-amber-400/10 border-amber-400/50"
+                            : "bg-surface border-line"
+                        }`}
+                      >
+                        <View className="flex-row items-center">
+                          <View className="w-10 h-10 rounded-full bg-surface-alt border border-line items-center justify-center mr-3 overflow-hidden">
+                            {player.avatar ? (
+                              <Image source={{ uri: player.avatar }} className="w-full h-full" />
+                            ) : (
+                              <Ionicons name="person" size={18} color={c.contentFaint} />
                             )}
                           </View>
-                          <Text className="text-content-faint text-[9px] font-bold mt-0.5">
-                            Bereit zum Mitspielen
-                          </Text>
+                          <View>
+                            <View className="flex-row items-center">
+                              <Text className="text-content text-xs font-black mr-2">
+                                {player.name}
+                              </Text>
+                              {player.isHost && (
+                                <View className="bg-amber-400/20 border border-amber-400/40 px-1.5 py-0.5 rounded">
+                                  <Text className="text-amber-400 text-[8px] font-black uppercase">
+                                    Host 👑
+                                  </Text>
+                                </View>
+                              )}
+                              {isMe && (
+                                <Text className="text-amber-400 text-[9px] font-bold ml-1.5">
+                                  (Du)
+                                </Text>
+                              )}
+                            </View>
+                            <Text className="text-content-faint text-[9px] font-bold mt-0.5">
+                              Bereit zum Mitspielen
+                            </Text>
+                          </View>
                         </View>
-                      </View>
 
-                      <Ionicons name="checkmark-circle" size={18} color={c.success} />
-                    </View>
-                  );
-                })}
+                        <Ionicons name="checkmark-circle" size={20} color={c.success} />
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* Start Game Action Bar (Host) or Waiting status (Client) */}
+          <View className="py-4 border-t border-line">
+            {isHost ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleStartGame}
+                disabled={starting || (room?.players?.length || 0) < selectedGame.minPlayers}
+                className="w-full bg-amber-400 py-4 rounded-2xl items-center justify-center flex-row shadow-lg active:scale-95 disabled:opacity-40"
+              >
+                {starting ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <>
+                    <Ionicons name="play" size={18} color="#000000" />
+                    <Text className="text-black font-black text-xs uppercase tracking-wider ml-2">
+                      Story-Spiel starten
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View className="flex-row items-center justify-center py-2">
+                <ActivityIndicator size="small" color="#fbbf24" className="mr-2.5" />
+                <Text className="text-content-faint text-xs font-bold">
+                  Warte auf Spielstart durch den Host...
+                </Text>
               </View>
             )}
           </View>
-        </ScrollView>
-
-        {/* Start Game Action Bar (Host) or Waiting status (Client) */}
-        <View className="py-4 border-t border-line">
-          {isHost ? (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleStartGame}
-              disabled={starting || (room?.players?.length || 0) < selectedGame.minPlayers}
-              className="w-full bg-accent py-4 rounded-2xl items-center justify-center flex-row shadow-lg disabled:opacity-40"
-            >
-              {starting ? (
-                <ActivityIndicator size="small" color={c.onAccent} />
-              ) : (
-                <>
-                  <Ionicons name="play" size={18} color={c.onAccent} />
-                  <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-2">
-                    Story-Spiel starten
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <View className="flex-row items-center justify-center py-2">
-              <ActivityIndicator size="small" color={c.accent} className="mr-2.5" />
-              <Text className="text-content-faint text-xs font-bold">
-                Warte auf Spielstart durch den Host...
-              </Text>
-            </View>
-          )}
         </View>
       </View>
     </Modal>

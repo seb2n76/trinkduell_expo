@@ -179,9 +179,10 @@ export function StoryGameShell({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <View className="flex-1 bg-bg pt-14 px-5">
-        {/* Top Bar */}
-        <View className="flex-row items-center justify-between mb-3">
+      <View className="flex-1 bg-bg pt-14 px-5 items-center">
+        <View className="w-full max-w-2xl flex-1">
+          {/* Top Bar */}
+          <View className="flex-row items-center justify-between mb-3">
           <TouchableOpacity onPress={handleExit} className="flex-row items-center p-1">
             <Ionicons name="close-circle-outline" size={20} color={c.warning} />
             <Text className="text-warning text-xs font-black uppercase ml-1">Beenden</Text>
@@ -452,6 +453,7 @@ export function StoryGameShell({
               </Text>
             </View>
           )}
+        </View>
         </View>
       </View>
     </Modal>
