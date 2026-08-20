@@ -353,6 +353,7 @@ function NavigationLayout() {
         <Stack.Screen name="help" options={{ ...SCREEN_HEADER, title: "Hilfe & Feedback" }} />
         <Stack.Screen name="map" options={{ ...SCREEN_HEADER, title: "Karte" }} />
 
+        <Stack.Screen name="legal/imprint" options={{ ...SCREEN_HEADER, title: "Impressum" }} />
         <Stack.Screen name="legal/privacy" options={{ ...SCREEN_HEADER, title: "Datenschutzerklärung" }} />
         <Stack.Screen name="legal/terms" options={{ ...SCREEN_HEADER, title: "Nutzungsbedingungen" }} />
       </Stack>
