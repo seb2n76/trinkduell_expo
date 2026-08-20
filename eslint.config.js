@@ -18,7 +18,7 @@ module.exports = defineConfig([
     // eine handgepflegte Aufzählung ist erst bei `Buffer` wieder aufgelaufen,
     // und der nächste Node-Global (URL, structuredClone, …) würde denselben
     // Fehlalarm auslösen.
-    files: ["server/**/*.js", "tests/**/*.js"],
+    files: ["server/**/*.js", "tests/**/*.js", "scripts/**/*.js"],
     languageOptions: {
       sourceType: "commonjs",
       globals: globals.node,
