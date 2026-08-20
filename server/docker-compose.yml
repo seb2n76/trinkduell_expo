@@ -54,7 +54,6 @@ services:
       #     -c "SELECT id, name FROM users ORDER BY name"
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     depends_on:
       - db
 
