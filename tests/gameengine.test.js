@@ -51,6 +51,23 @@ async function naechstesKapitel(call, code, hostToken) {
   await call("POST", `/game-rooms/${code}/next`, { playerToken: hostToken });
 }
 
+/**
+ * Schaltet so lange Phasen weiter, bis die gesuchte Phase erreicht ist.
+ *
+ * Beim Storylet-Format steht die Szenenzahl nicht fest — der Server zieht sie
+ * aus einem Pool. Ein Test kann deshalb nicht einfach "viermal weiter" sagen.
+ */
+async function skipBisPhase(call, code, hostToken, kind, maxSchritte = 60) {
+  for (let i = 0; i < maxSchritte; i++) {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${hostToken}`);
+    const room = sicht.json.room;
+    if (room.status === "finale") return room;
+    if (room.gameState.phase && room.gameState.phase.kind === kind) return room;
+    await call("POST", `/game-rooms/${code}/next`, { playerToken: hostToken });
+  }
+  throw new Error(`Phase "${kind}" nach ${maxSchritte} Schritten nicht erreicht`);
+}
+
 /** Wer ist der Verraeter? Nur aus der jeweils EIGENEN Sicht ablesbar. */
 async function findeVerraeter(call, code, spieler) {
   for (const s of spieler) {
@@ -189,11 +206,7 @@ test("Story-Engine: das Finale rechnet der Server (B1)", async (t) => {
   });
 
   await t.test("ueberfuehrt der Rat den Moerder, gewinnen die Passagiere", async () => {
-    // Bis zum Abstimmungskapitel durchschalten.
-    await naechstesKapitel(call, code, host.token);
-    await naechstesKapitel(call, code, host.token);
-
-    const abstimmung = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    const abstimmung = { json: { room: await skipBisPhase(call, code, host.token, "vote") } };
     assert.ok(abstimmung.json.room.gameState.currentChapter.voting, "Akt III stimmt ab");
     assert.equal(abstimmung.json.room.gameState.phase.kind, "vote");
 
@@ -405,9 +418,8 @@ test("Spiel-XP überleben die Neuberechnung (B3)", async (t) => {
     actionType: "choice",
     payload: { choiceId: "inspect_scene" }, // +15
   });
-  await naechstesKapitel(call, code, host.token);
-  await naechstesKapitel(call, code, host.token);
-  // Akt III: mit der letzten Stimme steht das Finale.
+  await skipBisPhase(call, code, host.token, "vote");
+  // Mit der letzten Stimme steht das Finale.
   for (const s of spieler) {
     await call("POST", `/game-rooms/${code}/action`, {
       playerToken: s.token,

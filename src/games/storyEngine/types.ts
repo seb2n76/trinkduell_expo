@@ -47,6 +47,14 @@ export interface RoomPlayer {
   role: string | null;
   allegiance: "town" | "traitor" | "neutral" | null;
   secretPrompt: string | null;
+  /**
+   * Der Teil der Wahrheit, den nur diese Person kennt. Kommt ausschließlich
+   * in der eigenen Sicht — sonst wäre die Asymmetrie hin, aus der die
+   * Diskussionen entstehen.
+   */
+  observation: string | null;
+  /** Ausgeschieden: redet und stimmt weiter mit, handelt aber nicht mehr. */
+  eliminated: boolean;
 }
 
 export interface ChapterChoice {
@@ -67,8 +75,12 @@ export interface CurrentChapter {
   prompt: {
     title: string;
     description: string;
+    /** Rollenszene: nur diese Rolle handelt, alle anderen sehen zu und reden. */
+    forRole: string | null;
     choices: ChapterChoice[];
   } | null;
+  /** Reine Redezeit mit Frist, ohne Eingabe. */
+  discussion: { seconds: number; prompt: string } | null;
   voting: { prompt: string } | null;
 }
 
@@ -80,7 +92,7 @@ export interface CurrentChapter {
  * niemals gegen die eigene Uhr, sonst laufen acht Geräte auseinander.
  */
 export interface PhaseInfo {
-  kind: "choice" | "reveal" | "vote";
+  kind: "choice" | "reveal" | "vote" | "discussion";
   startedAt: number;
   deadlineAt: number;
   seconds: number;
@@ -121,6 +133,8 @@ export interface StoryRoom {
     healthPoints?: number;
     phase: PhaseInfo | null;
     reveals: ChoiceReveal[] | null;
+    /** Aktueller Akt im Storylet-Format. */
+    act?: number;
     myChoice: { choiceId: string; outcomeText: string; targetPlayerId: string | null } | null;
     choiceCount: number;
     voteCount: number;

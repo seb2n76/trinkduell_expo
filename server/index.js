@@ -3842,6 +3842,12 @@ app.post("/api/game-rooms/:code/action", async (req, res) => {
     if (err.message === "TARGET_REQUIRED") {
       return res.status(400).json({ error: "Für diese Auswahl musst du eine Person bestimmen." });
     }
+    if (err.message === "NOT_YOUR_SCENE") {
+      return res.status(403).json({ error: "Diese Szene gehört einer anderen Rolle." });
+    }
+    if (err.message === "ELIMINATED") {
+      return res.status(403).json({ error: "Du bist raus — aber du redest und stimmst weiter mit." });
+    }
     if (err.message === "NO_STORY_FOR_GAME") {
       return res.status(400).json({ error: "Für dieses Spiel gibt es keine Story-Definition." });
     }

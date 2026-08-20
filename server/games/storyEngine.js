@@ -35,8 +35,17 @@ function loadStories() {
     try {
       const raw = fs.readFileSync(path.join(STORY_DIR, file), "utf-8");
       const story = JSON.parse(raw);
-      if (!story.id || !Array.isArray(story.chapters) || story.chapters.length === 0) {
-        console.error(`[StoryEngine] ${file} hat keine id oder keine Kapitel — übersprungen.`);
+      // Zwei Formate: die festen Drei-Akt-Spiele über `chapters`, und der
+      // Storylet-Pool über `storylets` + `structure`.
+      const hatKapitel = Array.isArray(story.chapters) && story.chapters.length > 0;
+      const hatStorylets =
+        story.format === "storylets" &&
+        Array.isArray(story.storylets) &&
+        story.storylets.length > 0 &&
+        story.structure &&
+        Array.isArray(story.structure.acts);
+      if (!story.id || (!hatKapitel && !hatStorylets)) {
+        console.error(`[StoryEngine] ${file} hat keine id oder keine spielbaren Szenen — übersprungen.`);
         continue;
       }
       stories.set(story.id, Object.freeze(story));
@@ -139,6 +148,9 @@ function renderTemplate(template, ctx) {
       case "role":
         value = ctx.role || null;
         break;
+      case "other":
+        value = ctx.other || null;
+        break;
       case "traitor":
         value = ctx.traitor || null;
         break;
@@ -150,6 +162,13 @@ function renderTemplate(template, ctx) {
           ? String(ctx.variables[arg])
           : null;
         break;
+      // Rückgriff auf das Sitzungsgedächtnis: der Name der Person, die
+      // zuletzt etwas dieser Art getan hat.
+      case "memory": {
+        const treffer = (ctx.memory || []).filter((m) => m.kind === arg);
+        value = treffer.length ? treffer[treffer.length - 1].playerName : null;
+        break;
+      }
       default:
         value = null;
     }
@@ -194,7 +213,57 @@ function assignRoles(story, players) {
     });
   }
 
+  attachObservations(story, assignments, order);
   return assignments;
+}
+
+/**
+ * Verteilt die Beobachtungen — für jede Person ein anderer Ausschnitt der
+ * Wahrheit.
+ *
+ * Genau EINE Person hat wirklich etwas gesehen und kann es nicht beweisen.
+ * Alle anderen haben etwas Belangloses beobachtet, das sich nach einem Hinweis
+ * anfühlt. Daraus entsteht die Diskussion: der Zeuge muss überzeugen, der
+ * Täter muss ihn unglaubwürdig machen, und der Rest muss entscheiden, wem er
+ * glaubt. Ohne diese Asymmetrie ist eine Abstimmung nur Bauchgefühl.
+ */
+function attachObservations(story, assignments, order) {
+  const pinholes = story.pinholes;
+  if (!pinholes) return;
+
+  const traitorRole = story.finale && story.finale.traitorRole;
+  const traitor = assignments.find((a) => a.role === traitorRole);
+  const unschuldige = assignments.filter((a) => a.playerId !== (traitor && traitor.playerId));
+  if (unschuldige.length === 0) return;
+
+  const nameOf = (playerId) => {
+    const p = order.find((x) => x.id === playerId);
+    return p ? p.name : "jemand";
+  };
+
+  // Der Zeuge.
+  const zeuge = unschuldige[crypto.randomInt(unschuldige.length)];
+  zeuge.observation = renderTemplate(pinholes.witness, {
+    players: order,
+    traitor: traitor ? nameOf(traitor.playerId) : "die richtige Person",
+  });
+
+  // Der Täter weiß, dass jemand etwas gesehen haben könnte.
+  if (traitor && pinholes.traitor) {
+    traitor.observation = renderTemplate(pinholes.traitor, { players: order });
+  }
+
+  // Alle übrigen: harmlose Beobachtungen über eine andere Person.
+  const rauschen = pinholes.noise || [];
+  for (const a of unschuldige) {
+    if (a.observation || rauschen.length === 0) continue;
+    const andere = assignments.filter((x) => x.playerId !== a.playerId);
+    const ziel = andere[crypto.randomInt(andere.length)];
+    a.observation = renderTemplate(rauschen[crypto.randomInt(rauschen.length)], {
+      players: order,
+      other: nameOf(ziel.playerId),
+    });
+  }
 }
 
 /**
@@ -249,13 +318,17 @@ const DEFAULT_DEADLINE_SEC = {
   // nach 15 Sekunden Vorlesen redet die Gruppe ohnehin weiter.
   reveal: 15,
   vote: 75,
+  // Reine Redezeit ohne Eingabe. Lang genug für eine echte Runde
+  // Verdächtigungen, kurz genug, dass sie nicht versandet.
+  discussion: 90,
 };
 
-/** Welche Phase ein Kapitel eröffnet: Auswahl, Abstimmung oder nur Text. */
-function openingPhaseKind(chapter) {
-  if (!chapter) return null;
-  if (chapter.prompt) return "choice";
-  if (chapter.voting) return "vote";
+/** Welche Phase eine Szene eröffnet: Auswahl, Diskussion, Abstimmung, Text. */
+function openingPhaseKind(scene) {
+  if (!scene) return null;
+  if (scene.prompt) return "choice";
+  if (scene.discussion) return "discussion";
+  if (scene.voting) return "vote";
   return "reveal";
 }
 
@@ -264,10 +337,14 @@ function openingPhaseKind(chapter) {
 // gesetzt — und wenn doch, ist es ein bewusster Eingriff.
 const DEADLINE_OVERRIDE_SEC = Number(process.env.TRINKDUELL_PHASE_SEC) || 0;
 
-function deadlineSecFor(chapter, kind) {
+function deadlineSecFor(scene, kind) {
   if (DEADLINE_OVERRIDE_SEC > 0) return DEADLINE_OVERRIDE_SEC;
-  const fromChapter = chapter && chapter.deadlineSec && chapter.deadlineSec[kind];
-  return fromChapter || DEFAULT_DEADLINE_SEC[kind] || 60;
+  // Eine Diskussionsszene bringt ihre Redezeit selbst mit.
+  if (kind === "discussion" && scene && scene.discussion && scene.discussion.seconds) {
+    return scene.discussion.seconds;
+  }
+  const fromScene = scene && scene.deadlineSec && scene.deadlineSec[kind];
+  return fromScene || DEFAULT_DEADLINE_SEC[kind] || 60;
 }
 
 function chapterAt(story, index) {
@@ -276,6 +353,147 @@ function chapterAt(story, index) {
 
 function isLastChapter(story, index) {
   return index >= story.chapters.length - 1;
+}
+
+// ─── Storylets ───────────────────────────────────────────────────────────────
+//
+// Das zweite Story-Format. Statt einer festen Kapitelfolge liegt ein Pool von
+// Szenen bereit, die Bedingungen an den Spielzustand stellen. Der Server zieht
+// pro Schritt eine passende — dadurch verläuft dieselbe Story zweimal anders,
+// ohne dass ein Erzählbaum geschrieben werden muss, dessen Äste sich mit jeder
+// Entscheidung verdoppeln.
+//
+// Getragen wird das von Variablen (hinweise, verdacht, panik …), die die
+// Entscheidungen der Gruppe hochzählen. Eine Szene, die `hinweise >= 4`
+// verlangt, taucht nur auf, wenn wirklich ermittelt wurde. Das Muster stammt
+// aus Quality-Based-Narrative-Systemen.
+//
+// Die alten Drei-Akt-Spiele laufen unverändert über `chapters` weiter.
+
+function isStoryletFormat(story) {
+  return !!story && story.format === "storylets" && Array.isArray(story.storylets);
+}
+
+/** Eine einzelne Bedingung gegen Variablen, Akt oder Spielerzahl. */
+function conditionHolds(cond, ctx) {
+  if (!cond) return true;
+  if (cond.act !== undefined && ctx.act !== cond.act) return false;
+  if (cond.minPlayers !== undefined && ctx.playerCount < cond.minPlayers) return false;
+  if (cond.var !== undefined) {
+    const value = ctx.variables[cond.var] || 0;
+    if (cond.atLeast !== undefined && value < cond.atLeast) return false;
+    if (cond.atMost !== undefined && value > cond.atMost) return false;
+    if (cond.equals !== undefined && value !== cond.equals) return false;
+  }
+  // Eine Rolle muss noch im Spiel sein, damit ihre Szene erscheint.
+  if (cond.roleAlive !== undefined && !ctx.aliveRoles.includes(cond.roleAlive)) return false;
+  return true;
+}
+
+function conditionsHold(requires, ctx) {
+  if (!Array.isArray(requires) || requires.length === 0) return true;
+  return requires.every((c) => conditionHolds(c, ctx));
+}
+
+function actConfig(story, act) {
+  const acts = (story.structure && story.structure.acts) || [];
+  return acts.find((a) => a.act === act) || null;
+}
+
+function lastAct(story) {
+  const acts = (story.structure && story.structure.acts) || [];
+  return acts.length ? acts[acts.length - 1].act : 1;
+}
+
+/**
+ * Wählt die nächste Szene für den aktuellen Akt.
+ *
+ * Reihenfolge: eine als `opening` markierte Szene kommt immer zuerst, eine
+ * `closing` immer zuletzt. Dazwischen entscheidet gewichteter Zufall unter
+ * allen Szenen, deren Bedingungen erfüllt sind.
+ */
+function pickStorylet(story, ctx) {
+  const passend = story.storylets.filter((s) => {
+    if (s.act !== ctx.act) return false;
+    if (s.once && ctx.used.includes(s.id)) return false;
+    return conditionsHold(s.requires, ctx);
+  });
+  if (passend.length === 0) return null;
+
+  const cfg = actConfig(story, ctx.act);
+  const gespielt = ctx.playedInAct;
+  const gesamt = cfg ? cfg.count : passend.length;
+
+  if (gespielt === 0) {
+    const opener = passend.find((s) => s.opening);
+    if (opener) return opener;
+  }
+  if (gespielt >= gesamt - 1) {
+    const closer = passend.find((s) => s.closing);
+    if (closer) return closer;
+  }
+
+  // Opening/Closing sonst nicht mitten im Akt ziehen.
+  const mitte = passend.filter((s) => !s.opening && !s.closing);
+  const pool = mitte.length > 0 ? mitte : passend;
+
+  const gesamtGewicht = pool.reduce((sum, s) => sum + (s.weight || 1), 0);
+  let wurf = crypto.randomInt(Math.max(1, gesamtGewicht));
+  for (const s of pool) {
+    wurf -= s.weight || 1;
+    if (wurf < 0) return s;
+  }
+  return pool[pool.length - 1];
+}
+
+/** Ist der Akt durchgespielt? */
+function actExhausted(story, act, playedInAct) {
+  const cfg = actConfig(story, act);
+  return playedInAct >= (cfg ? cfg.count : 0);
+}
+
+/**
+ * Baut eine Szene in der Fassung, die alle Clients sehen — dieselbe Form wie
+ * buildChapter, damit die Oberfläche beide Formate ohne Unterscheidung
+ * darstellen kann.
+ */
+function buildStorylet(story, storylet, players, act, ctx = {}) {
+  if (!storylet) return null;
+  const cfg = actConfig(story, act);
+
+  return {
+    id: storylet.id,
+    act,
+    index: 0,
+    title: storylet.title || (cfg ? cfg.title : ""),
+    atmosphereHint: storylet.atmosphereHint || (cfg ? cfg.atmosphereHint : null) || null,
+    text: renderTemplate(storylet.textTemplate, {
+      players,
+      picks: storylet.picks,
+      variables: ctx.variables,
+      memory: ctx.memory,
+    }),
+    prompt: storylet.prompt
+      ? {
+          title: storylet.prompt.title,
+          description: storylet.prompt.description,
+          // Rollenszenen: nur diese Rolle darf wählen, alle anderen sehen zu
+          // und reden. Das ist die Asymmetrie, die Diskussionen erzeugt.
+          forRole: storylet.prompt.forRole || null,
+          choices: storylet.prompt.choices.map((c) => ({
+            id: c.id,
+            label: c.label,
+            targetRequired: !!c.targetRequired,
+          })),
+        }
+      : null,
+    discussion: storylet.discussion || null,
+    voting: storylet.voting || null,
+  };
+}
+
+function storyletById(story, id) {
+  return story.storylets.find((s) => s.id === id) || null;
 }
 
 /** Startwerte der Story-Variablen (z. B. healthPoints: 100). */
@@ -289,13 +507,12 @@ function initialVariables(story) {
  *
  * `state` wird direkt verändert: { players, variables }.
  */
-function applyChoice(story, chapterIndex, state, actingPlayerId, choiceId, targetPlayerId) {
-  const chapter = chapterAt(story, chapterIndex);
-  if (!chapter || !chapter.prompt) {
+function applyChoice(story, scene, state, actingPlayerId, choiceId, targetPlayerId) {
+  if (!scene || !scene.prompt) {
     throw new Error("NO_PROMPT_IN_CHAPTER");
   }
 
-  const choice = chapter.prompt.choices.find((c) => c.id === choiceId);
+  const choice = scene.prompt.choices.find((c) => c.id === choiceId);
   if (!choice) {
     throw new Error("UNKNOWN_CHOICE");
   }
@@ -303,6 +520,12 @@ function applyChoice(story, chapterIndex, state, actingPlayerId, choiceId, targe
   const actor = state.players.find((p) => p.id === actingPlayerId);
   if (!actor) {
     throw new Error("PLAYER_NOT_IN_ROOM");
+  }
+
+  // Rollenszene: nur die genannte Rolle darf handeln. Ohne diese Pruefung
+  // waere die Asymmetrie nur Behauptung.
+  if (scene.prompt.forRole && actor.role !== scene.prompt.forRole) {
+    throw new Error("NOT_YOUR_SCENE");
   }
 
   const target = targetPlayerId
@@ -330,11 +553,33 @@ function applyChoice(story, chapterIndex, state, actingPlayerId, choiceId, targe
     }
     if (effect.variable) {
       const current = state.variables[effect.variable] || 0;
-      const ceiling = (story.variables || {})[effect.variable];
+      // Obergrenze NUR, wenn die Story eine nennt. Sie aus dem Startwert
+      // abzuleiten wäre falsch: `healthPoints: 100` ist ein Maximum,
+      // `hinweise: 0` ist ein Zähler — der wäre damit für immer bei 0
+      // festgenagelt.
+      const ceiling = (story.variableLimits || {})[effect.variable];
       let next = current + (effect.delta || 0);
       next = Math.max(0, next);
       if (typeof ceiling === "number") next = Math.min(ceiling, next);
       state.variables[effect.variable] = next;
+    }
+    // Sitzungsgedaechtnis: was hier landet, kann eine spaetere Szene per
+    // {{memory:kind}} wieder aufgreifen. Daraus entstehen die Rueckgriffe,
+    // die eine Runde zu IHRER Runde machen.
+    if (effect.remember && state.memory) {
+      state.memory.push({
+        kind: effect.remember,
+        playerId: actor.id,
+        playerName: actor.name,
+        targetName: target ? target.name : null,
+        at: Date.now(),
+      });
+    }
+    // Ausscheiden. Der Spieler bleibt im Raum und wird zum Geist — wer das
+    // Handy weglegt, zieht die halbe Gruppe mit raus.
+    if (effect.eliminate) {
+      const opfer = effect.eliminate === "target" ? target : actor;
+      if (opfer) opfer.eliminated = true;
     }
   }
 
@@ -345,11 +590,22 @@ function applyChoice(story, chapterIndex, state, actingPlayerId, choiceId, targe
   };
 }
 
-/** Ermittelt den Spieler mit den meisten Stimmen. Gleichstand: der Erste. */
+/**
+ * Ermittelt den Spieler mit den meisten Stimmen. Gleichstand: der Erste.
+ *
+ * Geister stimmen mit halbem Gewicht. Sie sollen Einfluss behalten — sonst
+ * legen sie das Handy weg und ziehen die Gruppe mit raus —, aber die Runde
+ * nicht gegen die Lebenden entscheiden können.
+ */
 function topVoted(players, votes) {
   const counts = {};
-  for (const targetId of Object.values(votes || {})) {
-    if (targetId) counts[targetId] = (counts[targetId] || 0) + 1;
+  const gewicht = {};
+  for (const p of players) gewicht[p.id] = p.eliminated ? 0.5 : 1;
+
+  for (const [voterId, targetId] of Object.entries(votes || {})) {
+    if (targetId) {
+      counts[targetId] = (counts[targetId] || 0) + (gewicht[voterId] ?? 1);
+    }
   }
   let bestId = "";
   let best = 0;
@@ -446,6 +702,14 @@ module.exports = {
   openingPhaseKind,
   deadlineSecFor,
   isLastChapter,
+  // Storylet-Format
+  isStoryletFormat,
+  pickStorylet,
+  buildStorylet,
+  storyletById,
+  actExhausted,
+  actConfig,
+  lastAct,
   initialVariables,
   applyChoice,
   evaluateFinale,

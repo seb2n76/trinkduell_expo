@@ -15,6 +15,9 @@
   "variables": {
     "healthPoints": 100
   },
+  "variableLimits": {
+    "healthPoints": 100
+  },
 
   "roles": {
     "fixed": [

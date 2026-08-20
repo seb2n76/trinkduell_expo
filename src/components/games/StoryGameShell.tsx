@@ -88,6 +88,17 @@ export function StoryGameShell({
   const isChoicePhase = phase?.kind === "choice";
   const isRevealPhase = phase?.kind === "reveal";
   const isVotePhase = phase?.kind === "vote";
+  const isDiscussionPhase = phase?.kind === "discussion";
+
+  // Rollenszene: nur eine bestimmte Rolle handelt. Wer sie nicht hat, sieht
+  // zu und redet mit — das ist die Asymmetrie, aus der Diskussion entsteht.
+  const forRole = chapter?.prompt?.forRole || null;
+  const isMyScene = !forRole || me?.role === forRole;
+  const sceneOwner = forRole
+    ? room?.players?.find((p) => p.role === forRole) || null
+    : null;
+  const amGhost = !!me?.eliminated;
+  const canAct = isChoicePhase && isMyScene && !amGhost;
 
   const fetchRoomState = useCallback(async () => {
     if (!roomCode) return;
@@ -197,6 +208,8 @@ export function StoryGameShell({
   const others = (room?.players || []).filter((p) => p.id !== myPlayerId);
   const chosenCount = room?.gameState?.choiceCount || 0;
   const totalPlayers = room?.players?.length || 0;
+  // Geister entscheiden nicht mehr mit — sie dürfen den Zähler nicht blockieren.
+  const livingCount = (room?.players || []).filter((p) => !p.eliminated).length;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
@@ -228,11 +241,15 @@ export function StoryGameShell({
             <View className="mb-3">
               <View className="flex-row items-center justify-between mb-1.5">
                 <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest">
-                  {isChoicePhase
-                    ? "Alle entscheiden gleichzeitig"
-                    : isRevealPhase
-                      ? "Auflösung"
-                      : "Abstimmung läuft"}
+                  {isDiscussionPhase
+                    ? "Redet miteinander"
+                    : isChoicePhase
+                      ? forRole
+                        ? `${forRole} ist am Zug`
+                        : "Alle entscheiden gleichzeitig"
+                      : isRevealPhase
+                        ? "Auflösung"
+                        : "Abstimmung läuft"}
                 </Text>
                 <Text
                   className={`text-[10px] font-black ${
@@ -301,14 +318,48 @@ export function StoryGameShell({
                   />
                 </View>
 
-                {showSecretRole && me.secretPrompt && (
+                {showSecretRole && (
                   <View className="mt-2.5 pt-2.5 border-t border-line">
-                    <Text className="text-content text-xs font-medium leading-relaxed">
-                      {me.secretPrompt}
-                    </Text>
+                    {me.secretPrompt && (
+                      <Text className="text-content text-xs font-medium leading-relaxed">
+                        {me.secretPrompt}
+                      </Text>
+                    )}
+                    {/* Die eigene Beobachtung. Jede Person sieht einen anderen
+                        Ausschnitt — genau eine hat wirklich etwas gesehen. */}
+                    {me.observation && (
+                      <View className="mt-3 pt-3 border-t border-line">
+                        <View className="flex-row items-center mb-1.5">
+                          <Ionicons name="eye-outline" size={13} color={c.warning} />
+                          <Text className="text-warning text-[9px] font-black uppercase tracking-widest ml-1.5">
+                            Was du gesehen hast
+                          </Text>
+                        </View>
+                        <Text className="text-content text-xs font-medium leading-relaxed">
+                          {me.observation}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </TouchableOpacity>
+            )}
+
+            {/* Geisterstatus. Wer raus ist, legt sonst das Handy weg — und
+                zieht die halbe Runde mit. */}
+            {amGhost && !isFinale && (
+              <View className="bg-surface border border-warning/40 rounded-2xl p-3.5 mb-4">
+                <View className="flex-row items-center mb-1">
+                  <Ionicons name="skull-outline" size={16} color={c.warning} />
+                  <Text className="text-warning text-xs font-black uppercase tracking-wider ml-2">
+                    Du bist raus — aber nicht weg
+                  </Text>
+                </View>
+                <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                  Du handelst nicht mehr mit, redest aber weiter mit und stimmst
+                  am Ende ab. Deine Stimme zählt halb.
+                </Text>
+              </View>
             )}
 
             {isFinale && finale ? (
@@ -479,8 +530,43 @@ export function StoryGameShell({
                   </View>
                 )}
 
+                {/* Diskussionsphase: keine Eingabe, nur Redezeit mit Frist.
+                    Ohne die versandet die Runde oder redet gar nicht erst. */}
+                {isDiscussionPhase && chapter?.discussion && (
+                  <View className="bg-surface border-2 border-accent/40 rounded-3xl p-5 mb-4 shadow-lg">
+                    <View className="flex-row items-center mb-2">
+                      <Ionicons name="chatbubbles-outline" size={16} color={c.accent} />
+                      <Text className="text-accent text-[10px] font-black uppercase tracking-widest ml-2">
+                        Redezeit
+                      </Text>
+                    </View>
+                    <Text className="text-content text-sm font-bold leading-relaxed">
+                      {chapter.discussion.prompt}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Rollenszene, aber nicht deine: zusehen und mitreden. */}
+                {isChoicePhase && forRole && !isMyScene && (
+                  <View className="bg-surface border border-line rounded-3xl p-5 mb-4">
+                    <View className="flex-row items-center mb-1.5">
+                      <Ionicons name="hourglass-outline" size={15} color={c.contentFaint} />
+                      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest ml-2">
+                        Nicht deine Szene
+                      </Text>
+                    </View>
+                    <Text className="text-content text-sm font-bold leading-relaxed mb-1">
+                      {sceneOwner ? `${sceneOwner.name} entscheidet als ${forRole}.` : `${forRole} entscheidet.`}
+                    </Text>
+                    <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                      Hör genau zu. Was hier gesagt wird, kannst du später gegen
+                      jemanden verwenden.
+                    </Text>
+                  </View>
+                )}
+
                 {/* Auswahl des Kapitels */}
-                {isChoicePhase && chapter?.prompt && !myChoice && !pendingChoice && (
+                {canAct && chapter?.prompt && !myChoice && !pendingChoice && (
                   <View className="bg-surface border border-line rounded-3xl p-5 mb-4 shadow-lg">
                     <Text className="text-content text-xs font-black uppercase tracking-wide mb-1">
                       {chapter.prompt.title}
@@ -513,9 +599,9 @@ export function StoryGameShell({
                 )}
 
                 {/* Wer ist schon durch? Ohne zu verraten, womit. */}
-                {isChoicePhase && chapter?.prompt && (
+                {isChoicePhase && chapter?.prompt && !forRole && (
                   <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-4">
-                    {chosenCount} von {totalPlayers} haben entschieden
+                    {chosenCount} von {livingCount} haben entschieden
                   </Text>
                 )}
 
@@ -555,8 +641,12 @@ export function StoryGameShell({
                                   <Ionicons name="person" size={14} color={c.contentFaint} />
                                 )}
                               </View>
-                              <Text className="text-content text-xs font-bold">
-                                {candidate.name}
+                              <Text
+                                className={`text-xs font-bold ${
+                                  candidate.eliminated ? "text-content-faint" : "text-content"
+                                }`}
+                              >
+                                {candidate.eliminated ? `💀 ${candidate.name}` : candidate.name}
                               </Text>
                             </View>
                             {isSelected ? (
@@ -605,11 +695,13 @@ export function StoryGameShell({
             ) : (
               <View className="items-center">
                 <Text className="text-content-faint text-[11px] font-bold text-center">
-                  {myChoice && isChoicePhase
-                    ? "Entschieden. Es geht weiter, sobald alle durch sind."
-                    : isRevealPhase
-                      ? "Gleich geht es weiter …"
-                      : "Es läuft — keiner wartet auf keinen."}
+                  {isDiscussionPhase
+                    ? "Redet. Weiter geht es, wenn die Zeit um ist."
+                    : myChoice && isChoicePhase
+                      ? "Entschieden. Es geht weiter, sobald alle durch sind."
+                      : isRevealPhase
+                        ? "Gleich geht es weiter …"
+                        : "Es läuft — keiner wartet auf keinen."}
                 </Text>
                 {isHost && (
                   <TouchableOpacity

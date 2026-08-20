@@ -158,6 +158,13 @@ function freshGameState() {
     actions: {}, // playerId -> actionData
     choices: {}, // playerId -> { choiceId, outcomeText } fuer das AKTUELLE Kapitel
     variables: {}, // Story-Variablen, z. B. healthPoints
+    // ── Storylet-Format ──────────────────────────────────────────────────
+    act: 1,
+    playedInAct: 0,
+    usedStorylets: [],
+    currentStoryletId: null,
+    // Was in dieser Runde passiert ist. Spätere Szenen greifen darauf zurück.
+    memory: [],
     // Aktuelle Phase mit absoluter Frist. Siehe openPhase().
     phase: null,
     // Wird beim Wechsel in die Auflösungsphase gefüllt: was alle gewählt haben.
@@ -178,10 +185,27 @@ function freshGameState() {
 // Antwort trägt zusätzlich `serverTime`, damit die Geräte ihre Uhr dagegen
 // abgleichen können. Acht Handys mit eigenen Timern laufen sonst auseinander.
 
+/**
+ * Die Roh-Definition der laufenden Szene — Kapitel oder Storylet.
+ *
+ * Getrennt von `gameState.currentChapter`: das ist die gerenderte Fassung für
+ * die Clients, hier steht die Definition mit Effekten, Bedingungen und
+ * Fristen, die den Raum nie verlässt.
+ */
+function currentSceneDef(room, story) {
+  if (!story) return null;
+  if (storyEngine.isStoryletFormat(story)) {
+    return room.gameState.currentStoryletId
+      ? storyEngine.storyletById(story, room.gameState.currentStoryletId)
+      : null;
+  }
+  return storyEngine.chapterAt(story, room.currentChapterIndex);
+}
+
 function openPhase(room, kind) {
   const story = storyEngine.getStory(room.gameId);
-  const chapterDef = story ? storyEngine.chapterAt(story, room.currentChapterIndex) : null;
-  const seconds = storyEngine.deadlineSecFor(chapterDef, kind);
+  const sceneDef = currentSceneDef(room, story);
+  const seconds = storyEngine.deadlineSecFor(sceneDef, kind);
 
   room.gameState.phase = {
     kind,
@@ -191,25 +215,39 @@ function openPhase(room, kind) {
   };
 }
 
+/** Lebende Spieler. Geister reden und stimmen mit, handeln aber nicht mehr. */
+function livingPlayers(room) {
+  return room.players.filter((p) => !p.eliminated);
+}
+
 /** Haben alle, die dran sind, ihre Eingabe gemacht? */
 function everyoneSubmitted(room, kind) {
-  const ids = room.players.map((p) => p.id);
-  if (ids.length === 0) return false;
   if (kind === "choice") {
-    return ids.every((id) => room.gameState.choices[id]);
+    const story = storyEngine.getStory(room.gameId);
+    const scene = currentSceneDef(room, story);
+    const forRole = scene && scene.prompt && scene.prompt.forRole;
+    // Rollenszene: es haengt an genau einer Person. Auf alle anderen zu
+    // warten hiesse, auf eine Eingabe zu warten, die nie kommt.
+    const dran = forRole
+      ? livingPlayers(room).filter((p) => p.role === forRole)
+      : livingPlayers(room);
+    if (dran.length === 0) return true;
+    return dran.every((p) => room.gameState.choices[p.id]);
   }
   if (kind === "vote") {
-    return ids.every((id) => room.gameState.votes[id]);
+    // Geister stimmen mit — sie sollen einen Grund haben, dranzubleiben.
+    if (room.players.length === 0) return false;
+    return room.players.every((p) => room.gameState.votes[p.id]);
   }
-  // Die Auflösung läuft immer auf Zeit — sie wartet auf niemanden.
+  // Auflösung und Diskussion laufen auf Zeit — sie warten auf niemanden.
   return false;
 }
 
 /** Was hat wer gewählt? Erst in der Auflösungsphase öffentlich. */
 function buildReveals(room) {
   const story = storyEngine.getStory(room.gameId);
-  const chapterDef = story ? storyEngine.chapterAt(story, room.currentChapterIndex) : null;
-  const choiceDefs = (chapterDef && chapterDef.prompt && chapterDef.prompt.choices) || [];
+  const sceneDef = currentSceneDef(room, story);
+  const choiceDefs = (sceneDef && sceneDef.prompt && sceneDef.prompt.choices) || [];
 
   return room.players.map((p) => {
     const choice = room.gameState.choices[p.id];
@@ -241,6 +279,55 @@ function enterFinale(room, story) {
   room.gameState.storyLog.push(room.gameState.finale.title);
 }
 
+/** Räumt die Eingaben der abgeschlossenen Szene ab. */
+function clearSceneInput(room) {
+  room.gameState.choices = {};
+  room.gameState.votes = {};
+  room.gameState.reveals = null;
+  for (const p of room.players) p.submittedAction = null;
+}
+
+/**
+ * Zieht die nächste Szene aus dem Pool und schaltet bei Bedarf den Akt weiter.
+ * Gibt false zurück, wenn die Story zu Ende ist.
+ */
+function advanceStorylet(room, story) {
+  const gs = room.gameState;
+
+  if (storyEngine.actExhausted(story, gs.act, gs.playedInAct)) {
+    if (gs.act >= storyEngine.lastAct(story)) return false;
+    gs.act += 1;
+    gs.playedInAct = 0;
+  }
+
+  const ctx = {
+    act: gs.act,
+    variables: gs.variables,
+    used: gs.usedStorylets,
+    playedInAct: gs.playedInAct,
+    playerCount: room.players.length,
+    aliveRoles: livingPlayers(room).map((p) => p.role),
+  };
+
+  const storylet = storyEngine.pickStorylet(story, ctx);
+  // Kein passendes Storylet mehr: lieber sauber ins Finale als in einer
+  // Schleife haengen bleiben.
+  if (!storylet) return false;
+
+  gs.currentStoryletId = storylet.id;
+  gs.usedStorylets.push(storylet.id);
+  gs.playedInAct += 1;
+  gs.currentChapter = storyEngine.buildStorylet(story, storylet, room.players, gs.act, {
+    variables: gs.variables,
+    memory: gs.memory,
+  });
+  room.status = "story_chapter";
+  gs.storyLog.push(gs.currentChapter.title);
+  clearSceneInput(room);
+  openPhase(room, storyEngine.openingPhaseKind(storylet));
+  return true;
+}
+
 /** Ein Phasenwechsel. Gibt false zurück, wenn es nichts mehr zu wechseln gibt. */
 function advancePhase(room) {
   const story = storyEngine.getStory(room.gameId);
@@ -259,7 +346,12 @@ function advancePhase(room) {
     return true;
   }
 
-  // Auflösung vorbei: nächstes Kapitel, oder Schluss.
+  // Auflösung oder Diskussion vorbei: nächste Szene, oder Schluss.
+  if (storyEngine.isStoryletFormat(story)) {
+    if (!advanceStorylet(room, story)) enterFinale(room, story);
+    return true;
+  }
+
   if (storyEngine.isLastChapter(story, room.currentChapterIndex)) {
     enterFinale(room, story);
     return true;
@@ -273,11 +365,7 @@ function advancePhase(room) {
   );
   room.status = "story_chapter";
   room.gameState.storyLog.push(room.gameState.currentChapter.title);
-  // Entscheidungen und Stimmen gelten immer nur fuer EIN Kapitel.
-  room.gameState.choices = {};
-  room.gameState.votes = {};
-  room.gameState.reveals = null;
-  for (const p of room.players) p.submittedAction = null;
+  clearSceneInput(room);
 
   const chapterDef = storyEngine.chapterAt(story, room.currentChapterIndex);
   openPhase(room, storyEngine.openingPhaseKind(chapterDef));
@@ -482,12 +570,18 @@ function startGame(code, playerToken, gameSetupData) {
         p.role = assignment.role;
         p.allegiance = assignment.allegiance;
         p.secretPrompt = assignment.secretPrompt;
+        p.observation = assignment.observation || null;
       }
     }
 
-    room.gameState.currentChapter = storyEngine.buildChapter(story, 0, room.players);
-    room.status = "story_chapter";
-    openPhase(room, storyEngine.openingPhaseKind(storyEngine.chapterAt(story, 0)));
+    if (storyEngine.isStoryletFormat(story)) {
+      room.status = "story_chapter";
+      advanceStorylet(room, story);
+    } else {
+      room.gameState.currentChapter = storyEngine.buildChapter(story, 0, room.players);
+      room.status = "story_chapter";
+      openPhase(room, storyEngine.openingPhaseKind(storyEngine.chapterAt(story, 0)));
+    }
   } else if (Array.isArray(gameSetupData?.playerRoles)) {
     for (const assignment of gameSetupData.playerRoles) {
       const p = room.players.find((pl) => pl.id === assignment.playerId);
@@ -538,11 +632,19 @@ function submitAction(code, playerToken, { actionType, payload }) {
     if (room.gameState.choices[playerId]) {
       throw new Error("ALREADY_CHOSE");
     }
+    // Geister handeln nicht mehr. Sie reden weiter mit und stimmen ab.
+    if (player.eliminated) {
+      throw new Error("ELIMINATED");
+    }
 
     const result = storyEngine.applyChoice(
       story,
-      room.currentChapterIndex,
-      { players: room.players, variables: room.gameState.variables },
+      currentSceneDef(room, story),
+      {
+        players: room.players,
+        variables: room.gameState.variables,
+        memory: room.gameState.memory,
+      },
       playerId,
       payload?.choiceId,
       payload?.targetPlayerId
@@ -672,6 +774,8 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
       points: p.points,
       sipsTaken: p.sipsTaken,
       hasSubmittedAction: !!p.submittedAction,
+      // Ausgeschieden, aber weiter im Raum: halbe Stimme, volles Rederecht.
+      eliminated: !!p.eliminated,
       // Wer im aktuellen Kapitel schon gewaehlt hat, ist oeffentlich — was
       // er gewaehlt hat, nicht. Das erlaubt eine "3 von 5 haben gewaehlt"-
       // Anzeige, ohne die Entscheidung zu verraten.
@@ -680,6 +784,9 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
       role: isSelf || isFinale ? p.role : null,
       allegiance: isSelf || isFinale ? p.allegiance : null,
       secretPrompt: isSelf ? p.secretPrompt : null,
+      // Die eigene Beobachtung — der Teil der Wahrheit, den nur diese Person
+      // kennt. Sie geht NIE an jemand anderen: sonst waere die Asymmetrie hin.
+      observation: isSelf ? p.observation || null : null,
     };
   });
 
@@ -704,6 +811,7 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
       // Aktuelle Phase samt absoluter Frist. Der Client rechnet seinen
       // Countdown daraus und gegen `serverTime` — nie gegen die eigene Uhr.
       phase: room.gameState.phase,
+      act: room.gameState.act,
       // Wer was gewaehlt hat, wird erst in der Auflösung oeffentlich.
       reveals: room.gameState.phase && room.gameState.phase.kind === "reveal"
         ? room.gameState.reveals
