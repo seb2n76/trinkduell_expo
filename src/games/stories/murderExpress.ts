@@ -2,8 +2,8 @@ import { StoryGameDefinition, StoryPlayer, RoleAssignment } from "../storyEngine
 
 /**
  * 🕵️‍♂️ MORD IM MITTERNACHTS-EXPRESS
- * Ein 1920er-Jahre Noir-Krimi im Luxuszug für 4–10 Spieler.
- * Täter, Meisterdetektiv, betrogene Erbin, Leibarzt und Passagiere.
+ * Ein 1920er-Jahre Noir-Krimi im Luxuszug für 3–12 Spieler.
+ * Täter, Meisterdetektiv, betrogene Erbin, Leibarzt, Schaffner, Schmuggler und Barone.
  */
 export const murderExpressGame: StoryGameDefinition = {
   id: "murder_express",
@@ -12,7 +12,7 @@ export const murderExpressGame: StoryGameDefinition = {
   genre: "Krimi & Social Deduction",
   durationMinutes: 25,
   minPlayers: 3,
-  maxPlayers: 10,
+  maxPlayers: 12,
   themeColor: "#0284c7",
   accentColor: "#38bdf8",
   icon: "train",
@@ -28,14 +28,14 @@ export const murderExpressGame: StoryGameDefinition = {
     assignments.push({
       playerId: shuffled[0].id,
       role: "Der Mörder 🪓",
-      secretPrompt: `Du hast den Baron ermordet! Schiebe die Schuld auf ${shuffled[1].name} oder ${shuffled[2]?.name || "andere"}. Wenn du das Kreuzverhör überstehst, gewinnst du!`,
+      secretPrompt: `Du hast den Baron ermordet! Schiebe die Schuld auf ${shuffled[1]?.name || "den Detektiv"} oder ${shuffled[2]?.name || "die anderen Passagiere"}. Wenn du das Kreuzverhör überstehst, entkommst du unerkannt!`,
     });
 
     // Player 1: Meisterdetektiv
     assignments.push({
       playerId: shuffled[1].id,
       role: "Meisterdetektiv 🕵️‍♂️",
-      secretPrompt: "Du leitest die Ermittlungen. Stelle gezielte Fragen, achte auf Widersprüche und entlarve den Mörder im Schlafwagen!",
+      secretPrompt: "Du leitest die Ermittlung im Zug. Achte genau auf Widersprüche, Alibis und wer nervös am Glas nippt. Deine Stimme hat Gewicht!",
     });
 
     // Player 2: Betrogene Erbin
@@ -43,18 +43,37 @@ export const murderExpressGame: StoryGameDefinition = {
       assignments.push({
         playerId: shuffled[2].id,
         role: "Die Erbin 💎",
-        secretPrompt: "Der Baron schuldete dir ein Vermögen. Du bist unschuldig, wirkst aber extrem verdächtig! Trinke unauffällig.",
+        secretPrompt: "Der Baron schuldete dir ein Vermögen. Du bist unschuldig, hast aber ein starkes Motiv! Trinke unauffällig und wirke nicht verdächtig.",
       });
     }
 
-    // Remaining: Passagiere
-    const passengerRoles = ["Leibarzt 🩺", "Schaffner 🎫", "Schmuggler 💼", "Journalist 📰", "Baroness 👒"];
-    for (let i = 3; i < shuffled.length; i++) {
-      const pRole = passengerRoles[(i - 3) % passengerRoles.length];
+    // Player 3: Leibarzt
+    if (shuffled[3]) {
+      assignments.push({
+        playerId: shuffled[3].id,
+        role: "Der Leibarzt 🩺",
+        secretPrompt: "Du hast die Leiche untersucht. Du darfst im Salonwagen eine Person zwingen, ihren Schluck auf Ex zu trinken.",
+      });
+    }
+
+    // Remaining: Bunte Passagiere
+    const passengerRoles = [
+      "Der Schaffner 🎫",
+      "Der Schmuggler 💼",
+      "Die Reporterin 📰",
+      "Die Baroness 👒",
+      "Der Casino-Betrüger 🃏",
+      "Der Geheimagent 🕶️",
+      "Der Opernsänger 🎭",
+      "Die Wahrsagerin 🔮",
+    ];
+
+    for (let i = 4; i < shuffled.length; i++) {
+      const pRole = passengerRoles[(i - 4) % passengerRoles.length];
       assignments.push({
         playerId: shuffled[i].id,
         role: pRole,
-        secretPrompt: `Du reist als ${pRole} im Zug. Verstricke dich nicht in Lügen und hilf dem Detektiv!`,
+        secretPrompt: `Du reist als ${pRole} im Mitternachtsexpress. Hilf dem Detektiv, den echten Mörder zu fassen, bevor der Zug weiterfährt!`,
       });
     }
 
@@ -66,13 +85,15 @@ export const murderExpressGame: StoryGameDefinition = {
       id: "act_1_blackout",
       act: 1,
       title: "Akt I: Der Schrei im Tunnel",
-      atmosphereHint: "Der Zug rast in die Dunkelheit. Die Scheinwerfer flackern.",
+      atmosphereHint: "Der Zug rast in die Dunkelheit. Die Scheinwerfer flackern unheilsam.",
       generateText: (players) => {
         const p1 = players[0]?.name || "Ein Passagier";
         const p2 = players[1]?.name || "Eine Dame";
-        return `Draußen tobt der Schneesturm, als der Express plötzlich in den Gotthardtunnel einfährt.
-Ein gellender Schrei zerreißt die Stille! Als das Licht wieder aufflackert, liegt Baron von Falkenstein leblos über dem Schachtisch.
-${p1} hält ein blutbeflecktes Taschentuch in der Hand, während ${p2} bleich auf die Tür starrt!`;
+        const weapons = ["einem schweren Schürhaken", "einem Seidenschal", "einem goldenen Brieföffner", "einer Dosis Arsen"];
+        const weapon = weapons[Math.floor(Math.random() * weapons.length)];
+        return `Draußen tobt der Schneesturm, als der Express plötzlich mit quietschenden Bremsen im Tunnel anhält.
+Ein gellender Schrei zerreißt die Stille! Als das Notlicht aufflackert, liegt Baron von Falkenstein leblos über dem Schachtisch – ermordet mit ${weapon}!
+${p1} hält ein blutbeflecktes Tuch in der Hand, während ${p2} bleich auf die Schlafwagen-Tür starrt!`;
       },
       interactivePrompt: {
         title: "Schock im Salonwagen",
@@ -87,9 +108,15 @@ ${p1} hält ein blutbeflecktes Taschentuch in der Hand, während ${p2} bleich au
           },
           {
             id: "inspect_scene",
-            label: "Tatort absuchen",
-            outcomeText: "Du sicherst verdächtige Spuren auf dem Teppich!",
+            label: "Tatort absuchen & Spuren sichern",
+            outcomeText: "Du findest eine zerrissene Fahrkarte mit verdächtigen Initialen!",
             rewardPoints: 15,
+          },
+          {
+            id: "fake_alibi",
+            label: "Lautstark dein Alibi beteuern",
+            outcomeText: "Du erklärst allen, dass du die ganze Zeit am Buffet standest.",
+            rewardPoints: 12,
           },
         ],
       },
@@ -98,51 +125,60 @@ ${p1} hält ein blutbeflecktes Taschentuch in der Hand, während ${p2} bleich au
       id: "act_2_interrogation",
       act: 2,
       title: "Akt II: Das eisige Kreuzverhör",
-      atmosphereHint: "Der Schnee türmt sich meterhoch. Die Heizung fällt aus.",
+      atmosphereHint: "Eisblumen wachsen an den Scheiben. Jeder Blick ist voller Argwohn.",
       generateText: (players) => {
-        const pRandom = players[Math.floor(Math.random() * players.length)]?.name || "Jemand";
-        return `Der Detektiv trommelt alle im Speisewagen zusammen.
-"Niemand verlässt den Zug! Die Bremsen wurden sabotiert!"
-${pRandom} wird plötzlich nach dem Alibi gefragt. Die Spannung am Tisch ist zum Schneiden dick.`;
+        const pSuspect = players[Math.floor(Math.random() * players.length)]?.name || "Jemand";
+        const pWitness = players[(players.length - 1)]?.name || "Der Schaffner";
+        return `Der Meisterdetektiv lässt alle Abteile durchsuchen!
+${pWitness} tritt vor: "Ich habe ${pSuspect} kurz vor dem Stromausfall beim Salonwagen herumschleichen sehen!"
+Die Passagiere verlangen Antworten. Wer nicht redet, muss trinken!`;
       },
       interactivePrompt: {
-        title: "Alibi & Verdächtigung",
-        description: "Gib dein Alibi ab oder belaste einen Mitreisenden:",
+        title: "Verdächtigungen & Verhöre",
+        description: "Wie reagierst du auf das Kreuzverhör?",
         choices: [
           {
-            id: "blame_target",
-            label: "Verdacht aussprechen (Verteile 2 Schlucke)",
-            outcomeText: "Du zeigst mit dem Finger auf einen verdächtigen Mitspieler!",
+            id: "accuse_player",
+            label: "Gegenbeschuldigung erheben (Verteile 2 Schlucke)",
+            outcomeText: "Du greifst einen anderen Passagier an und verteilst 2 Strafschlucke!",
             sips: 0,
             targetRequired: true,
             rewardPoints: 20,
           },
           {
-            id: "silent_defense",
-            label: "Die Aussage verweigern (2 Schlucke)",
-            outcomeText: "Du schweigst eisern und trinkst.",
-            sips: 2,
-            rewardPoints: 25,
+            id: "drink_whiskey",
+            label: "Ein Glas Whiskey leeren (1 Schluck)",
+            outcomeText: "Du bleibst betont gelassen und genießt deinen Drink.",
+            sips: 1,
+            rewardPoints: 15,
+          },
+          {
+            id: "team_toast",
+            label: "Auf die Wahrheit anstoßen (Alle trinken 1 Schluck)",
+            outcomeText: "Du erhebst das Glas – alle Passagiere trinken gemeinsam!",
+            sips: 1,
+            rewardPoints: 20,
           },
         ],
       },
     },
     {
-      id: "act_3_finale",
+      id: "act_3_verdict",
       act: 3,
-      title: "Akt III: Die Entlarvung vor der Endstation",
-      atmosphereHint: "Der Zug rollt langsam in den Bahnhof. Die Polizei wartet am Gleis.",
+      title: "Akt III: Die Entlarvung des Mörders",
+      atmosphereHint: "Der Zug setzt sich langsam wieder in Bewegung. Die Endstation naht.",
       generateText: () => {
-        return `Die Notbremse greift! Der Zug kommt zum Stehen.
-Die Handschellen liegen bereit. Wer hat Baron von Falkenstein auf dem Gewissen?
-Wählt auf eurem Smartphone den Haupttäter!`;
+        return `Der Detektiv versammelt alle Überlebenden im Speisewagen!
+Es gibt kein Entkommen mehr. Wer von euch ist der kaltblütige Mörder des Barons?
+Stimmt jetzt auf eurem Smartphone ab und überführt den Täter!`;
       },
       hasVoting: true,
-      votingPrompt: "Wer ist der Mörder im Mitternachts-Express?",
+      votingPrompt: "Wer ist der Mörder im Mitternachtsexpress?",
     },
   ],
 
   evaluateFinale: (players, votes) => {
+    // Count votes
     const voteCounts: Record<string, number> = {};
     for (const targetId of Object.values(votes)) {
       if (targetId) {
@@ -168,23 +204,23 @@ Wählt auf eurem Smartphone den Haupttäter!`;
       return {
         winnerTeam: "Die Passagiere & der Detektiv 🕵️‍♂️",
         title: "Fall gelöst!",
-        summary: `Hervorragende Deduktion! ${murderer.name} wurde mit der Tatwaffe auf frischer Tat ertappt!`,
+        summary: `Hervorragende Deduktion! ${murderer.name} wurde als Mörder entlarvt und an der nächsten Station der Polizei übergeben.`,
         drinkPenalties: [
-          { playerName: murderer.name, sips: 4, reason: "Als Mörder verhaftet!" },
+          { playerName: murderer.name, sips: 4, reason: "Als überführter Mörder im Express!" },
         ],
       };
     } else {
       const innocentName = condemned ? condemned.name : "Niemand";
-      const murdererName = murderer ? murderer.name : "Der Schatten";
+      const murdererName = murderer ? murderer.name : "Der Mörder";
       return {
         winnerTeam: "Der Mörder 🪓",
-        title: "Der Täter entkommt unerkannt!",
-        summary: `${murdererName} steigt unbemerkt aus dem Zug, während die unschuldige Person ${innocentName} in Handschellen abgeführt wird!`,
+        title: "Der Mörder entkommt!",
+        summary: `Fatale Fehlentscheidung! ${innocentName} wurde fälschlicherweise beschuldigt, während ${murdererName} mit den Juwelen des Barons unerkannt entkommt!`,
         drinkPenalties: [
-          { playerName: innocentName, sips: 3, reason: "Unschuldig im Gefängnis gelandet!" },
+          { playerName: innocentName, sips: 3, reason: "Unschuldig im Zug verhaftet!" },
           ...players
             .filter((p) => p.id !== murderer?.id && p.id !== condemned?.id)
-            .map((p) => ({ playerName: p.name, sips: 2, reason: "Den echten Mörder entwischen lassen!" })),
+            .map((p) => ({ playerName: p.name, sips: 2, reason: "Den echten Täter entkommen lassen!" })),
         ],
       };
     }

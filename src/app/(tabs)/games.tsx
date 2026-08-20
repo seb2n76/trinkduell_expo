@@ -30,6 +30,7 @@ import { useThemeColors, useTheme } from "@/services/theme";
 import { JoinRoomModal } from "@/components/games/JoinRoomModal";
 import { MultiplayerLobbyModal } from "@/components/games/MultiplayerLobbyModal";
 import { StoryGameShell } from "@/components/games/StoryGameShell";
+import { ALL_TRUTHS, ALL_DARES } from "@/games/content";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -77,26 +78,9 @@ const generateDeck = (): Card[] => {
   return deck.sort(() => Math.random() - 0.5);
 };
 
-// Decks for "Wahrheit oder Pflicht" (Truth or Dare)
-const TRUTHS: string[] = [
-  "Was ist das Peinlichste, das du betrunken getan hast?",
-  "Wer in dieser Runde schaut am ehesten zu tief ins Glas?",
-  "Was war deine dümmste Ausrede, um eine Verabredung abzusagen?",
-  "Hast du jemals das Getränk von jemand anderem heimlich getrunken?",
-  "Was ist deine geheime Lieblingsband, die dir peinlich ist?",
-  "Mit wem in diesem Raum würdest du am ehesten auf einer einsamen Insel stranden wollen?",
-  "Was war der schlechteste Anmachspruch, den du je benutzt hast?",
-];
-
-const DARES: string[] = [
-  "Trinke, ohne deine Hände zu benutzen.",
-  "Mache den Ententanz für 30 Sekunden.",
-  "Erzähle einen extrem schlechten Witz. Wenn niemand lacht, musst du trinken.",
-  "Tausche dein Oberteil mit der Person links von dir (oder trinke).",
-  "Sprich für die nächsten 2 Runden mit einem ausländischen Akzent.",
-  "Mach der Person gegenüber von dir ein übertriebenes Kompliment.",
-  "Versuche, 30 Sekunden lang auf einem Bein zu stehen und dabei ein Trinklied zu singen.",
-];
+// Decks for "Wahrheit oder Pflicht" (Truth or Dare) from content.ts (50+ cards)
+const TRUTHS: string[] = ALL_TRUTHS;
+const DARES: string[] = ALL_DARES;
 
 // Skull card rules
 export interface SkullRule {

@@ -2,7 +2,7 @@ import { StoryGameDefinition, StoryPlayer, RoleAssignment } from "../storyEngine
 
 /**
  * 🏚️ ESCAPE THE HAUNTED MANOR
- * Ein kooperatives Horror-Survival-Trinkspiel für 3–8 Spieler mit gemeinsamer HP-Leiste und Verräter-Mechanik.
+ * Ein kooperatives Horror-Survival-Trinkspiel für 3–12 Spieler mit gemeinsamer HP-Leiste und Verräter-Mechanik.
  */
 export const hauntedManorGame: StoryGameDefinition = {
   id: "haunted_manor",
@@ -11,7 +11,7 @@ export const hauntedManorGame: StoryGameDefinition = {
   genre: "Survival-Horror & Co-Op",
   durationMinutes: 20,
   minPlayers: 3,
-  maxPlayers: 8,
+  maxPlayers: 12,
   themeColor: "#4c1d95",
   accentColor: "#a855f7",
   icon: "skull",
@@ -27,14 +27,14 @@ export const hauntedManorGame: StoryGameDefinition = {
     assignments.push({
       playerId: shuffled[0].id,
       role: "Vom Geist Besessen 👻",
-      secretPrompt: "Du wurdest vom Hausgeist verflucht! Tue so, als würdest du helfen, aber versuche die HP der Gruppe auf 0 zu bringen!",
+      secretPrompt: `Du wurdest vom Hausgeist verflucht! Tue so, als würdest du helfen, aber versuche unauffällig die Team-HP auf 0 zu senken und ${shuffled[1]?.name || "andere"} zu opfern!`,
     });
 
     // Player 1: Medium / Heiler
     assignments.push({
       playerId: shuffled[1].id,
       role: "Das Medium 🔮",
-      secretPrompt: "Du spürst Geisterpräsenzen! Deine Heiltränke stellen für das Team verlorene HP wieder her.",
+      secretPrompt: "Du spürst paranormale Auren! Deine Trank-Rituale heilen die verlorenen Lebenspunkte der Gruppe.",
     });
 
     // Player 2: Okkultist / Gelehrter
@@ -42,16 +42,37 @@ export const hauntedManorGame: StoryGameDefinition = {
       assignments.push({
         playerId: shuffled[2].id,
         role: "Der Gelehrte 📜",
-        secretPrompt: "Du kannst alte Schutzrunen entziffern und Flüche abwehren.",
+        secretPrompt: "Du kannst alte Bann-Runen entziffern. Deine Aktionen können Flüche neutralisieren.",
       });
     }
 
-    // Remaining: Überlebende
-    for (let i = 3; i < shuffled.length; i++) {
+    // Player 3: Exorzist
+    if (shuffled[3]) {
+      assignments.push({
+        playerId: shuffled[3].id,
+        role: "Der Exorzist ✝️",
+        secretPrompt: "Du trägst geweihtes Wasser bei dir. Du darfst im Finale jemanden vor dem Geisterbefall retten.",
+      });
+    }
+
+    // Remaining: Mutige Forscher
+    const explorerRoles = [
+      "Der Ghostbuster ⚡",
+      "Die Archäologin 🏺",
+      "Der Schlosswächter 🗝️",
+      "Die Wahrsagerin 🎴",
+      "Der Kameramann 📹",
+      "Der Parapsychologe 🧠",
+      "Die Überlebenskünstlerin 🔦",
+      "Der Nachtwächter 🕯️",
+    ];
+
+    for (let i = 4; i < shuffled.length; i++) {
+      const eRole = explorerRoles[(i - 4) % explorerRoles.length];
       assignments.push({
         playerId: shuffled[i].id,
-        role: `Forscher ${i - 2} 🔦`,
-        secretPrompt: "Halte die Taschenlampe fest und hilf der Gruppe, die verfluchte Villa lebend zu verlassen!",
+        role: eRole,
+        secretPrompt: `Du erkundest als ${eRole} das Anwesen. Halte die Gruppe zusammen und lass die Team-HP nicht fallen!`,
       });
     }
 
@@ -63,22 +84,22 @@ export const hauntedManorGame: StoryGameDefinition = {
       id: "act_1_library",
       act: 1,
       title: "Akt I: Das Flüstern in der Bibliothek",
-      atmosphereHint: "Alte Bücher fliegen durch die Luft. Die Kerzen verlöschen.",
+      atmosphereHint: "Alte Folianten fliegen durch die Luft. Die Kronleuchter flackern.",
       generateText: (players) => {
         const p1 = players[0]?.name || "Jemand";
         const p2 = players[1]?.name || "Ein Forscher";
-        return `Die Eingangstür schlägt mit lautem Knall zu! Das Schloss rastet ein.
-${p1} und ${p2} betreten die verstaubte Bibliothek. Auf dem Tisch liegt ein aufgeschlagenes Grimoire.
-Ein eisiger Hauch streift euren Nacken: Das Herrenhaus erwacht!`;
+        return `Die schwere Eingangstür schlägt mit ohrenbetäubendem Krachen zu! Das rostige Schloss rastet ein.
+${p1} und ${p2} betreten die verstaubte Ahnengalerie. Auf dem Kamin lodert blaues Feuer.
+Ein eisiger Hauch streift eure Nacken: Die Geister des Schlosses verlangen ein Trinkopfer!`;
       },
       interactivePrompt: {
-        title: "Die Geistererscheinung",
-        description: "Wie schützt du die Gruppe?",
+        title: "Die erste Geistererscheinung",
+        description: "Wie schützt du die Gruppe vor dem Kälteeinbruch?",
         choices: [
           {
             id: "drink_shield",
             label: "Schutz-Schluck nehmen (1 Schluck = +10 Team-HP)",
-            outcomeText: "Dein Schluck bannt den Fluch und stärkt die Gruppe!",
+            outcomeText: "Dein mutiger Schluck bannt den Kältefluch und stärkt das Team!",
             sips: 1,
             damage: -10, // Heals 10 HP
             rewardPoints: 15,
@@ -86,9 +107,15 @@ Ein eisiger Hauch streift euren Nacken: Das Herrenhaus erwacht!`;
           {
             id: "panic_run",
             label: "In Panik davonrennen (-15 Team-HP)",
-            outcomeText: "Du stößt eine Vase um — der Geist fügt der Gruppe Schaden zu!",
+            outcomeText: "Du stößt eine antike Standuhr um — der Geist fügt der Gruppe Schaden zu!",
             damage: 15,
             rewardPoints: 5,
+          },
+          {
+            id: "read_spell",
+            label: "Bannformel laut aufsagen",
+            outcomeText: "Deine Worte hallen durch die Hallen – der Geist weicht kurz zurück!",
+            rewardPoints: 20,
           },
         ],
       },
@@ -97,32 +124,39 @@ Ein eisiger Hauch streift euren Nacken: Das Herrenhaus erwacht!`;
       id: "act_2_cellar",
       act: 2,
       title: "Akt II: Das Ritual im Weinkeller",
-      atmosphereHint: "Tropfendes Wasser und schleifende Schritte in den Katakomben.",
+      atmosphereHint: "Tropfendes Wasser, modriger Geruch und klirrende Weinflaschen in den Katakomben.",
       generateText: (players) => {
-        const pRand = players[Math.floor(Math.random() * players.length)]?.name || "Ein Gefährte";
-        return `Ihr steigt hinab in den feuchten Weinkeller.
-${pRand} entdeckt ein altes Holzfass mit mysteriösen Schriftzeichen.
-"Ein Opfer muss erbracht werden, um das Portal zu öffnen!"`;
+        const pSuspect = players[Math.floor(Math.random() * players.length)]?.name || "Jemand";
+        return `Ihr steigt über eine modrige Wendeltreppe in den Gewölbekeller hinab.
+Ein riesiges Pentagramm leuchtet rot am Boden. Plötzlich verzieht sich das Gesicht von ${pSuspect} zu einer unheimlichen Fratze!
+Ist ${pSuspect} vom Hausgeist besessen worden?`;
       },
       interactivePrompt: {
-        title: "Das Trank-Opfer",
-        description: "Bannst du den Dämon oder opferst du Kraft?",
+        title: "Das dunkle Katakomben-Ritual",
+        description: "Wie reagierst du auf das Leuchten im Keller?",
         choices: [
           {
-            id: "sacrifice_sips",
-            label: "2 Schlucke opfern (+20 Team-HP)",
-            outcomeText: "Du nimmst 2 Schlucke und vertreibst die Dämonenfratze!",
+            id: "holy_toast",
+            label: "Geisterbann-Trunk (2 Schlucke = +20 Team-HP)",
+            outcomeText: "Du nimmst 2 kräftige Schlucke und heilst das Team spürbar!",
             sips: 2,
             damage: -20,
             rewardPoints: 25,
           },
           {
-            id: "pass_chalice",
-            label: "Den Kelch weiterreichen (Ziel trinkt 1 Schluck)",
-            outcomeText: "Du reichst den Kelch an einen Mitspieler weiter!",
-            targetRequired: true,
-            sips: 0,
+            id: "sabotage_team",
+            label: "Kerzen austreten (-20 Team-HP)",
+            outcomeText: "Die Dunkelheit bricht herein – der Dämon schlägt zu!",
+            damage: 20,
             rewardPoints: 10,
+          },
+          {
+            id: "share_potion",
+            label: "Gemeinsam anstoßen (Alle trinken 1 Schluck)",
+            outcomeText: "Die gesamte Gruppe trinkt zusammen und trotzt der Finsternis!",
+            sips: 1,
+            damage: -10,
+            rewardPoints: 20,
           },
         ],
       },
@@ -130,20 +164,22 @@ ${pRand} entdeckt ein altes Holzfass mit mysteriösen Schriftzeichen.
     {
       id: "act_3_exorcism",
       act: 3,
-      title: "Akt III: Der Große Exorzismus & Die Flucht",
-      atmosphereHint: "Der Kronleuchter stürzt herab. Die Mauern beben.",
+      title: "Akt III: Der finale Exorzismus",
+      atmosphereHint: "Der Glockenturm schlägt Mitternacht. Das Finale entscheidet über Leben und Tod!",
       generateText: () => {
-        return `Das Portal zum Ausgang öffnet sich, doch der Dämon blockiert das Tor!
-Er hat Besitz von einem eurer Gefährten ergriffen.
-Entlarvt den Besessenen, um gemeinsam durch das Lichttor zu entkommen!`;
+        return `Die Geisterstunde hat ihren Höhepunkt erreicht!
+Das Portal öffnet sich nur, wenn ihr den Besessenen unter euch enttarnt und das Ritual vollendet.
+Stimmt jetzt ab: Wer von euch beherbergt den bösen Geist der Villa?`;
       },
       hasVoting: true,
-      votingPrompt: "Wer aus eurer Gruppe ist vom Dämon besessen?",
+      votingPrompt: "Wer ist der vom Dämon Besessene?",
     },
   ],
 
-  evaluateFinale: (players, votes, customVars) => {
-    const hp = customVars.healthPoints ?? 100;
+  evaluateFinale: (players, votes, finalGameState) => {
+    const remainingHp = finalGameState?.healthPoints ?? 50;
+
+    // Count votes
     const voteCounts: Record<string, number> = {};
     for (const targetId of Object.values(votes)) {
       if (targetId) {
@@ -165,26 +201,41 @@ Entlarvt den Besessenen, um gemeinsam durch das Lichttor zu entkommen!`;
 
     const isPossessedCaught = condemned && possessed && condemned.id === possessed.id;
 
-    if (hp > 0 && isPossessedCaught) {
+    if (remainingHp <= 0) {
       return {
-        winnerTeam: "Die Überlebenden 🏰",
-        title: "Flucht geglückt!",
-        summary: `Der Dämon in ${possessed.name} wurde erfolgreich exorziert! Ihr entkommt mit ${hp} HP ins Morgengrauen.`,
+        winnerTeam: "Der Hausdämon 👻",
+        title: "Team ausgelöscht!",
+        summary: "Die Team-HP sind auf 0 gesunken! Die Geister haben das Herrenhaus für immer für sich beansprucht.",
+        drinkPenalties: players.map((p) => ({
+          playerName: p.name,
+          sips: 3,
+          reason: "Als Geisterfutter in der Villa!",
+        })),
+      };
+    }
+
+    if (isPossessedCaught) {
+      return {
+        winnerTeam: "Die mutigen Forscher 🔦",
+        title: "Erfolgreich entkommen!",
+        summary: `Der Exorzismus war erfolgreich! ${possessed.name} wurde vom Geist befreit und alle konnten mit ${remainingHp} HP entkommen.`,
         drinkPenalties: [
-          { playerName: possessed.name, sips: 3, reason: "Vom Geist befreit & durchgespült!" },
+          { playerName: possessed.name, sips: 4, reason: "Für den erfolgreichen Exorzismus!" },
         ],
       };
     } else {
-      const demonName = possessed ? possessed.name : "Der Dämon";
+      const innocentName = condemned ? condemned.name : "Niemand";
+      const possessedName = possessed ? possessed.name : "Der Besessene";
       return {
-        winnerTeam: "Das Spukhaus & der Dämon 👻",
-        title: "Für immer gefangen!",
-        summary: `${demonName} hat die Gruppe in die Irre geführt. Ihr bleibt auf ewig Gefangene der Geistervilla!`,
-        drinkPenalties: players.map((p) => ({
-          playerName: p.name,
-          sips: 2,
-          reason: "Vom Herrenhaus verschlungen!",
-        })),
+        winnerTeam: "Der Besessene 👻",
+        title: "Der Dämon triumphiert!",
+        summary: `Ihr habt ${innocentName} beschuldigt, während ${possessedName} den Fluch vollendet hat!`,
+        drinkPenalties: [
+          { playerName: innocentName, sips: 3, reason: "Fälschlicherweise exorziert!" },
+          ...players
+            .filter((p) => p.id !== possessed?.id && p.id !== condemned?.id)
+            .map((p) => ({ playerName: p.name, sips: 2, reason: "Vom Dämon getäuscht worden!" })),
+        ],
       };
     }
   },

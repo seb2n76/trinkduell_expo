@@ -2,8 +2,8 @@ import { StoryGameDefinition, StoryPlayer, RoleAssignment } from "../storyEngine
 
 /**
  * 👑 DER VERRAT AM KÖNIGSHOF
- * Ein intrigenreiches Game-of-Thrones-Rollenspiel für 4–12 Spieler.
- * Einer ist der Attentäter, einer der Inquisitor, die anderen Adlige & Höflinge.
+ * Ein intrigenreiches Game-of-Thrones-Rollenspiel für 3–12 Spieler.
+ * Mörder, Inquisitor, Hofalchemist, Spion, Hofnarr und Adlige Häuser.
  */
 export const courtTreasonGame: StoryGameDefinition = {
   id: "court_treason",
@@ -28,33 +28,52 @@ export const courtTreasonGame: StoryGameDefinition = {
     assignments.push({
       playerId: shuffled[0].id,
       role: "Attentäter 🗡️",
-      secretPrompt: `Du hast den König vergiftet! Dein Ziel: Lenke den Verdacht unauffällig auf ${shuffled[1].name} oder ${shuffled[2]?.name || "andere"}. Lass dich beim Tribunal nicht wählen!`,
+      secretPrompt: `Du hast den König vergiftet! Dein Ziel: Lenke den Verdacht unauffällig auf ${shuffled[1]?.name || "andere"} oder ${shuffled[2]?.name || "deine Nachbarn"}. Lass dich beim Tribunal um keinen Preis wählen!`,
     });
 
     // Player 1: Inquisitor
     assignments.push({
       playerId: shuffled[1].id,
       role: "Großinquisitor ⚖️",
-      secretPrompt: "Du leitest die Untersuchung. Beobachte genau, wer nervös trinkt oder sich in Ausreden verstrickt. Deine Stimme zählt im Zweifel doppelt!",
+      secretPrompt: "Du leitest die königliche Untersuchung. Beobachte genau, wer nervös trinkt, zögert oder Ausflüchte sucht. Deine Stimme wiegt im Kronrat schwer!",
     });
 
-    // Player 2 (if >= 3): Kanzler / Hofalchemist
+    // Player 2 (if >= 3): Hofalchemist
     if (shuffled[2]) {
       assignments.push({
         playerId: shuffled[2].id,
         role: "Hofalchemist 🧪",
-        secretPrompt: "Du erkennst Gifte! Du darfst in Kapitel 2 eine Person wählen und sie zwingen, ihren Kelch vorzuschmecken.",
+        secretPrompt: "Du kennst alle Gifte des Reiches. Du darfst im Rat eine Person auswählen und sie zwingen, ihren Trinkbecher vorzukosten.",
       });
     }
 
-    // Remaining: Adlige Häuser
-    const nobleHouses = ["Haus Löwenstein 🦁", "Haus Drachenfels 🐉", "Haus Schattenwacht 🦅", "Haus Silberquell 🌊", "Haus Nachtdorn 🌹"];
-    for (let i = 3; i < shuffled.length; i++) {
-      const house = nobleHouses[(i - 3) % nobleHouses.length];
+    // Player 3 (if >= 4): Hofnarr oder Spion
+    if (shuffled[3]) {
+      assignments.push({
+        playerId: shuffled[3].id,
+        role: "Der Hofnarr 🃏",
+        secretPrompt: "Du genießt Narrenfreiheit! Verwirre die anderen mit kühnen Thesen und mache die Runde betrunken.",
+      });
+    }
+
+    // Remaining: Adlige Fürstenhäuser
+    const nobleHouses = [
+      "Haus Löwenstein 🦁",
+      "Haus Drachenfels 🐉",
+      "Haus Schattenwacht 🦅",
+      "Haus Silberquell 🌊",
+      "Haus Nachtdorn 🌹",
+      "Haus Sonnenfels ☀️",
+      "Haus Eisengard 🛡️",
+      "Haus Rabenkron 🐦",
+    ];
+
+    for (let i = 4; i < shuffled.length; i++) {
+      const house = nobleHouses[(i - 4) % nobleHouses.length];
       assignments.push({
         playerId: shuffled[i].id,
         role: `${house}`,
-        secretPrompt: `Du bist ein mächtiger Fürst von ${house}. Bilde Allianzen, beschütze deine Familie und stimme im Tribunal weise ab!`,
+        secretPrompt: `Du bist das stolze Oberhaupt von ${house}. Schließe Allianzen, verteidige dein Haus und stimme im Tribunal weise ab!`,
       });
     }
 
@@ -66,31 +85,39 @@ export const courtTreasonGame: StoryGameDefinition = {
       id: "act_1_poison",
       act: 1,
       title: "Akt I: Der goldene Kelch",
-      atmosphereHint: "Der Thronsaal verstummt. Die Hofwache verriegelt die Flügeltüren.",
+      atmosphereHint: "Der Thronsaal verstummt. Die Hofwache verriegelt mit lautem Rasseln die Flügeltüren.",
       generateText: (players) => {
         const p1 = players[0]?.name || "Ein Adliger";
         const p2 = players[1]?.name || "Ein Gast";
         const p3 = players[2]?.name || "Der Mundschenk";
-        return `Das Festmahl war im vollen Gange, als der König plötzlich nach seiner Kehle griff und zu Boden sank!
-${p1} war der Letzte, der am Buffet gesehen wurde. ${p2} schwört jedoch, dass ${p3} kurz zuvor mit einem verdächtigen Silberfläschchen hantierte.
-Die Hofwache riegelt alle Tore ab: Niemand verlässt diese Burg, bis das Gift identifiziert ist!`;
+        const poisons = ["Nachtschatten-Extrakt", "Basilisken-Träne", "Zyankali-Wein", "Schlangengift"];
+        const poison = poisons[Math.floor(Math.random() * poisons.length)];
+        return `Das Festmahl war auf dem Höhepunkt, als der König plötzlich nach seiner Kehle griff und zu Boden sank!
+${p1} war der Letzte, der am Weinfass gesehen wurde. ${p2} schwört jedoch, dass ${p3} kurz zuvor mit einem Fläschchen ${poison} hantierte.
+Die Hofwache riegelt alle Burgtore ab: Niemand verlässt den Saal, bis der Mörder überführt ist!`;
       },
       interactivePrompt: {
         title: "Das kaiserliche Dekret",
-        description: "Wie reagierst du auf das Entsetzen im Saal?",
+        description: "Wie reagierst du auf das Entsetzen im Thronsaal?",
         choices: [
           {
             id: "toast_king",
             label: "Auf den gefallenen König anstoßen (1 Schluck)",
-            outcomeText: "Du hebst deinen Kelch und beweist deine scheinbare Treue.",
+            outcomeText: "Du hebst deinen Kelch und beweist deine scheinbare Treue zum Thron.",
             sips: 1,
             rewardPoints: 10,
           },
           {
             id: "blame_other",
-            label: "Laut Verdacht ausrufen",
-            outcomeText: "Du lenkst die Blicke auf deine Tischnachbarn!",
+            label: "Laut Verdacht gegen die Tischnachbarn erheben",
+            outcomeText: "Du lenkst die Blicke geschickt von dir ab auf die anderen!",
             rewardPoints: 15,
+          },
+          {
+            id: "swear_oath",
+            label: "Einen heiligen Treueeid schwören (Verteile 1 Schluck)",
+            outcomeText: "Deine feierlichen Worte überzeugen die Wachen – du darfst 1 Schluck verteilen!",
+            rewardPoints: 20,
           },
         ],
       },
@@ -98,33 +125,40 @@ Die Hofwache riegelt alle Tore ab: Niemand verlässt diese Burg, bis das Gift id
     {
       id: "act_2_investigation",
       act: 2,
-      title: "Akt II: Die Verhöre & Alibis",
-      atmosphereHint: "Fackellicht flackert an den Wänden. Die Schatten werden länger.",
+      title: "Akt II: Das Kreuzverhör im Kronrat",
+      atmosphereHint: "Fackellicht flackert an den kalten Steinmauern. Die Gesichter spiegeln Misstrauen wider.",
       generateText: (players) => {
         const pSuspect = players[Math.floor(Math.random() * players.length)]?.name || "Jemand";
         const pWitness = players[(players.length - 1)]?.name || "Ein Zeuge";
-        return `Der Großinquisitor tritt vor den Kronrat!
-${pWitness} meldet sich zitternd zu Wort: "Ich habe gesehen, wie ${pSuspect} vor dem Festmahl im Gemach des Königs war!"
-Es herrscht Aufruhr. Wer die Wahrheit sagt, bleibt im Dunkeln — doch die Gläser füllen sich mit bitterem Ernst.`;
+        return `Der Großinquisitor tritt mit gezogenem Richtschwert vor den Rat!
+${pWitness} meldet sich mit zittriger Stimme: "Ich habe gesehen, wie ${pSuspect} heimlich Pulver in den Pokal streute!"
+Die Stimmung kippt bedrohlich. Wer die Wahrheit spricht, weiß niemand – doch die Gläser füllen sich für die nächsten Anschuldigungen!`;
       },
       interactivePrompt: {
-        title: "Geheime Beichte & Bestechung",
-        description: "Wähle deine Taktik vor dem Kronrat:",
+        title: "Geheime Verhöre & Bestechung",
+        description: "Wähle deine Taktik vor den Inquisitoren:",
         choices: [
           {
             id: "bribe_council",
-            label: "Einfluss sichern (Verteile 2 Schlucke)",
-            outcomeText: "Du verteilst 2 Strafschlucke an einen verdächtigen Spieler!",
+            label: "Kronrat bestechen (Verteile 2 Schlucke)",
+            outcomeText: "Mit gezielten Anschuldigungen verteilst du 2 Strafschlucke an einen Mitspieler!",
             sips: 0,
             targetRequired: true,
             rewardPoints: 20,
           },
           {
             id: "drink_proof",
-            label: "Unschuldstrunk nehmen (1 Schluck)",
-            outcomeText: "Du beweist durch schnelles Trinken deinen reinen Magen.",
+            label: "Unschuldstrunk leeren (1 Schluck)",
+            outcomeText: "Du trinkst deinen Becher zügig und beweist deinen unschuldigen Magen.",
             sips: 1,
             rewardPoints: 15,
+          },
+          {
+            id: "demand_silence",
+            label: "Zum Schweigen verdonnern (Alle trinken 1 Schluck)",
+            outcomeText: "Du rufst nach Ruhe im Saal – die gesamte Runde trinkt gemeinsam 1 Schluck!",
+            sips: 1,
+            rewardPoints: 25,
           },
         ],
       },
@@ -133,11 +167,11 @@ Es herrscht Aufruhr. Wer die Wahrheit sagt, bleibt im Dunkeln — doch die Gläs
       id: "act_3_tribunal",
       act: 3,
       title: "Akt III: Das Tribunal des Schafotts",
-      atmosphereHint: "Die Henkersaxt wird poliert. Alle Blicke kreuzen sich.",
+      atmosphereHint: "Die Henkersaxt wird geschliffen. Alle Augen richten sich aufeinander.",
       generateText: () => {
-        return `Die Stunde des Urteils ist gekommen!
+        return `Die Stunde des Urteils ist da!
 Jeder Adlige am Tisch muss nun Farbe bekennen. Wer ist der wahre Mörder des Königs?
-Wählt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!`;
+Wählt jetzt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!`;
       },
       hasVoting: true,
       votingPrompt: "Wen verdächtigst du als Attentäter des Königs?",
@@ -158,9 +192,12 @@ Wählt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!`;
     for (const [pId, count] of Object.entries(voteCounts)) {
       if (count > maxVotes) {
         maxVotes = count;
-        highestVoteId = pId;
       }
     }
+
+    // Filter top voted
+    const topVotedIds = Object.keys(voteCounts).filter((id) => voteCounts[id] === maxVotes);
+    highestVoteId = topVotedIds[0] || "";
 
     const condemned = players.find((p) => p.id === highestVoteId);
     const assassin = players.find((p) => p.role?.includes("Attentäter"));
@@ -171,7 +208,7 @@ Wählt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!`;
       return {
         winnerTeam: "Die Getreuen der Krone 👑",
         title: "Gerechtigkeit siegt!",
-        summary: `Der Kronrat hat ${assassin.name} als wahren Attentäter überführt! Das Königreich ist gerettet.`,
+        summary: `Der Kronrat hat ${assassin.name} als wahren Attentäter überführt! Der Verrat ist gerächt und das Reich gerettet.`,
         drinkPenalties: [
           { playerName: assassin.name, sips: 4, reason: "Als entlarvter Attentäter auf dem Schafott!" },
         ],
@@ -184,10 +221,10 @@ Wählt auf eurem Smartphone die Person, die ihr auf das Schafott schickt!`;
         title: "Der Verrat war vollkommen!",
         summary: `Der Kronrat hat fälschlicherweise ${innocentName} verurteilt, während ${assassinName} triumphierend im Schatten lacht!`,
         drinkPenalties: [
-          { playerName: innocentName, sips: 3, reason: "Unschuldig verurteilt!" },
+          { playerName: innocentName, sips: 3, reason: "Unschuldig auf dem Schafott gelandet!" },
           ...players
             .filter((p) => p.id !== assassin?.id && p.id !== condemned?.id)
-            .map((p) => ({ playerName: p.name, sips: 2, reason: "Auf die List des Mörders hereingefallen!" })),
+            .map((p) => ({ playerName: p.name, sips: 2, reason: "Auf die Intrige des Attentäters hereingefallen!" })),
         ],
       };
     }
