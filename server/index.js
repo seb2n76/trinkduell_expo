@@ -1726,6 +1726,8 @@ app.get("/api/feed", authenticate, async (req, res) => {
     const filteredLogs = logs.filter((l) => friendUserIds.has(l.userId));
     const filteredPosts = posts.filter((p) => !hidden.has(p.userId) && visiblePostFilter(p));
 
+    const allReactions = await db.getFeedReactions();
+
     const feedLogs = filteredLogs.map((log) => {
       const user = users.find((u) => u.id === log.userId);
       const drink = drinks.find((d) => d.id === log.drinkId);
@@ -1742,6 +1744,7 @@ app.get("/api/feed", authenticate, async (req, res) => {
         longitude: log.longitude || null,
         timestamp: log.timestamp,
         type: "log",
+        reactions: allReactions[log.id] || { cheers: [], fire: [], water: [] },
       };
     });
 
@@ -1758,12 +1761,28 @@ app.get("/api/feed", authenticate, async (req, res) => {
         image: post.image || null,
         timestamp: post.timestamp,
         type: "post",
+        reactions: allReactions[post.id] || { cheers: [], fire: [], water: [] },
       };
     });
 
     const combinedFeed = [...feedLogs, ...feedPosts];
     combinedFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     res.json(combinedFeed);
+  } catch (err) {
+    serverError(res, err, `${req.method} ${req.originalUrl}`);
+  }
+});
+
+// React to a feed item (Cheers, Fire, Water)
+app.post("/api/feed/:id/react", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { emoji } = req.body;
+    if (!["cheers", "fire", "water"].includes(emoji)) {
+      return res.status(400).json({ error: "Ungültige Reaktion." });
+    }
+    const updated = await db.toggleFeedReaction(id, req.userId, emoji);
+    res.json({ success: true, reactions: updated });
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }

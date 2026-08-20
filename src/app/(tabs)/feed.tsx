@@ -13,6 +13,7 @@ import {
   Platform,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
 import {
@@ -27,13 +28,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "@/components/Avatar";
 import { FriendsRadarSkeleton, FeedItemSkeleton } from "@/components/Skeleton";
 import { useThemeColors, type ThemeColors } from "@/services/theme";
+import { uploadImage } from "@/services/upload";
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
 // ─────────────────────────────────────────────
-// Nimmt die Farben als Argument, weil das hier Modulebene ist: ein Hook
-// liesse sich nur in einer Komponente aufrufen, und der Punkt braucht einen
-// echten Farbwert (kein className) — er sitzt in einem style-Objekt.
 const radarStatusStyles = (c: ThemeColors) =>
   ({
     active: { dot: c.success, label: "Gerade aktiv", ring: "border-success/50" },
@@ -146,6 +145,117 @@ function FriendsRadar({
 }
 
 // ─────────────────────────────────────────────
+// Interactive Reactions Bar (Pills on Feed Cards)
+// ─────────────────────────────────────────────
+function FeedReactionsBar({
+  item,
+  currentUserId,
+  onReact,
+}: {
+  item: FeedItem;
+  currentUserId?: string;
+  onReact: (itemId: string, emoji: "cheers" | "fire" | "water") => void;
+}) {
+  const [showMore, setShowMore] = useState(false);
+
+  const cheersList = item.reactions?.cheers || [];
+  const fireList = item.reactions?.fire || [];
+  const waterList = item.reactions?.water || [];
+
+  const hasCheered = currentUserId ? cheersList.includes(currentUserId) : false;
+  const hasFired = currentUserId ? fireList.includes(currentUserId) : false;
+  const hasWatered = currentUserId ? waterList.includes(currentUserId) : false;
+
+  return (
+    <View className="flex-row items-center flex-wrap pt-2.5 mt-2.5 border-t border-line/60 gap-1.5">
+      {/* 🍻 Main Prost Button */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => onReact(item.id, "cheers")}
+        className={`flex-row items-center px-2.5 py-1 rounded-full border transition-all ${
+          hasCheered
+            ? "bg-amber-400/20 border-amber-400/60"
+            : "bg-surface-alt/40 border-line hover:border-line-strong"
+        }`}
+      >
+        <Text className="text-xs mr-1">🍻</Text>
+        <Text
+          className={`text-[10px] font-black uppercase tracking-wider ${
+            hasCheered ? "text-amber-400" : "text-content-faint"
+          }`}
+        >
+          Prost{cheersList.length > 0 ? ` · ${cheersList.length}` : ""}
+        </Text>
+      </TouchableOpacity>
+
+      {/* 🔥 Fire Reaction (if reacted or tray open) */}
+      {(fireList.length > 0 || showMore || hasFired) && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onReact(item.id, "fire")}
+          className={`flex-row items-center px-2 py-1 rounded-full border ${
+            hasFired
+              ? "bg-rose-500/20 border-rose-500/60"
+              : "bg-surface-alt/40 border-line"
+          }`}
+        >
+          <Text className="text-xs mr-1">🔥</Text>
+          {fireList.length > 0 && (
+            <Text
+              className={`text-[10px] font-black ${
+                hasFired ? "text-rose-400" : "text-content-faint"
+              }`}
+            >
+              {fireList.length}
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* 💧 Water Reaction (if reacted or tray open) */}
+      {(waterList.length > 0 || showMore || hasWatered) && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onReact(item.id, "water")}
+          className={`flex-row items-center px-2 py-1 rounded-full border ${
+            hasWatered
+              ? "bg-sky-400/20 border-sky-400/60"
+              : "bg-surface-alt/40 border-line"
+          }`}
+        >
+          <Text className="text-xs mr-1">💧</Text>
+          {waterList.length > 0 && (
+            <Text
+              className={`text-[10px] font-black ${
+                hasWatered ? "text-sky-400" : "text-content-faint"
+              }`}
+            >
+              {waterList.length}
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Toggle emoji tray */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => {
+          triggerHaptic("light");
+          setShowMore(!showMore);
+        }}
+        className="w-6 h-6 rounded-full bg-surface-alt/30 border border-line items-center justify-center"
+      >
+        <Ionicons
+          name={showMore ? "close" : "add"}
+          size={12}
+          color="#94a3b8"
+        />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────
 // Main Screen: Live Activity Feed
 // ─────────────────────────────────────────────
 export default function LivePulseFeed() {
@@ -160,6 +270,7 @@ export default function LivePulseFeed() {
   const [radarLoading, setRadarLoading] = useState(true);
   const [scope, setScope] = useState<FeedScope>("friends");
   const [inputText, setInputText] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -168,7 +279,6 @@ export default function LivePulseFeed() {
     try {
       const me = await apiService.getCurrentUser();
       if (!me) {
-        console.warn("User not found in feed load, aborting.");
         setLoading(false);
         setRadarLoading(false);
         return;
@@ -176,9 +286,6 @@ export default function LivePulseFeed() {
 
       setCurrentUser(me);
 
-      // Radar and feed both go through apiService so they share the auth
-      // header, circuit breaker and — importantly — the same friend/group
-      // filtering when falling back to local data.
       const [radar, fetchedFeed] = await Promise.all([
         apiService.getRadar(me.name).catch((e) => {
           console.warn("Radar konnte nicht geladen werden:", e);
@@ -218,8 +325,6 @@ export default function LivePulseFeed() {
     }, [scope])
   );
 
-  // Other people's activity doesn't otherwise show up until you leave and
-  // re-enter this tab — poll while it's mounted so it feels live.
   useEffect(() => {
     const interval = setInterval(() => loadFeedData(scope), 15000);
     return () => clearInterval(interval);
@@ -245,6 +350,67 @@ export default function LivePulseFeed() {
     setRefreshing(false);
   }, [scope]);
 
+  // Handle Photo Picker for Status
+  const handlePickImage = async () => {
+    triggerHaptic("light");
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        const msg = "Berechtigung für die Fotogalerie wird benötigt.";
+        if (Platform.OS === "web") window.alert(msg);
+        else Alert.alert("Zugriff verweigert", msg);
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+        triggerHaptic("success");
+      }
+    } catch (err) {
+      console.warn("Fehler bei Bildauswahl:", err);
+    }
+  };
+
+  // Handle React to feed item
+  const handleReact = async (itemId: string, emoji: "cheers" | "fire" | "water") => {
+    if (!currentUser) return;
+    triggerHaptic("medium");
+
+    // Optimistic UI Update
+    setFeedItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const currentReactions = item.reactions || { cheers: [], fire: [], water: [] };
+        const emojiList = currentReactions[emoji] || [];
+        const isReacted = emojiList.includes(currentUser.id);
+        const updatedList = isReacted
+          ? emojiList.filter((id) => id !== currentUser.id)
+          : [...emojiList, currentUser.id];
+
+        return {
+          ...item,
+          reactions: {
+            ...currentReactions,
+            [emoji]: updatedList,
+          },
+        };
+      })
+    );
+
+    try {
+      await apiService.toggleReaction(itemId, emoji, currentUser.id);
+    } catch (err) {
+      console.warn("Reaction failed, will refresh on next poll:", err);
+    }
+  };
+
   const handleDeletePost = (item: FeedItem) => {
     const question = item.image
       ? "Diesen Beitrag samt Foto löschen? Das lässt sich nicht rückgängig machen."
@@ -254,8 +420,6 @@ export default function LivePulseFeed() {
       try {
         await triggerHaptic("medium");
         await apiService.deletePost(item.id);
-        // Sofort aus der Liste nehmen statt auf den nächsten Ladevorgang zu
-        // warten — bei einem Foto, das man loswerden will, zählt genau das.
         setFeedItems((items) => items.filter((i) => i.id !== item.id));
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Beitrag konnte nicht gelöscht werden.";
@@ -264,8 +428,6 @@ export default function LivePulseFeed() {
       }
     };
 
-    // Alert.alert ist auf react-native-web ein No-op — ohne diesen Zweig
-    // erschiene die Rückfrage im Browser nie und nichts würde passieren.
     if (Platform.OS === "web") {
       if (window.confirm(question)) remove();
       return;
@@ -288,8 +450,6 @@ export default function LivePulseFeed() {
       });
       setReportTarget(null);
       setReportReason(null);
-      // Alert.alert is a no-op on web, so the confirmation has to go through
-      // window.alert there.
       const msg = "Danke, die Meldung ist bei uns eingegangen. Wir sehen sie uns an.";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Meldung eingegangen", msg);
@@ -303,15 +463,29 @@ export default function LivePulseFeed() {
   };
 
   const handleCreatePost = async () => {
-    if (!inputText.trim() || !currentUser) return;
+    if ((!inputText.trim() && !selectedImage) || !currentUser) return;
     setIsSubmitting(true);
     try {
+      let uploadedUrl: string | undefined = undefined;
+
+      if (selectedImage) {
+        try {
+          uploadedUrl = await uploadImage(selectedImage, "proof");
+        } catch {
+          // Fallback to local URI in case cloud storage is not connected
+          uploadedUrl = selectedImage;
+        }
+      }
+
       await triggerHaptic("success");
-      // A status update goes to the author's friends, not to a group. It used
-      // to be posted against the hardcoded group id "group-1", which no user
-      // is a member of.
-      await apiService.createPost(inputText.trim(), "friends", currentUser.id);
+      await apiService.createPost(
+        inputText.trim() || (selectedImage ? "📸 Schnappschuss geteilt" : ""),
+        "friends",
+        currentUser.id,
+        uploadedUrl
+      );
       setInputText("");
+      setSelectedImage(null);
       await loadFeedData(scope);
     } catch (e) {
       console.error("Failed to create feed post:", e);
@@ -339,8 +513,6 @@ export default function LivePulseFeed() {
     if (item.is_water) return "[Hydro-Pulse]";
     if ((item.alcohol_grams || 0) > 15 || (item.volume_ml || 0) >= 500)
       return "[Erfolg]";
-    // Everything reaching this point is already scope-filtered server-side,
-    // so the tag just reflects which feed you're looking at.
     return scope === "groups" ? "[Gruppe]" : "[Freund]";
   };
 
@@ -358,9 +530,7 @@ export default function LivePulseFeed() {
           />
         }
       >
-        {/* Freunde-Radar. Die Karte klappte hier früher mit 450 px Höhe auf und
-            schob den eigentlichen Feed aus dem Bild — sie liegt jetzt auf einer
-            eigenen Route und wird von hier aus geöffnet. */}
+        {/* Freunde-Radar */}
         <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
 
         {/* Umschalter: Freunde- vs. Gruppen-Feed */}
@@ -395,13 +565,38 @@ export default function LivePulseFeed() {
           })}
         </View>
 
-        {/* Status creator box */}
+        {/* Status Creator Box */}
         {currentUser && (
-          <View className="bg-surface border border-line p-4 rounded-3xl mb-5">
-            <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider mb-2">
-              Status teilen
-            </Text>
-            <View className="flex-row items-center space-x-3">
+          <View className="bg-surface border border-line p-4 rounded-3xl mb-5 shadow-sm">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider">
+                Status oder Schnappschuss teilen
+              </Text>
+              {selectedImage && (
+                <View className="bg-accent/20 px-2 py-0.5 rounded-full">
+                  <Text className="text-accent text-[8px] font-black uppercase">Foto angehängt</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Photo Thumbnail Preview (if picked) */}
+            {selectedImage && (
+              <View className="relative mb-3 self-start">
+                <Image
+                  source={{ uri: selectedImage }}
+                  className="w-20 h-20 rounded-2xl border border-accent/40 bg-surface-alt"
+                  resizeMode="cover"
+                />
+                <TouchableOpacity
+                  onPress={() => setSelectedImage(null)}
+                  className="absolute -top-1.5 -right-1.5 bg-rose-500 w-5 h-5 rounded-full items-center justify-center shadow"
+                >
+                  <Ionicons name="close" size={12} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View className="flex-row items-center space-x-2">
               <Avatar
                 uri={currentUser.avatar}
                 name={currentUser.name}
@@ -416,18 +611,36 @@ export default function LivePulseFeed() {
                 maxLength={100}
                 className="flex-1 bg-surface border border-line rounded-2xl px-4 py-2.5 text-content font-bold text-xs"
               />
+
+              {/* Photo Button */}
+              <TouchableOpacity
+                onPress={handlePickImage}
+                className="bg-surface border border-line p-2.5 rounded-2xl active:scale-95 items-center justify-center"
+              >
+                <Ionicons
+                  name="camera-outline"
+                  size={18}
+                  color={selectedImage ? c.accent : c.contentFaint}
+                />
+              </TouchableOpacity>
+
+              {/* Submit Post Button */}
               <TouchableOpacity
                 onPress={handleCreatePost}
-                disabled={isSubmitting || !inputText.trim()}
+                disabled={isSubmitting || (!inputText.trim() && !selectedImage)}
                 className="bg-accent p-2.5 rounded-2xl active:scale-95 disabled:opacity-40"
               >
-                <Ionicons name="send" size={16} color={c.onAccent} />
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color={c.onAccent} />
+                ) : (
+                  <Ionicons name="send" size={16} color={c.onAccent} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Activities list header */}
+        {/* Activities List Header */}
         <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
           Live-Aktivitäten
         </Text>
@@ -453,14 +666,23 @@ export default function LivePulseFeed() {
         ) : (
           feedItems.map((item) => {
             const isMe = item.userId === currentUser?.id;
+            const isHighlight =
+              item.userId === "system" ||
+              item.text?.includes("LEVEL UP") ||
+              item.text?.includes("Duell") ||
+              item.text?.includes("Königshof");
 
             if (item.type === "post") {
               const isSystem = item.userId === "system";
-              const tagColor = isSystem
+              const tagColor = isHighlight
+                ? "bg-amber-400/20 border-amber-400/40 text-amber-400"
+                : isSystem
                 ? "bg-warning/10 border-warning/20 text-warning"
                 : "bg-accent/10 border-accent/20 text-accent-ink";
-              const tagLabel = isSystem ? "[Erfolg]" : "[Status]";
-              const titleText = isSystem
+              const tagLabel = isHighlight ? "[Highlight 🏆]" : isSystem ? "[Erfolg]" : "[Status]";
+              const titleText = isHighlight
+                ? "Party-Highlight"
+                : isSystem
                 ? "System-Meldung"
                 : isMe
                 ? "Dein Status"
@@ -469,11 +691,15 @@ export default function LivePulseFeed() {
               return (
                 <View
                   key={item.id}
-                  className="bg-surface border border-line p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
+                  className={`bg-surface border p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3 ${
+                    isHighlight
+                      ? "border-amber-400/50 bg-amber-500/5"
+                      : "border-line"
+                  }`}
                 >
-                  {isSystem ? (
-                    <View className="w-10 h-10 rounded-full bg-warning/10 border border-warning/20 items-center justify-center">
-                      <Ionicons name="sparkles" size={18} color={c.warning} />
+                  {isHighlight || isSystem ? (
+                    <View className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/40 items-center justify-center">
+                      <Ionicons name="trophy" size={20} color="#fbbf24" />
                     </View>
                   ) : (
                     <Avatar
@@ -492,30 +718,30 @@ export default function LivePulseFeed() {
                         </Text>
                       </View>
                     </View>
-                    <Text className="text-content-muted text-xs font-medium leading-relaxed mb-2.5">
+                    <Text className="text-content text-xs font-semibold leading-relaxed mb-2.5">
                       {item.text}
                     </Text>
 
-                    {/* Beweisfoto. Feste Höhe mit cover, damit ein Hochformat
-                        die Feed-Karte nicht auf Bildschirmhöhe aufzieht. */}
+                    {/* Attached Photo */}
                     {item.image && (
                       <Image
                         source={{ uri: item.image }}
                         style={{ width: "100%", height: 200 }}
                         className="rounded-2xl mb-2.5 bg-surface-alt"
                         resizeMode="cover"
-                        accessibilityLabel={`Beweisfoto von ${item.username}`}
+                        accessibilityLabel={`Foto von ${item.username}`}
                       />
                     )}
-                    <View className="flex-row items-center justify-between border-t border-line pt-2">
+
+                    <View className="flex-row items-center justify-between">
                       <View className="flex-row items-center space-x-1.5">
                         <Ionicons
-                          name={isSystem ? "trophy" : "chatbubble-ellipses"}
+                          name={isHighlight ? "star" : isSystem ? "trophy" : "chatbubble-ellipses"}
                           size={11}
-                          color={isSystem ? c.warning : c.accent}
+                          color={isHighlight ? "#fbbf24" : isSystem ? c.warning : c.accent}
                         />
                         <Text className="text-content-faint text-[8px] font-extrabold uppercase">
-                          {isSystem ? "LEVEL-UP" : "PIN-STATUS"}
+                          {isHighlight ? "SPOTLIGHT" : isSystem ? "LEVEL-UP" : "PIN-STATUS"}
                         </Text>
                       </View>
                       <View className="flex-row items-center">
@@ -526,9 +752,6 @@ export default function LivePulseFeed() {
                           })}{" "}
                           Uhr
                         </Text>
-                        {/* Reporting has to sit on the content itself — a
-                            report buried in a settings menu doesn't meet the
-                            stores' "reachable where the content is". */}
                         {!isMe && !isSystem && (
                           <TouchableOpacity
                             onPress={() => {
@@ -542,11 +765,6 @@ export default function LivePulseFeed() {
                             <Ionicons name="flag-outline" size={11} color={c.contentFaint} />
                           </TouchableOpacity>
                         )}
-
-                        {/* Löschen sitzt an derselben Stelle wie das Melden
-                            fremder Beiträge — beides gehört an den Inhalt,
-                            nicht in ein Menü. Systembeiträge (Level-Ups)
-                            gehören niemandem und sind nicht löschbar. */}
                         {isMe && !isSystem && (
                           <TouchableOpacity
                             onPress={() => handleDeletePost(item)}
@@ -558,11 +776,19 @@ export default function LivePulseFeed() {
                         )}
                       </View>
                     </View>
+
+                    {/* Interactive Reactions Bar */}
+                    <FeedReactionsBar
+                      item={item}
+                      currentUserId={currentUser?.id}
+                      onReact={handleReact}
+                    />
                   </View>
                 </View>
               );
             }
 
+            // Drink Log Item
             const tagText = getNeonTagText(item);
             const titleText = isMe
               ? "Du hast getrunken"
@@ -596,7 +822,7 @@ export default function LivePulseFeed() {
                   <Text className="text-content-muted text-xs font-medium leading-relaxed mb-2.5">
                     {detailText}
                   </Text>
-                  <View className="flex-row items-center justify-between border-t border-line pt-2">
+                  <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center space-x-1.5">
                       <Ionicons
                         name={item.is_water ? "water" : "beer"}
@@ -615,6 +841,13 @@ export default function LivePulseFeed() {
                       Uhr
                     </Text>
                   </View>
+
+                  {/* Interactive Reactions Bar on Drink Logs */}
+                  <FeedReactionsBar
+                    item={item}
+                    currentUserId={currentUser?.id}
+                    onReact={handleReact}
+                  />
                 </View>
               </View>
             );
@@ -623,8 +856,7 @@ export default function LivePulseFeed() {
         <View className="h-10" />
       </ScrollView>
 
-      {/* Reporting a post. Deliberately reachable straight from the item so
-          the path from "this is offensive" to "reported" is one tap. */}
+      {/* Reporting Modal */}
       <Modal visible={!!reportTarget} animationType="slide" transparent>
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">

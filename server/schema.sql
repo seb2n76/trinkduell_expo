@@ -209,6 +209,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, timestamp);
 CREATE INDEX IF NOT EXISTS idx_user_drinks_user ON user_drinks(user_id, position);
 
+CREATE TABLE IF NOT EXISTS feed_reactions (
+  id TEXT PRIMARY KEY,
+  target_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  emoji TEXT NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  UNIQUE(target_id, user_id, emoji)
+);
+CREATE INDEX IF NOT EXISTS idx_feed_reactions_target ON feed_reactions(target_id);
+
 -- ACHTUNG: Indizes auf Spalten, die per ALTER TABLE nachgerüstet werden,
 -- gehören NICHT hierher, sondern in die Migrationsphase von initPgSchema()
 -- (server/db.js). Diese Datei läuft als EIN Query: schlägt eine Anweisung

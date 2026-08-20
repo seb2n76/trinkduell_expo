@@ -1029,6 +1029,69 @@ module.exports = {
     db.posts.push(post);
     await saveDb();
   },
+  getFeedReactions: async () => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query(
+        'SELECT target_id AS "targetId", user_id AS "userId", emoji FROM feed_reactions'
+      );
+      const reactions = {};
+      for (const row of res.rows) {
+        if (!reactions[row.targetId]) {
+          reactions[row.targetId] = { cheers: [], fire: [], water: [] };
+        }
+        if (reactions[row.targetId][row.emoji]) {
+          reactions[row.targetId][row.emoji].push(row.userId);
+        }
+      }
+      return reactions;
+    }
+    return db.reactions || {};
+  },
+  toggleFeedReaction: async (targetId, userId, emoji) => {
+    await loadDb();
+    if (pool) {
+      const existing = await pool.query(
+        'SELECT id FROM feed_reactions WHERE target_id = $1 AND user_id = $2 AND emoji = $3',
+        [targetId, userId, emoji]
+      );
+      if (existing.rows.length > 0) {
+        await pool.query(
+          'DELETE FROM feed_reactions WHERE target_id = $1 AND user_id = $2 AND emoji = $3',
+          [targetId, userId, emoji]
+        );
+      } else {
+        const id = `react-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        await pool.query(
+          'INSERT INTO feed_reactions (id, target_id, user_id, emoji, timestamp) VALUES ($1, $2, $3, $4, $5)',
+          [id, targetId, userId, emoji, new Date().toISOString()]
+        );
+      }
+      const all = await pool.query(
+        'SELECT emoji, user_id AS "userId" FROM feed_reactions WHERE target_id = $1',
+        [targetId]
+      );
+      const result = { cheers: [], fire: [], water: [] };
+      for (const row of all.rows) {
+        if (result[row.emoji]) result[row.emoji].push(row.userId);
+      }
+      return result;
+    }
+    if (!db.reactions) db.reactions = {};
+    if (!db.reactions[targetId]) {
+      db.reactions[targetId] = { cheers: [], fire: [], water: [] };
+    }
+    const target = db.reactions[targetId];
+    if (!target[emoji]) target[emoji] = [];
+    const idx = target[emoji].indexOf(userId);
+    if (idx !== -1) {
+      target[emoji].splice(idx, 1);
+    } else {
+      target[emoji].push(userId);
+    }
+    await saveDb();
+    return target;
+  },
   /**
    * Persönliche Schnellwahl eines Nutzers, in seiner Reihenfolge.
    *

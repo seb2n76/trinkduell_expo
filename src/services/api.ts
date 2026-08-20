@@ -932,16 +932,13 @@ export const apiService = {
         return {
           data: {
             friends: res.data.friends || [],
-            pending: res.data.pending || []
-          }
+            pending: res.data.pending || [],
+          },
         };
       },
       () => db.getFriends(username)
     ),
 
-  // Both fall back to a local mirror of the server's filtering (see
-  // getRadarLocal/getFeedLocal). The feed fallback used to skip filtering
-  // entirely and show every user's activity to everyone.
   getRadar: (username: string): Promise<db.RadarEntry[]> =>
     executeApiCall(
       () => axiosInstance.get<db.RadarEntry[]>("/radar"),
@@ -952,6 +949,23 @@ export const apiService = {
     executeApiCall(
       () => axiosInstance.get<db.FeedItem[]>(`/feed?scope=${scope}`),
       () => db.getFeedLocal(scope, username)
+    ),
+
+  toggleReaction: (
+    targetId: string,
+    emoji: "cheers" | "fire" | "water",
+    userId?: string
+  ): Promise<{ success: boolean; reactions: { cheers: string[]; fire: string[]; water: string[] } }> =>
+    executeApiCall(
+      () =>
+        axiosInstance.post<{ success: boolean; reactions: { cheers: string[]; fire: string[]; water: string[] } }>(
+          `/feed/${targetId}/react`,
+          { emoji }
+        ),
+      async () => {
+        const reactions = await db.toggleReactionLocal(targetId, userId || "mock-user", emoji);
+        return { success: true, reactions };
+      }
     ),
 
   getMap: (username: string): Promise<db.MapCoordinate[]> =>
@@ -998,4 +1012,3 @@ export const apiService = {
     await axiosInstance.post<void>("/users/push-token", { token });
   },
 };
-

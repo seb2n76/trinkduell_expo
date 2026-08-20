@@ -1274,6 +1274,11 @@ export interface FeedItem {
   longitude: number | null;
   timestamp: string;
   type: "log" | "post";
+  reactions?: {
+    cheers?: string[];
+    fire?: string[];
+    water?: string[];
+  };
 }
 
 // Mirrors server-side resolveFriendUserIds(): friendships are stored by
@@ -1374,6 +1379,27 @@ export const getMapCoordinatesLocal = async (username: string): Promise<MapCoord
   return all.filter((entry) => visible.has(entry.userId));
 };
 
+const localFeedReactions: Record<string, { cheers: string[]; fire: string[]; water: string[] }> = {};
+
+export const toggleReactionLocal = async (
+  targetId: string,
+  userId: string,
+  emoji: "cheers" | "fire" | "water"
+) => {
+  if (!localFeedReactions[targetId]) {
+    localFeedReactions[targetId] = { cheers: [], fire: [], water: [] };
+  }
+  const target = localFeedReactions[targetId];
+  if (!target[emoji]) target[emoji] = [];
+  const idx = target[emoji].indexOf(userId);
+  if (idx !== -1) {
+    target[emoji].splice(idx, 1);
+  } else {
+    target[emoji].push(userId);
+  }
+  return target;
+};
+
 export const getFeedLocal = async (scope: FeedScope, username: string): Promise<FeedItem[]> => {
   const users = await getUsers();
   const logs = await getDrinkLogs();
@@ -1416,6 +1442,7 @@ export const getFeedLocal = async (scope: FeedScope, username: string): Promise<
         longitude: null,
         timestamp: log.timestamp,
         type: "log" as const,
+        reactions: localFeedReactions[log.id] || { cheers: [], fire: [], water: [] },
       };
     });
 
@@ -1435,10 +1462,11 @@ export const getFeedLocal = async (scope: FeedScope, username: string): Promise<
       longitude: null,
       timestamp: post.timestamp,
       type: "post" as const,
+      reactions: localFeedReactions[post.id] || { cheers: [], fire: [], water: [] },
     };
   });
 
-  return [...feedLogs, ...feedPosts].sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
+  const combined = [...feedLogs, ...feedPosts];
+  combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return combined;
 };
