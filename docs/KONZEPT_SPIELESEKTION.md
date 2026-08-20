@@ -493,27 +493,40 @@ Typecheck fängt das; nur der Blick in die laufende App.
 Verschoben: Die Akt-Schwellen (8 und 18 Runden) sind gesetzt, aber nicht an
 echten Runden erprobt. Gehört nach der ersten Testrunde mit Menschen justiert.
 
-### P2 — Tiefe
+### P2 — Tiefe — ✅ erledigt am 20.08.2026
 
 *Story-RPG:*
-11. Storylet-Engine + Content-Pack „Mitternachts-Express" (~40 Storylets)
-12. Rollen mit Fähigkeiten und exklusiven Informationen
-13. Geister-Modus, Diskussionsphasen mit Timer
+11. ✅ Storylet-Engine + Content-Pack „Mitternachts-Express"
+    (19 Szenen im Pool, 12 pro Durchlauf gespielt)
+12. ✅ Rollen mit eigenen Szenen (Leibarzt, Detektiv, Schaffner) und
+    asymmetrischen Startinformationen
+13. ✅ Geister-Modus (halbe Stimme, volles Rederecht), Diskussionsphasen mit Frist
 
 *Lokale Spiele:*
-14. Statuseffekte über Spielwechsel hinweg (§6.2)
-15. Dossier + Titel + adressierbare Karten
-16. „Ich hab noch nie" mit Minderheitswertung, „Wer würde eher" mit
-    Verteidigungsrede
-17. **Busfahrer fertigbauen** — Fragerunde und Pyramide ergänzen
-18. Wortbombe: Ausscheiden, Einspruch, Duell-Finale
+14. ✅ Statuseffekte über Spielwechsel hinweg
+15. ⚠️ Dossier + Titel ✅ — **adressierbare Karten fehlen** (siehe unten)
+16. ✅ „Ich hab noch nie" mit Minderheitswertung, „Wer würde eher" mit
+    Tipprunde und Verteidigungsrede
+17. ✅ **Busfahrer fertiggebaut** — Austeilrunde und Pyramide ergänzt
+18. ✅ Wortbombe: Ausscheiden, Einspruch, Duell-Finale
 
 *Beide:*
-19. Sitzungsgedächtnis/Callbacks (S3)
+19. ✅ Sitzungsgedächtnis — serverseitig für die Story (`{{memory:…}}`),
+    clientseitig als Dossier für die lokalen Spiele
+
+**Offen aus P2:** Karten, die einen Titel ansprechen („Der Verdächtige zieht
+diese Karte"). Die Mechanik trägt das — Titel werden vergeben und sind
+abfragbar —, aber es fehlen die Kartentexte dafür. Das ist Content-Arbeit,
+keine Technik, und gehört zur nächsten Content-Runde.
+
+**Content-Stand Mitternachts-Express:** 19 Szenen statt der veranschlagten ~40.
+Das reicht für 12 gespielte Szenen pro Durchlauf mit spürbarer Varianz; für
+mehrere Abende hintereinander sollte der Pool auf 30+ wachsen.
 
 *Fertig, wenn:* eine Testgruppe von 5 Leuten den Krimi ohne Aufforderung zu Ende
 spielt — und eine zweite Gruppe „Die Nacht" 40 Minuten durchhält, ohne dass
-jemand nach einem anderen Spiel fragt.
+jemand nach einem anderen Spiel fragt. **Beides steht noch aus: bisher nur von
+mir geprüft, nicht mit echten Gruppen.**
 
 ### P3 — Bindung über den Abend hinaus
 
