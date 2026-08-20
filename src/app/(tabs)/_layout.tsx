@@ -373,11 +373,11 @@ export default function TabsLayout() {
                     Reine Anzeigehilfe: die Routen pruefen unabhaengig davon. */}
                 {dbUser?.isModerator && (
                   <DrawerLink
-                    icon="shield-outline"
+                    icon="shield-checkmark-outline"
                     color={c.warning}
-                    label="Meldungen"
-                    hint="Gemeldete Inhalte bearbeiten"
-                    onPress={() => goTo("/moderation")}
+                    label="Admin-Konsole"
+                    hint="Alles steuern & moderieren"
+                    onPress={() => goTo("/admin")}
                   />
                 )}
               </ScrollView>

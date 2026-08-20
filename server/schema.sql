@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- Ohne diesen Merker wäre "noch nie gewählt" nicht von "bewusst geleert"
   -- zu unterscheiden — und eine geleerte Schnellwahl käme bei jedem Abruf
   -- als Standardauswahl zurück.
-  quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE
+  quick_picks_set BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Banned status for moderation
+  banned BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS drinks (

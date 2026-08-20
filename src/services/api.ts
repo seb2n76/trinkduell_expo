@@ -130,6 +130,58 @@ export interface ModerationInbox {
   reports: ModerationReport[];
 }
 
+export interface AdminSystemStats {
+  usersCount: number;
+  bannedUsersCount: number;
+  drinksCount: number;
+  logsCount: number;
+  totalVolumeMl: number;
+  totalAlcoholGrams: number;
+  postsCount: number;
+  reportsCount: number;
+  openReportsCount: number;
+  duelsCount: number;
+  activeDuelsCount: number;
+}
+
+export interface AdminServerInfo {
+  uptimeSeconds: number;
+  memoryUsageMb: number;
+  nodeVersion: string;
+  isPgMode: boolean;
+}
+
+export interface AdminDashboardData {
+  stats: AdminSystemStats;
+  server: AdminServerInfo;
+  activeRoomsCount: number;
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email?: string;
+  avatar?: string | null;
+  points: number;
+  level: number;
+  rank: string;
+  title: string;
+  banned: boolean;
+  alcoholGrams: number;
+  isModerator: boolean;
+}
+
+export interface AdminRoom {
+  code: string;
+  gameId: string;
+  status: string;
+  playerCount: number;
+  hostName: string;
+  createdAt: number;
+  lastActivity: number;
+  currentChapterIndex: number;
+}
+
 const JWT_TOKEN_KEY = "trinkduell_v2_jwt_token";
 const CACHED_USER_KEY = "trinkduell_v2_cached_user";
 
@@ -1010,5 +1062,78 @@ export const apiService = {
   // caller just retries on the next app start.
   registerPushToken: async (token: string): Promise<void> => {
     await axiosInstance.post<void>("/users/push-token", { token });
+  },
+
+  // ─── Admin Console Endpoints ───────────────────────────────────────────────
+  getAdminStats: async (): Promise<AdminDashboardData> => {
+    const res = await axiosInstance.get<AdminDashboardData>("/admin/stats");
+    return res.data;
+  },
+
+  getAdminUsers: async (params?: { q?: string; filter?: string }): Promise<AdminUser[]> => {
+    const query = new URLSearchParams();
+    if (params?.q) query.append("q", params.q);
+    if (params?.filter) query.append("filter", params.filter);
+    const qs = query.toString();
+    const res = await axiosInstance.get<AdminUser[]>(`/admin/users${qs ? `?${qs}` : ""}`);
+    return res.data;
+  },
+
+  banUser: async (userId: string, banned: boolean): Promise<{ success: boolean; userId: string; banned: boolean }> => {
+    const res = await axiosInstance.post<{ success: boolean; userId: string; banned: boolean }>(
+      `/admin/users/${userId}/ban`,
+      { banned }
+    );
+    return res.data;
+  },
+
+  resetUserStats: async (userId: string): Promise<{ success: boolean; userId: string }> => {
+    const res = await axiosInstance.post<{ success: boolean; userId: string }>(
+      `/admin/users/${userId}/reset-stats`,
+      {}
+    );
+    return res.data;
+  },
+
+  cleanUserProfile: async (userId: string, resetName?: string): Promise<{ success: boolean; userId: string }> => {
+    const res = await axiosInstance.post<{ success: boolean; userId: string }>(
+      `/admin/users/${userId}/clean-profile`,
+      { resetName }
+    );
+    return res.data;
+  },
+
+  adminDeletePost: async (postId: string): Promise<{ success: boolean; id: string }> => {
+    const res = await axiosInstance.delete<{ success: boolean; id: string }>(`/admin/posts/${postId}`);
+    return res.data;
+  },
+
+  getAdminDrinks: async (): Promise<db.Drink[]> => {
+    const res = await axiosInstance.get<db.Drink[]>("/admin/drinks");
+    return res.data;
+  },
+
+  adminUpdateDrink: async (drinkId: string, updates: Partial<db.Drink>): Promise<db.Drink> => {
+    const res = await axiosInstance.patch<db.Drink>(`/admin/drinks/${drinkId}`, updates);
+    return res.data;
+  },
+
+  getAdminRooms: async (): Promise<AdminRoom[]> => {
+    const res = await axiosInstance.get<AdminRoom[]>("/admin/rooms");
+    return res.data;
+  },
+
+  adminDeleteRoom: async (code: string): Promise<{ success: boolean; code: string; removed: boolean }> => {
+    const res = await axiosInstance.delete<{ success: boolean; code: string; removed: boolean }>(
+      `/admin/rooms/${code}`
+    );
+    return res.data;
+  },
+
+  sendAdminBroadcast: async (message: string): Promise<{ success: boolean; post: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; post: any }>("/admin/broadcast", {
+      message,
+    });
+    return res.data;
   },
 };

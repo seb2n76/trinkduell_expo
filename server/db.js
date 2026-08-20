@@ -282,6 +282,8 @@ async function initPgSchema() {
     // Ausgeblendete Getränke. Kein Index: die Tabelle ist klein, und ein
     // Index auf einem Boolean mit fast nur FALSE bringt nichts.
     await pool.query("ALTER TABLE drinks ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE");
+    // Gesperrte Accounts (Moderation)
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE");
 
     // ── 3. Indizes auf nachgerüsteten Spalten ───────────────────────────────
     // Partiell, weil die meisten Getränke keinen Barcode haben — und unique,
@@ -412,6 +414,7 @@ module.exports = {
         selected_title: row.selected_title,
         level: row.level !== undefined && row.level !== null ? row.level : 1,
         active_quest: row.active_quest || null,
+        banned: Boolean(row.banned),
         // Needed by authenticate() to reject tokens from before a password
         // reset. Stripped again in enrichUserProgress before any response.
         sessionValidAfter: row.session_valid_after
@@ -436,6 +439,7 @@ module.exports = {
       selected_title: u.selected_title,
       level: u.level || 1,
       active_quest: u.active_quest || null,
+      banned: Boolean(u.banned),
       sessionValidAfter: u.sessionValidAfter || null
     }));
   },
@@ -443,11 +447,11 @@ module.exports = {
     await loadDb();
     if (pool) {
       await pool.query(
-        `INSERT INTO users (id, name, avatar, title, rank, points, alcohol_grams, achievements, email, password, selected_title, level, active_quest)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `INSERT INTO users (id, name, avatar, title, rank, points, alcohol_grams, achievements, email, password, selected_title, level, active_quest, banned)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (id) DO UPDATE SET
-           name = $2, avatar = $3, title = $4, rank = $5, points = $6, alcohol_grams = $7, achievements = $8, email = $9, password = $10, selected_title = $11, level = $12, active_quest = $13`,
-        [user.id, user.name, user.avatar, user.title, user.rank, user.points, user.alcoholGrams, JSON.stringify(user.achievements), user.email, user.password, user.selected_title, user.level || 1, user.active_quest || null]
+           name = $2, avatar = $3, title = $4, rank = $5, points = $6, alcohol_grams = $7, achievements = $8, email = $9, password = $10, selected_title = $11, level = $12, active_quest = $13, banned = $14`,
+        [user.id, user.name, user.avatar, user.title, user.rank, user.points, user.alcoholGrams, JSON.stringify(user.achievements), user.email, user.password, user.selected_title, user.level || 1, user.active_quest || null, Boolean(user.banned)]
       );
       return;
     }
@@ -458,11 +462,170 @@ module.exports = {
       // plain replace here would silently wipe a pending reset code on any
       // unrelated save — mirrors how the Postgres UPDATE above only ever
       // touches the columns it explicitly lists.
-      db.users[idx] = { ...db.users[idx], ...user };
+      db.users[idx] = { ...db.users[idx], ...user, banned: Boolean(user.banned) };
     } else {
-      db.users.push(user);
+      db.users.push({ ...user, banned: Boolean(user.banned) });
     }
     await saveDb();
+  },
+  setUserBanned: async (userId, banned) => {
+    await loadDb();
+    if (pool) {
+      await pool.query("UPDATE users SET banned = $1 WHERE id = $2", [Boolean(banned), userId]);
+      return;
+    }
+    const user = (db.users || []).find((u) => u.id === userId);
+    if (user) {
+      user.banned = Boolean(banned);
+      await saveDb();
+    }
+  },
+  resetUserStats: async (userId) => {
+    await loadDb();
+    if (pool) {
+      await pool.query(
+        "UPDATE users SET points = 0, alcohol_grams = 0, level = 1, rank = 'Neuling', title = 'Neuling', selected_title = 'Neuling', achievements = '[]'::jsonb WHERE id = $1",
+        [userId]
+      );
+      await pool.query("DELETE FROM drink_logs WHERE user_id = $1", [userId]);
+      return;
+    }
+    const user = (db.users || []).find((u) => u.id === userId);
+    if (user) {
+      user.points = 0;
+      user.alcoholGrams = 0;
+      user.level = 1;
+      user.rank = "Neuling";
+      user.title = "Neuling";
+      user.selected_title = "Neuling";
+      user.achievements = [];
+      db.logs = (db.logs || []).filter((l) => l.userId !== userId);
+      await saveDb();
+    }
+  },
+  cleanUserProfile: async (userId, resetName) => {
+    await loadDb();
+    if (pool) {
+      if (resetName) {
+        await pool.query("UPDATE users SET name = $1, avatar = NULL WHERE id = $2", [resetName, userId]);
+      } else {
+        await pool.query("UPDATE users SET avatar = NULL WHERE id = $1", [userId]);
+      }
+      return;
+    }
+    const user = (db.users || []).find((u) => u.id === userId);
+    if (user) {
+      user.avatar = null;
+      if (resetName) user.name = resetName;
+      await saveDb();
+    }
+  },
+  adminDeletePost: async (postId) => {
+    await loadDb();
+    if (pool) {
+      const res = await pool.query('SELECT image, user_id AS "userId" FROM posts WHERE id = $1', [postId]);
+      const post = res.rows[0];
+      await pool.query("DELETE FROM posts WHERE id = $1", [postId]);
+      return post || null;
+    }
+    const idx = (db.posts || []).findIndex((p) => p.id === postId);
+    if (idx !== -1) {
+      const post = db.posts[idx];
+      db.posts.splice(idx, 1);
+      await saveDb();
+      return post;
+    }
+    return null;
+  },
+  adminUpdateDrink: async (drinkId, updates) => {
+    await loadDb();
+    if (pool) {
+      const current = await pool.query("SELECT * FROM drinks WHERE id = $1", [drinkId]);
+      if (current.rows.length === 0) return null;
+      const row = current.rows[0];
+      const name = updates.name !== undefined ? updates.name : row.name;
+      const category = updates.category !== undefined ? updates.category : row.category;
+      const volume = updates.volume !== undefined ? Number(updates.volume) : row.volume;
+      const abv = updates.abv !== undefined ? Number(updates.abv) : row.abv;
+      const calories = updates.calories !== undefined ? Number(updates.calories) : row.calories;
+      const ean = updates.ean !== undefined ? updates.ean : row.ean;
+      const hidden = updates.hidden !== undefined ? Boolean(updates.hidden) : Boolean(row.hidden);
+
+      await pool.query(
+        "UPDATE drinks SET name = $1, category = $2, volume = $3, abv = $4, calories = $5, ean = $6, hidden = $7 WHERE id = $8",
+        [name, category, volume, abv, calories, ean, hidden, drinkId]
+      );
+      return { id: drinkId, name, category, volume, abv, calories, ean, hidden };
+    }
+    const drink = (db.drinks || []).find((d) => d.id === drinkId);
+    if (!drink) return null;
+    if (updates.name !== undefined) drink.name = updates.name;
+    if (updates.category !== undefined) drink.category = updates.category;
+    if (updates.volume !== undefined) drink.volume = Number(updates.volume);
+    if (updates.abv !== undefined) drink.abv = Number(updates.abv);
+    if (updates.calories !== undefined) drink.calories = Number(updates.calories);
+    if (updates.ean !== undefined) drink.ean = updates.ean;
+    if (updates.hidden !== undefined) drink.hidden = Boolean(updates.hidden);
+    await saveDb();
+    return drink;
+  },
+  getSystemStats: async () => {
+    await loadDb();
+    if (pool) {
+      const [uRes, dRes, lRes, pRes, rRes, duelRes] = await Promise.all([
+        pool.query("SELECT COUNT(*) AS count, COUNT(*) FILTER (WHERE banned = true) AS banned_count FROM users"),
+        pool.query("SELECT COUNT(*) AS count FROM drinks"),
+        pool.query("SELECT COUNT(*) AS count, COALESCE(SUM(volume_ml), 0) AS total_volume, COALESCE(SUM(alcohol_grams), 0) AS total_alcohol FROM drink_logs"),
+        pool.query("SELECT COUNT(*) AS count FROM posts"),
+        pool.query("SELECT COUNT(*) AS count, COUNT(*) FILTER (WHERE status = 'open') AS open_count FROM reports"),
+        pool.query("SELECT COUNT(*) AS count, COUNT(*) FILTER (WHERE status = 'active') AS active_count FROM duels")
+      ]);
+      return {
+        usersCount: Number(uRes.rows[0].count),
+        bannedUsersCount: Number(uRes.rows[0].banned_count),
+        drinksCount: Number(dRes.rows[0].count),
+        logsCount: Number(lRes.rows[0].count),
+        totalVolumeMl: Number(lRes.rows[0].total_volume),
+        totalAlcoholGrams: Number(lRes.rows[0].total_alcohol),
+        postsCount: Number(pRes.rows[0].count),
+        reportsCount: Number(rRes.rows[0].count),
+        openReportsCount: Number(rRes.rows[0].open_count),
+        duelsCount: Number(duelRes.rows[0].count),
+        activeDuelsCount: Number(duelRes.rows[0].active_count),
+      };
+    }
+    const users = db.users || [];
+    const logs = db.logs || [];
+    const drinks = db.drinks || [];
+    const posts = db.posts || [];
+    const reports = db.reports || [];
+    const duels = db.duels || [];
+
+    let totalVolumeMl = 0;
+    let totalAlcoholGrams = 0;
+    const drinksById = new Map(drinks.map((d) => [d.id, d]));
+
+    for (const log of logs) {
+      const drink = drinksById.get(log.drinkId);
+      if (drink) {
+        totalVolumeMl += drink.volume || 0;
+        totalAlcoholGrams += calculateAlcoholGrams(drink.volume, drink.abv) || 0;
+      }
+    }
+
+    return {
+      usersCount: users.length,
+      bannedUsersCount: users.filter((u) => u.banned).length,
+      drinksCount: drinks.length,
+      logsCount: logs.length,
+      totalVolumeMl: Math.round(totalVolumeMl),
+      totalAlcoholGrams: Math.round(totalAlcoholGrams),
+      postsCount: posts.length,
+      reportsCount: reports.length,
+      openReportsCount: reports.filter((r) => r.status === "open").length,
+      duelsCount: duels.length,
+      activeDuelsCount: duels.filter((d) => d.status === "active").length,
+    };
   },
   // Permanently deletes a user and everything only they can see/own.
   // drink_logs, posts, duels, messages and admin'd groups/events cascade away

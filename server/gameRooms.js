@@ -386,6 +386,29 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
   };
 }
 
+function getActiveRoomsSummary() {
+  cleanupExpiredRooms();
+  const summary = [];
+  for (const [code, room] of activeRooms.entries()) {
+    const host = room.players.find((p) => p.isHost);
+    summary.push({
+      code: room.code,
+      gameId: room.gameId,
+      status: room.status,
+      playerCount: room.players.length,
+      hostName: host ? host.name : "Unbekannt",
+      createdAt: room.createdAt,
+      lastActivity: room.lastActivity,
+      currentChapterIndex: room.currentChapterIndex,
+    });
+  }
+  return summary;
+}
+
+function deleteRoom(code) {
+  return activeRooms.delete(code.toUpperCase());
+}
+
 module.exports = {
   createRoom,
   joinRoom,
@@ -394,5 +417,7 @@ module.exports = {
   submitAction,
   nextChapter,
   leaveRoom,
+  getActiveRoomsSummary,
+  deleteRoom,
   _activeRooms: activeRooms, // for testing inspection
 };

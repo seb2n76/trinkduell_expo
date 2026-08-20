@@ -348,6 +348,7 @@ function NavigationLayout() {
         <Stack.Screen name="settings/location" options={{ ...SCREEN_HEADER, title: "Standort" }} />
         <Stack.Screen name="settings/licenses" options={{ ...SCREEN_HEADER, title: "Lizenzen" }} />
         <Stack.Screen name="settings/blocked" options={{ ...SCREEN_HEADER, title: "Blockierte Nutzer" }} />
+        <Stack.Screen name="admin" options={{ ...SCREEN_HEADER, title: "Admin-Konsole" }} />
         <Stack.Screen name="moderation" options={{ ...SCREEN_HEADER, title: "Meldungen" }} />
         <Stack.Screen name="help" options={{ ...SCREEN_HEADER, title: "Hilfe & Feedback" }} />
         <Stack.Screen name="map" options={{ ...SCREEN_HEADER, title: "Karte" }} />

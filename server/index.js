@@ -551,6 +551,10 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ error: "Sitzung abgelaufen. Bitte melde dich neu an." });
   }
 
+  if (user.banned) {
+    return res.status(403).json({ error: "Dein Account wurde gesperrt." });
+  }
+
   req.user = user;
   req.userId = userId;
   req.token = token;
@@ -639,6 +643,10 @@ app.post(
 
   if (!matchedUser) {
     return res.status(401).json({ error: "Ungültige Anmeldedaten!" });
+  }
+
+  if (matchedUser.banned) {
+    return res.status(403).json({ error: "Dein Account wurde gesperrt. Wende dich an den Support." });
   }
 
   // Compare password with bcrypt hash
@@ -3479,6 +3487,193 @@ app.patch("/api/reports/:id", authenticate, requireModerator, async (req, res) =
   );
 
   res.json({ success: true, id: report.id, status });
+});
+
+// ─── Admin Console Endpoints ──────────────────────────────────────────────────
+
+// System- & Live-Dashboard KPIs
+app.get("/api/admin/stats", authenticate, requireModerator, async (req, res) => {
+  try {
+    const stats = await db.getSystemStats();
+    const rooms = gameRooms.getActiveRoomsSummary();
+    const serverInfo = {
+      uptimeSeconds: Math.floor(process.uptime()),
+      memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      nodeVersion: process.version,
+      isPgMode: Boolean(process.env.DATABASE_URL),
+    };
+    res.json({ stats, server: serverInfo, activeRoomsCount: rooms.length });
+  } catch (err) {
+    serverError(res, err, "GET /api/admin/stats");
+  }
+});
+
+// Benutzerverwaltung
+app.get("/api/admin/users", authenticate, requireModerator, async (req, res) => {
+  try {
+    const q = (req.query.q || "").toLowerCase().trim();
+    const filter = req.query.filter || "all";
+    const users = await db.getUsers();
+
+    let filtered = users;
+    if (filter === "banned") {
+      filtered = filtered.filter((u) => u.banned);
+    }
+    if (q) {
+      filtered = filtered.filter(
+        (u) =>
+          u.name.toLowerCase().includes(q) ||
+          u.email?.toLowerCase().includes(q) ||
+          u.id.toLowerCase().includes(q)
+      );
+    }
+
+    res.json(
+      filtered.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar,
+        points: u.points,
+        level: u.level,
+        rank: u.rank,
+        title: u.title,
+        banned: Boolean(u.banned),
+        alcoholGrams: u.alcoholGrams,
+        isModerator: isModerator(u.id),
+      }))
+    );
+  } catch (err) {
+    serverError(res, err, "GET /api/admin/users");
+  }
+});
+
+// User Bannen / Entsperren
+app.post("/api/admin/users/:id/ban", authenticate, requireModerator, async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    if (targetUserId === req.userId) {
+      return res.status(400).json({ error: "Du kannst dich nicht selbst sperren." });
+    }
+    const { banned = true } = req.body;
+    await db.setUserBanned(targetUserId, Boolean(banned));
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Nutzer ${targetUserId} ${banned ? "gesperrt" : "entsperrt"}.`);
+    res.json({ success: true, userId: targetUserId, banned: Boolean(banned) });
+  } catch (err) {
+    serverError(res, err, "POST /api/admin/users/:id/ban");
+  }
+});
+
+// Anti-Cheat: User Stats & Punkte zurücksetzen
+app.post("/api/admin/users/:id/reset-stats", authenticate, requireModerator, async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    await db.resetUserStats(targetUserId);
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Stats von Nutzer ${targetUserId} zurückgesetzt.`);
+    res.json({ success: true, userId: targetUserId });
+  } catch (err) {
+    serverError(res, err, "POST /api/admin/users/:id/reset-stats");
+  }
+});
+
+// Profil säubern (Anstößigen Avatar / Namen zurücksetzen)
+app.post("/api/admin/users/:id/clean-profile", authenticate, requireModerator, async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const { resetName } = req.body;
+    await db.cleanUserProfile(targetUserId, resetName);
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Profil von ${targetUserId} bereinigt.`);
+    res.json({ success: true, userId: targetUserId });
+  } catch (err) {
+    serverError(res, err, "POST /api/admin/users/:id/clean-profile");
+  }
+});
+
+// Post & Beweisfoto als Admin löschen
+app.delete("/api/admin/posts/:id", authenticate, requireModerator, async (req, res) => {
+  try {
+    const deletedPost = await db.adminDeletePost(req.params.id);
+    if (!deletedPost) {
+      return res.status(404).json({ error: "Beitrag nicht gefunden." });
+    }
+    if (deletedPost.image) {
+      storage.deleteImage(deletedPost.image).catch((err) => {
+        console.warn(`[TrinkDuell] Admin Bild-Löschung fehlgeschlagen:`, err);
+      });
+    }
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Beitrag ${req.params.id} gelöscht.`);
+    res.json({ success: true, id: req.params.id });
+  } catch (err) {
+    serverError(res, err, "DELETE /api/admin/posts/:id");
+  }
+});
+
+// Getränke-Katalog verwalten
+app.get("/api/admin/drinks", authenticate, requireModerator, async (req, res) => {
+  try {
+    const drinks = await db.getDrinks();
+    res.json(drinks);
+  } catch (err) {
+    serverError(res, err, "GET /api/admin/drinks");
+  }
+});
+
+app.patch("/api/admin/drinks/:id", authenticate, requireModerator, async (req, res) => {
+  try {
+    const updated = await db.adminUpdateDrink(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: "Getränk nicht gefunden." });
+    }
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Getränk ${req.params.id} bearbeitet.`);
+    res.json(updated);
+  } catch (err) {
+    serverError(res, err, "PATCH /api/admin/drinks/:id");
+  }
+});
+
+// Multi-Device Party Game-Rooms
+app.get("/api/admin/rooms", authenticate, requireModerator, async (req, res) => {
+  try {
+    const rooms = gameRooms.getActiveRoomsSummary();
+    res.json(rooms);
+  } catch (err) {
+    serverError(res, err, "GET /api/admin/rooms");
+  }
+});
+
+app.delete("/api/admin/rooms/:code", authenticate, requireModerator, async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+    const removed = gameRooms.deleteRoom(code);
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Raum ${code} geschlossen.`);
+    res.json({ success: true, code, removed });
+  } catch (err) {
+    serverError(res, err, "DELETE /api/admin/rooms/:code");
+  }
+});
+
+// Globaler Broadcast (System-Meldung)
+app.post("/api/admin/broadcast", authenticate, requireModerator, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ error: "Nachricht darf nicht leer sein." });
+    }
+    const cleanMessage = message.trim();
+    const post = {
+      id: generateUniqueId("post"),
+      userId: "system",
+      text: `📢 [SYSTEM-MITTEILUNG]: ${cleanMessage}`,
+      contextType: "friends",
+      contextId: "all",
+      timestamp: new Date().toISOString(),
+    };
+    await db.savePost(post);
+    console.log(`[TrinkDuell] ADMIN: ${req.user.name} hat Broadcast veröffentlicht.`);
+    res.json({ success: true, post });
+  } catch (err) {
+    serverError(res, err, "POST /api/admin/broadcast");
+  }
 });
 
 // ==========================================
