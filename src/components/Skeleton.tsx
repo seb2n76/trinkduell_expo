@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, Animated, ViewStyle, DimensionValue } from "react-native";
+import { useThemeColors } from "@/services/theme";
 
 interface SkeletonProps {
   width?: DimensionValue;
@@ -20,6 +21,7 @@ export function Skeleton({
   className = "",
   style,
 }: SkeletonProps) {
+  const c = useThemeColors();
   const opacity = useRef(new Animated.Value(0.35)).current;
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function Skeleton({
           width,
           height,
           borderRadius,
-          backgroundColor: "#334155", // slate-700
+          backgroundColor: c.lineStrong, // slate-700
           opacity,
         },
         style,
@@ -90,7 +92,7 @@ export function FriendsRadarSkeleton() {
  */
 export function FeedItemSkeleton() {
   return (
-    <View className="bg-white/5 border border-white/10 p-4 rounded-3xl mb-4 shadow-lg">
+    <View className="bg-surface border border-line p-4 rounded-3xl mb-4 shadow-lg">
       {/* Header: Avatar, Name, Timestamp */}
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center flex-1 mr-3">
@@ -113,7 +115,7 @@ export function FeedItemSkeleton() {
       </View>
 
       {/* Footer / Reaction Buttons */}
-      <View className="flex-row items-center pt-2.5 border-t border-white/5 pl-12">
+      <View className="flex-row items-center pt-2.5 border-t border-line pl-12">
         <Skeleton width={65} height={24} borderRadius={12} className="mr-2" />
         <Skeleton width={75} height={24} borderRadius={12} />
       </View>
@@ -128,7 +130,7 @@ export function ScoreboardPodiumSkeleton() {
   return (
     <View className="flex-row justify-center items-end mt-4 mb-8 px-1">
       {/* #2 Place */}
-      <View className="items-center mx-1.5 w-[28%] bg-white/5 border border-slate-700/40 rounded-2xl p-2.5 pt-6" style={{ minHeight: 135 }}>
+      <View className="items-center mx-1.5 w-[28%] bg-surface border border-line-strong/40 rounded-2xl p-2.5 pt-6" style={{ minHeight: 135 }}>
         <Skeleton width={44} height={44} borderRadius={22} className="mb-2" />
         <Skeleton width={50} height={12} borderRadius={6} className="mb-1.5" />
         <Skeleton width={35} height={10} borderRadius={5} className="mb-2" />
@@ -136,7 +138,7 @@ export function ScoreboardPodiumSkeleton() {
       </View>
 
       {/* #1 Place */}
-      <View className="items-center mx-1.5 w-[33%] bg-white/5 border-2 border-yellow-500/30 rounded-3xl p-3.5 pt-8 shadow-md" style={{ minHeight: 165 }}>
+      <View className="items-center mx-1.5 w-[33%] bg-surface border-2 border-warning/30 rounded-3xl p-3.5 pt-8 shadow-md" style={{ minHeight: 165 }}>
         <Skeleton width={52} height={52} borderRadius={26} className="mb-2" />
         <Skeleton width={60} height={14} borderRadius={7} className="mb-1.5" />
         <Skeleton width={40} height={12} borderRadius={6} className="mb-2" />
@@ -144,7 +146,7 @@ export function ScoreboardPodiumSkeleton() {
       </View>
 
       {/* #3 Place */}
-      <View className="items-center mx-1.5 w-[28%] bg-white/5 border border-amber-800/40 rounded-2xl p-2.5 pt-6" style={{ minHeight: 135 }}>
+      <View className="items-center mx-1.5 w-[28%] bg-surface border border-warning/40 rounded-2xl p-2.5 pt-6" style={{ minHeight: 135 }}>
         <Skeleton width={44} height={44} borderRadius={22} className="mb-2" />
         <Skeleton width={50} height={12} borderRadius={6} className="mb-1.5" />
         <Skeleton width={35} height={10} borderRadius={5} className="mb-2" />
@@ -159,7 +161,7 @@ export function ScoreboardPodiumSkeleton() {
  */
 export function ScoreboardRowSkeleton() {
   return (
-    <View className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-3 shadow-lg flex-row items-center justify-between">
+    <View className="bg-surface border border-line rounded-2xl p-4 mb-3 shadow-lg flex-row items-center justify-between">
       <View className="flex-row items-center flex-1 mr-3">
         <Skeleton width={16} height={14} borderRadius={4} className="mr-3" />
         <Skeleton width={36} height={36} borderRadius={18} className="mr-3" />

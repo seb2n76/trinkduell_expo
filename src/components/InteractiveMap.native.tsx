@@ -4,6 +4,7 @@ import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { User, MapCoordinate } from "@/services/mockData";
 import { buildMapHtml, MapMarker } from "./mapHtml";
+import { useThemeColors } from "@/services/theme";
 
 interface InteractiveMapProps {
   mapItems: MapCoordinate[];
@@ -25,6 +26,7 @@ export default function InteractiveMap({
   userLocation,
   onRefreshMap,
 }: InteractiveMapProps) {
+  const c = useThemeColors();
   const markers: MapMarker[] = mapItems.map((item) => ({
     ...item,
     relation: currentUser && item.userId === currentUser.id ? "self" : "friend",
@@ -33,11 +35,11 @@ export default function InteractiveMap({
   const html = buildMapHtml(markers, userLocation);
 
   return (
-    <View className="flex-1 bg-slate-950 border border-white/10 rounded-3xl overflow-hidden relative min-h-[450px]">
+    <View className="flex-1 bg-bg border border-line rounded-3xl overflow-hidden relative min-h-[450px]">
       <WebView
         originWhitelist={["*"]}
         source={{ html }}
-        style={{ flex: 1, backgroundColor: "#020617" }}
+        style={{ flex: 1, backgroundColor: c.bg }}
         // The map is display-only; no reason to let it navigate anywhere.
         onShouldStartLoadWithRequest={(request) => request.url === "about:blank"}
         javaScriptEnabled
@@ -47,20 +49,20 @@ export default function InteractiveMap({
       <TouchableOpacity
         onPress={onRefreshMap}
         activeOpacity={0.8}
-        className="absolute top-4 left-4 bg-slate-900/90 border border-white/10 p-2 rounded-xl flex-row items-center active:scale-95"
+        className="absolute top-4 left-4 bg-surface/90 border border-line p-2 rounded-xl flex-row items-center active:scale-95"
       >
-        <Ionicons name="refresh" size={14} color="#22d3ee" />
-        <Text className="text-[8px] text-cyan-400 font-black uppercase tracking-widest ml-1.5">
+        <Ionicons name="refresh" size={14} color={c.accent} />
+        <Text className="text-[8px] text-accent-ink font-black uppercase tracking-widest ml-1.5">
           Aktualisieren
         </Text>
       </TouchableOpacity>
 
       {mapItems.length === 0 && (
-        <View className="absolute bottom-4 left-4 right-4 bg-slate-900/90 border border-white/10 rounded-2xl p-3">
-          <Text className="text-white text-[10px] font-black uppercase tracking-wider mb-0.5">
+        <View className="absolute bottom-4 left-4 right-4 bg-surface/90 border border-line rounded-2xl p-3">
+          <Text className="text-content text-[10px] font-black uppercase tracking-wider mb-0.5">
             Noch keine Orte
           </Text>
-          <Text className="text-slate-500 text-[9px] font-semibold leading-relaxed">
+          <Text className="text-content-faint text-[9px] font-semibold leading-relaxed">
             Aktiviere den Standort unter Menü → Einstellungen, um deine Getränke-Orte hier zu sehen.
           </Text>
         </View>

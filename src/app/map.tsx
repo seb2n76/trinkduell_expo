@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator } from "react-native";
 import { apiService } from "@/services/api";
 import { User, MapCoordinate } from "@/services/mockData";
 import { getCurrentCoordinates, getLocationMode } from "@/services/location";
+import { useThemeColors } from "@/services/theme";
 
 // The map pulls in the whole Leaflet document builder, so it stays in its own
 // chunk instead of the bundle everyone downloads on first load.
@@ -17,6 +18,7 @@ const InteractiveMap = React.lazy(() => import("@/components/InteractiveMap"));
  * Screen bekommt sie die volle Fläche und der Feed seine zurück.
  */
 export default function MapScreen() {
+  const c = useThemeColors();
   const [mapItems, setMapItems] = useState<MapCoordinate[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(
@@ -51,9 +53,9 @@ export default function MapScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-slate-950 items-center justify-center">
-        <ActivityIndicator size="large" color="#22d3ee" />
-        <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-3">
+      <View className="flex-1 bg-bg items-center justify-center">
+        <ActivityIndicator size="large" color={c.accent} />
+        <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mt-3">
           Karte wird geladen
         </Text>
       </View>
@@ -61,11 +63,11 @@ export default function MapScreen() {
   }
 
   return (
-    <View className="flex-1 bg-slate-950 p-3">
+    <View className="flex-1 bg-bg p-3">
       <React.Suspense
         fallback={
-          <View className="flex-1 bg-slate-950 border border-white/10 rounded-3xl items-center justify-center">
-            <ActivityIndicator color="#22d3ee" />
+          <View className="flex-1 bg-bg border border-line rounded-3xl items-center justify-center">
+            <ActivityIndicator color={c.accent} />
           </View>
         }
       >

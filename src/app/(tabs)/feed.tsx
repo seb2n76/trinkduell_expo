@@ -26,15 +26,20 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "@/components/Avatar";
 import { FriendsRadarSkeleton, FeedItemSkeleton } from "@/components/Skeleton";
+import { useThemeColors, type ThemeColors } from "@/services/theme";
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
 // ─────────────────────────────────────────────
-const RADAR_STATUS_STYLES = {
-  active: { dot: "#34d399", label: "Gerade aktiv", ring: "border-emerald-400/50" },
-  recent: { dot: "#fbbf24", label: "Vor kurzem", ring: "border-amber-400/40" },
-  idle: { dot: "#475569", label: "Ruhig", ring: "border-white/10" },
-} as const;
+// Nimmt die Farben als Argument, weil das hier Modulebene ist: ein Hook
+// liesse sich nur in einer Komponente aufrufen, und der Punkt braucht einen
+// echten Farbwert (kein className) — er sitzt in einem style-Objekt.
+const radarStatusStyles = (c: ThemeColors) =>
+  ({
+    active: { dot: c.success, label: "Gerade aktiv", ring: "border-success/50" },
+    recent: { dot: c.warning, label: "Vor kurzem", ring: "border-warning/40" },
+    idle: { dot: c.contentFaint, label: "Ruhig", ring: "border-line" },
+  }) as const;
 
 const formatLastActivity = (iso: string | null): string => {
   if (!iso) return "Noch nichts geloggt";
@@ -55,28 +60,30 @@ function FriendsRadar({
   loading: boolean;
   onOpenMap: () => void;
 }) {
+  const c = useThemeColors();
+  const RADAR_STATUS_STYLES = radarStatusStyles(c);
   const activeCount = entries.filter((e) => e.status === "active").length;
 
   return (
-    <View className="bg-slate-900/90 border border-cyan-500/20 rounded-3xl p-5 mb-5 shadow-2xl overflow-hidden relative">
-      <View className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none" />
+    <View className="bg-surface/90 border border-accent/20 rounded-3xl p-5 mb-5 shadow-2xl overflow-hidden relative">
+      <View className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-accent/10 blur-2xl pointer-events-none" />
 
       <View className="flex-row items-center justify-between mb-4">
         <View className="flex-row items-center space-x-3">
-          <View className="w-10 h-10 rounded-2xl bg-cyan-400/10 border border-cyan-400/30 items-center justify-center shadow-md">
-            <Ionicons name="radio" size={20} color="#22d3ee" />
+          <View className="w-10 h-10 rounded-2xl bg-accent/10 border border-accent/30 items-center justify-center shadow-md">
+            <Ionicons name="radio" size={20} color={c.accent} />
           </View>
           <View className="ml-3">
-            <Text className="text-white text-base font-black tracking-wide">Freunde-Radar</Text>
-            <Text className="text-cyan-400/80 text-[10px] font-bold uppercase tracking-wider">
+            <Text className="text-content text-base font-black tracking-wide">Freunde-Radar</Text>
+            <Text className="text-accent-ink text-[10px] font-bold uppercase tracking-wider">
               Wer ist gerade unterwegs?
             </Text>
           </View>
         </View>
 
         {activeCount > 0 && (
-          <View className="bg-emerald-400/10 border border-emerald-400/30 px-2.5 py-1 rounded-full">
-            <Text className="text-emerald-400 text-[9px] font-black uppercase tracking-widest">
+          <View className="bg-success/10 border border-success/30 px-2.5 py-1 rounded-full">
+            <Text className="text-success text-[9px] font-black uppercase tracking-widest">
               {activeCount} aktiv
             </Text>
           </View>
@@ -86,7 +93,7 @@ function FriendsRadar({
       {loading ? (
         <FriendsRadarSkeleton />
       ) : entries.length === 0 ? (
-        <Text className="text-slate-400 text-xs leading-relaxed font-medium">
+        <Text className="text-content-muted text-xs leading-relaxed font-medium">
           Noch keine Freunde hinzugefügt. Füge unter Menü → Freunde welche hinzu, um zu sehen, wer
           gerade unterwegs ist. 🍻
         </Text>
@@ -105,14 +112,14 @@ function FriendsRadar({
                   />
                   <View
                     style={{ backgroundColor: style.dot }}
-                    className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-slate-900"
+                    className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-line"
                   />
                 </View>
 
-                <Text className="text-white text-[10px] font-black mt-1.5 text-center" numberOfLines={1}>
+                <Text className="text-content text-[10px] font-black mt-1.5 text-center" numberOfLines={1}>
                   {entry.username}
                 </Text>
-                <Text className="text-slate-500 text-[8px] font-semibold text-center" numberOfLines={1}>
+                <Text className="text-content-faint text-[8px] font-semibold text-center" numberOfLines={1}>
                   {formatLastActivity(entry.lastActivity)}
                 </Text>
               </View>
@@ -124,15 +131,15 @@ function FriendsRadar({
       <TouchableOpacity
         onPress={onOpenMap}
         accessibilityLabel="Karte öffnen"
-        className="flex-row items-center justify-between mt-4 pt-3 border-t border-white/5"
+        className="flex-row items-center justify-between mt-4 pt-3 border-t border-line"
       >
         <View className="flex-row items-center">
-          <Ionicons name="map-outline" size={13} color="#22d3ee" />
-          <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider ml-1.5">
+          <Ionicons name="map-outline" size={13} color={c.accent} />
+          <Text className="text-accent-ink text-[10px] font-black uppercase tracking-wider ml-1.5">
             Karte öffnen
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={14} color="#22d3ee" />
+        <Ionicons name="chevron-forward" size={14} color={c.accent} />
       </TouchableOpacity>
     </View>
   );
@@ -142,6 +149,7 @@ function FriendsRadar({
 // Main Screen: Live Activity Feed
 // ─────────────────────────────────────────────
 export default function LivePulseFeed() {
+  const c = useThemeColors();
   const router = useRouter();
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
@@ -319,12 +327,12 @@ export default function LivePulseFeed() {
   // Tag styling
   const getTagStyle = (tagText: string) => {
     if (tagText === "[Hydro-Pulse]")
-      return "bg-cyan-500/10 border-cyan-400/20 text-cyan-400";
+      return "bg-accent/10 border-accent/20 text-accent-ink";
     if (tagText === "[Erfolg]")
-      return "bg-yellow-500/10 border-yellow-400/20 text-yellow-400";
+      return "bg-warning/10 border-warning/20 text-warning";
     if (tagText === "[Gruppe]")
-      return "bg-fuchsia-500/10 border-fuchsia-400/20 text-fuchsia-400";
-    return "bg-slate-500/10 border-slate-400/20 text-slate-400";
+      return "bg-accent-2/10 border-accent-2/20 text-accent-2-ink";
+    return "bg-surface-alt/10 border-line-strong/20 text-content-muted";
   };
 
   const getNeonTagText = (item: FeedItem) => {
@@ -337,7 +345,7 @@ export default function LivePulseFeed() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1 px-5 pt-3"
         showsVerticalScrollIndicator={false}
@@ -345,8 +353,8 @@ export default function LivePulseFeed() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#22d3ee"
-            colors={["#22d3ee"]}
+            tintColor={c.accent}
+            colors={[c.accent]}
           />
         }
       >
@@ -356,7 +364,7 @@ export default function LivePulseFeed() {
         <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
 
         {/* Umschalter: Freunde- vs. Gruppen-Feed */}
-        <View className="flex-row bg-slate-900 border border-white/5 rounded-2xl p-1 mb-5">
+        <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-5">
           {([
             { key: "friends" as const, label: "Freunde", icon: "people" },
             { key: "groups" as const, label: "Gruppen", icon: "people-circle" },
@@ -367,17 +375,17 @@ export default function LivePulseFeed() {
                 key={tab.key}
                 onPress={() => handleScopeChange(tab.key)}
                 className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center ${
-                  isActive ? "bg-white/5 border border-white/10" : ""
+                  isActive ? "bg-surface border border-line" : ""
                 }`}
               >
                 <Ionicons
                   name={tab.icon as any}
                   size={13}
-                  color={isActive ? "#22d3ee" : "#64748b"}
+                  color={isActive ? c.accent : c.contentFaint}
                 />
                 <Text
                   className={`text-xs font-black uppercase tracking-wider ml-1.5 ${
-                    isActive ? "text-cyan-400" : "text-slate-500"
+                    isActive ? "text-accent-ink" : "text-content-faint"
                   }`}
                 >
                   {tab.label}
@@ -389,8 +397,8 @@ export default function LivePulseFeed() {
 
         {/* Status creator box */}
         {currentUser && (
-          <View className="bg-white/5 border border-white/10 p-4 rounded-3xl mb-5">
-            <Text className="text-slate-500 text-[9px] font-black uppercase tracking-wider mb-2">
+          <View className="bg-surface border border-line p-4 rounded-3xl mb-5">
+            <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider mb-2">
               Status teilen
             </Text>
             <View className="flex-row items-center space-x-3">
@@ -398,29 +406,29 @@ export default function LivePulseFeed() {
                 uri={currentUser.avatar}
                 name={currentUser.name}
                 size={36}
-                className="border border-white/10"
+                className="border border-line"
               />
               <TextInput
                 placeholder="Was geht ab bei dir?..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 value={inputText}
                 onChangeText={setInputText}
                 maxLength={100}
-                className="flex-1 bg-slate-900 border border-white/5 rounded-2xl px-4 py-2.5 text-white font-bold text-xs"
+                className="flex-1 bg-surface border border-line rounded-2xl px-4 py-2.5 text-content font-bold text-xs"
               />
               <TouchableOpacity
                 onPress={handleCreatePost}
                 disabled={isSubmitting || !inputText.trim()}
-                className="bg-cyan-400 p-2.5 rounded-2xl active:scale-95 disabled:opacity-40"
+                className="bg-accent p-2.5 rounded-2xl active:scale-95 disabled:opacity-40"
               >
-                <Ionicons name="send" size={16} color="#020617" />
+                <Ionicons name="send" size={16} color={c.onAccent} />
               </TouchableOpacity>
             </View>
           </View>
         )}
 
         {/* Activities list header */}
-        <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+        <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
           Live-Aktivitäten
         </Text>
 
@@ -431,12 +439,12 @@ export default function LivePulseFeed() {
             <FeedItemSkeleton />
           </View>
         ) : feedItems.length === 0 ? (
-          <View className="py-14 items-center justify-center bg-white/5 border border-white/5 rounded-3xl p-6 mb-8">
-            <Ionicons name="chatbubbles-outline" size={36} color="#64748b" style={{ marginBottom: 12 }} />
-            <Text className="text-white text-xs font-black uppercase tracking-wider text-center mb-1">
+          <View className="py-14 items-center justify-center bg-surface border border-line rounded-3xl p-6 mb-8">
+            <Ionicons name="chatbubbles-outline" size={36} color={c.contentFaint} style={{ marginBottom: 12 }} />
+            <Text className="text-content text-xs font-black uppercase tracking-wider text-center mb-1">
               {scope === "groups" ? "Noch nichts aus deinen Gruppen" : "Noch keine Einträge vorhanden"}
             </Text>
-            <Text className="text-slate-400 text-[11px] font-medium text-center leading-relaxed">
+            <Text className="text-content-muted text-[11px] font-medium text-center leading-relaxed">
               {scope === "groups"
                 ? "Erstelle eine Gruppe oder tritt einer bei, um die Aktivität deiner Crew zu sehen!"
                 : "Teile deinen ersten Status mit deinen Freunden oder logge ein Getränk!"}
@@ -449,8 +457,8 @@ export default function LivePulseFeed() {
             if (item.type === "post") {
               const isSystem = item.userId === "system";
               const tagColor = isSystem
-                ? "bg-amber-500/10 border-amber-400/20 text-amber-400"
-                : "bg-cyan-500/10 border-cyan-400/20 text-cyan-400";
+                ? "bg-warning/10 border-warning/20 text-warning"
+                : "bg-accent/10 border-accent/20 text-accent-ink";
               const tagLabel = isSystem ? "[Erfolg]" : "[Status]";
               const titleText = isSystem
                 ? "System-Meldung"
@@ -461,30 +469,30 @@ export default function LivePulseFeed() {
               return (
                 <View
                   key={item.id}
-                  className="bg-white/5 border border-white/10 p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
+                  className="bg-surface border border-line p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
                 >
                   {isSystem ? (
-                    <View className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-400/20 items-center justify-center">
-                      <Ionicons name="sparkles" size={18} color="#fbbf24" />
+                    <View className="w-10 h-10 rounded-full bg-warning/10 border border-warning/20 items-center justify-center">
+                      <Ionicons name="sparkles" size={18} color={c.warning} />
                     </View>
                   ) : (
                     <Avatar
                       uri={item.userAvatar}
                       name={item.username}
                       size={40}
-                      className="border border-white/10"
+                      className="border border-line"
                     />
                   )}
                   <View className="flex-1">
                     <View className="flex-row items-center justify-between flex-wrap mb-1.5">
-                      <Text className="text-white text-xs font-black">{titleText}</Text>
+                      <Text className="text-content text-xs font-black">{titleText}</Text>
                       <View className={`border px-1.5 py-0.5 rounded ${tagColor}`}>
                         <Text className="text-[7px] font-black uppercase tracking-widest leading-none">
                           {tagLabel}
                         </Text>
                       </View>
                     </View>
-                    <Text className="text-slate-300 text-xs font-medium leading-relaxed mb-2.5">
+                    <Text className="text-content-muted text-xs font-medium leading-relaxed mb-2.5">
                       {item.text}
                     </Text>
 
@@ -494,24 +502,24 @@ export default function LivePulseFeed() {
                       <Image
                         source={{ uri: item.image }}
                         style={{ width: "100%", height: 200 }}
-                        className="rounded-2xl mb-2.5 bg-slate-950"
+                        className="rounded-2xl mb-2.5 bg-surface-alt"
                         resizeMode="cover"
                         accessibilityLabel={`Beweisfoto von ${item.username}`}
                       />
                     )}
-                    <View className="flex-row items-center justify-between border-t border-white/5 pt-2">
+                    <View className="flex-row items-center justify-between border-t border-line pt-2">
                       <View className="flex-row items-center space-x-1.5">
                         <Ionicons
                           name={isSystem ? "trophy" : "chatbubble-ellipses"}
                           size={11}
-                          color={isSystem ? "#fbbf24" : "#22d3ee"}
+                          color={isSystem ? c.warning : c.accent}
                         />
-                        <Text className="text-slate-500 text-[8px] font-extrabold uppercase">
+                        <Text className="text-content-faint text-[8px] font-extrabold uppercase">
                           {isSystem ? "LEVEL-UP" : "PIN-STATUS"}
                         </Text>
                       </View>
                       <View className="flex-row items-center">
-                        <Text className="text-slate-500 text-[8px] font-bold">
+                        <Text className="text-content-faint text-[8px] font-bold">
                           {new Date(item.timestamp).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -531,7 +539,7 @@ export default function LivePulseFeed() {
                             accessibilityLabel={`Beitrag von ${item.username} melden`}
                             className="ml-2 w-6 h-6 items-center justify-center"
                           >
-                            <Ionicons name="flag-outline" size={11} color="#64748b" />
+                            <Ionicons name="flag-outline" size={11} color={c.contentFaint} />
                           </TouchableOpacity>
                         )}
 
@@ -545,7 +553,7 @@ export default function LivePulseFeed() {
                             accessibilityLabel="Eigenen Beitrag löschen"
                             className="ml-2 w-6 h-6 items-center justify-center"
                           >
-                            <Ionicons name="trash-outline" size={11} color="#64748b" />
+                            <Ionicons name="trash-outline" size={11} color={c.contentFaint} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -568,38 +576,38 @@ export default function LivePulseFeed() {
             return (
               <View
                 key={item.id}
-                className="bg-white/5 border border-white/10 p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
+                className="bg-surface border border-line p-4 rounded-3xl mb-3 shadow-lg flex-row space-x-3"
               >
                 <Avatar
                   uri={item.userAvatar}
                   name={item.username}
                   size={40}
-                  className="border border-white/10"
+                  className="border border-line"
                 />
                 <View className="flex-1">
                   <View className="flex-row items-center justify-between flex-wrap mb-1">
-                    <Text className="text-white text-xs font-black">{titleText}</Text>
+                    <Text className="text-content text-xs font-black">{titleText}</Text>
                     <View className={`border px-1.5 py-0.5 rounded ${getTagStyle(tagText)}`}>
                       <Text className="text-[7px] font-black uppercase tracking-widest leading-none">
                         {tagText}
                       </Text>
                     </View>
                   </View>
-                  <Text className="text-slate-300 text-xs font-medium leading-relaxed mb-2.5">
+                  <Text className="text-content-muted text-xs font-medium leading-relaxed mb-2.5">
                     {detailText}
                   </Text>
-                  <View className="flex-row items-center justify-between border-t border-white/5 pt-2">
+                  <View className="flex-row items-center justify-between border-t border-line pt-2">
                     <View className="flex-row items-center space-x-1.5">
                       <Ionicons
                         name={item.is_water ? "water" : "beer"}
                         size={11}
-                        color={item.is_water ? "#38bdf8" : "#fbbf24"}
+                        color={item.is_water ? c.accent : c.warning}
                       />
-                      <Text className="text-slate-500 text-[8px] font-extrabold uppercase">
+                      <Text className="text-content-faint text-[8px] font-extrabold uppercase">
                         {item.is_water ? "HYDRATION" : "ALKOHOL"}
                       </Text>
                     </View>
-                    <Text className="text-slate-500 text-[8px] font-bold">
+                    <Text className="text-content-faint text-[8px] font-bold">
                       {new Date(item.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -619,9 +627,9 @@ export default function LivePulseFeed() {
           the path from "this is offensive" to "reported" is one tap. */}
       <Modal visible={!!reportTarget} animationType="slide" transparent>
         <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
-            <Text className="text-white text-base font-black mb-1">Beitrag melden</Text>
-            <Text className="text-slate-400 text-[11px] leading-4 mb-5" numberOfLines={3}>
+          <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
+            <Text className="text-content text-base font-black mb-1">Beitrag melden</Text>
+            <Text className="text-content-muted text-[11px] leading-4 mb-5" numberOfLines={3}>
               Von {reportTarget?.username}: „{reportTarget?.text}“
             </Text>
 
@@ -631,18 +639,18 @@ export default function LivePulseFeed() {
                 onPress={() => setReportReason(reason)}
                 className={`flex-row items-center py-3.5 px-4 rounded-2xl mb-2 border ${
                   reportReason === reason
-                    ? "bg-amber-400/10 border-amber-400/40"
-                    : "bg-slate-950/60 border-white/5"
+                    ? "bg-warning/10 border-warning/40"
+                    : "bg-surface-alt/60 border-line"
                 }`}
               >
                 <Ionicons
                   name={reportReason === reason ? "radio-button-on" : "radio-button-off"}
                   size={16}
-                  color={reportReason === reason ? "#fbbf24" : "#64748b"}
+                  color={reportReason === reason ? c.warning : c.contentFaint}
                 />
                 <Text
                   className={`text-xs font-bold ml-3 ${
-                    reportReason === reason ? "text-amber-400" : "text-slate-300"
+                    reportReason === reason ? "text-warning" : "text-content-muted"
                   }`}
                 >
                   {REPORT_REASON_LABELS[reason]}
@@ -653,19 +661,19 @@ export default function LivePulseFeed() {
             <TouchableOpacity
               onPress={handleSubmitReport}
               disabled={!reportReason || reportSubmitting}
-              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center mt-3 active:scale-95 disabled:opacity-40"
+              className="w-full bg-warning py-3.5 rounded-2xl items-center mt-3 active:scale-95 disabled:opacity-40"
             >
               {reportSubmitting ? (
-                <ActivityIndicator color="#020617" />
+                <ActivityIndicator color={c.onAccent} />
               ) : (
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                   Meldung absenden
                 </Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setReportTarget(null)} className="mt-3 py-3 items-center">
-              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">Abbrechen</Text>
+              <Text className="text-content-muted text-xs font-black uppercase tracking-wider">Abbrechen</Text>
             </TouchableOpacity>
           </View>
         </View>

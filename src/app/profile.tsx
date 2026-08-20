@@ -18,6 +18,7 @@ import { uploadImage } from "@/services/upload";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { ACHIEVEMENTS } from "@/services/achievements";
+import { useThemeColors } from "@/services/theme";
 
 const getCategoryIcon = (cat: string): "beer" | "wine" | "wine-outline" | "flask" | "water" => {
   switch (cat) {
@@ -31,6 +32,7 @@ const getCategoryIcon = (cat: string): "beer" | "wine" | "wine-outline" | "flask
 };
 
 export default function ProfileScreen() {
+  const c = useThemeColors();
   const { updateUserContext } = useAuth();
   const [dbUser, setDbUser] = useState<User | null>(null);
   const [logs, setLogs] = useState<DrinkLog[]>([]);
@@ -207,17 +209,17 @@ export default function ProfileScreen() {
 
   if (loading && !dbUser) {
     return (
-      <View className="flex-1 bg-slate-950 items-center justify-center">
-        <ActivityIndicator size="large" color="#22d3ee" />
+      <View className="flex-1 bg-bg items-center justify-center">
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   if (!dbUser) {
     return (
-      <View className="flex-1 bg-slate-950 items-center justify-center px-8">
-        <Ionicons name="person-outline" size={32} color="#475569" />
-        <Text className="text-slate-500 text-xs font-bold mt-3 text-center">
+      <View className="flex-1 bg-bg items-center justify-center px-8">
+        <Ionicons name="person-outline" size={32} color={c.contentFaint} />
+        <Text className="text-content-faint text-xs font-bold mt-3 text-center">
           Dein Profil konnte nicht geladen werden.
         </Text>
       </View>
@@ -225,7 +227,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-5 pt-5 pb-16"
@@ -233,7 +235,7 @@ export default function ProfileScreen() {
       >
         <View className="w-full self-center" style={{ maxWidth: 640 }}>
           {/* Profilkarte */}
-          <View className="items-center bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-7">
+          <View className="items-center bg-surface border border-line p-5 rounded-3xl mb-7">
             <TouchableOpacity
               onPress={handlePickAvatar}
               accessibilityLabel="Profilbild ändern"
@@ -243,10 +245,10 @@ export default function ProfileScreen() {
                 uri={dbUser.avatar}
                 name={dbUser.name}
                 size={80}
-                className="border border-slate-700"
+                className="border border-line-strong"
               />
-              <View className="absolute bottom-0 right-0 bg-cyan-400 p-1.5 rounded-full border border-slate-900">
-                <Ionicons name="camera" size={13} color="#020617" />
+              <View className="absolute bottom-0 right-0 bg-accent p-1.5 rounded-full border border-surface">
+                <Ionicons name="camera" size={13} color={c.onAccent} />
               </View>
             </TouchableOpacity>
 
@@ -259,14 +261,14 @@ export default function ProfileScreen() {
                   autoFocus
                   onSubmitEditing={handleSaveName}
                   accessibilityLabel="Anzeigename"
-                  className="bg-slate-950 border border-cyan-500/50 rounded-xl px-3 py-2 text-white font-bold text-center flex-1"
+                  className="bg-surface-alt border border-accent/50 rounded-xl px-3 py-2 text-content font-bold text-center flex-1"
                 />
                 <TouchableOpacity
                   onPress={handleSaveName}
                   accessibilityLabel="Namen speichern"
-                  className="bg-cyan-400 p-2.5 rounded-xl"
+                  className="bg-accent p-2.5 rounded-xl"
                 >
-                  <Ionicons name="checkmark" size={15} color="#020617" />
+                  <Ionicons name="checkmark" size={15} color={c.onAccent} />
                 </TouchableOpacity>
               </View>
             ) : (
@@ -276,24 +278,24 @@ export default function ProfileScreen() {
                 className="flex-row items-center active:scale-95"
                 style={{ gap: 6 }}
               >
-                <Text className="text-white text-lg font-black">{dbUser.name || "Gast"}</Text>
-                <Ionicons name="pencil" size={13} color="#22d3ee" />
+                <Text className="text-content text-lg font-black">{dbUser.name || "Gast"}</Text>
+                <Ionicons name="pencil" size={13} color={c.accent} />
               </TouchableOpacity>
             )}
 
-            <Text className="text-cyan-400 text-xs font-black tracking-wide mb-2.5">
+            <Text className="text-accent-ink text-xs font-black tracking-wide mb-2.5">
               @{(dbUser.name || "gast").toLowerCase().replace(/\s+/g, "_")}
             </Text>
 
-            <View className="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-full">
-              <Text className="text-[9px] font-black text-cyan-400 uppercase tracking-widest">
+            <View className="bg-surface-alt border border-line px-3 py-1.5 rounded-full">
+              <Text className="text-[9px] font-black text-accent-ink uppercase tracking-widest">
                 Level {dbUser.currentLevel || dbUser.level || 1} • {dbUser.title || "Neuling"}
               </Text>
             </View>
           </View>
 
           {/* Erfolge */}
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
             Erfolge & Badges
           </Text>
           <View className="flex-row flex-wrap mb-7" style={{ gap: 8 }}>
@@ -302,24 +304,24 @@ export default function ProfileScreen() {
               return (
                 <View
                   key={ach.id}
-                  className={`w-[47%] p-3 rounded-2xl border border-slate-800 bg-slate-900 flex-col items-center justify-center ${
+                  className={`w-[47%] p-3 rounded-2xl border border-line bg-surface flex-col items-center justify-center ${
                     isUnlocked ? "" : "opacity-30"
                   }`}
                 >
                   <Ionicons
                     name={ach.icon as any}
                     size={20}
-                    color={isUnlocked ? ach.colorHex : "#475569"}
+                    color={isUnlocked ? ach.colorHex : c.contentFaint}
                   />
                   <Text
                     className={`text-[10px] font-bold text-center mt-1.5 mb-0.5 ${
-                      isUnlocked ? "text-white" : "text-slate-500"
+                      isUnlocked ? "text-content" : "text-content-faint"
                     }`}
                   >
                     {ach.name}
                   </Text>
                   <Text
-                    className="text-[7px] text-slate-500 text-center font-medium leading-normal"
+                    className="text-[7px] text-content-faint text-center font-medium leading-normal"
                     numberOfLines={2}
                   >
                     {ach.criteria}
@@ -330,11 +332,11 @@ export default function ProfileScreen() {
           </View>
 
           {/* Konsum-Verlauf */}
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
             Konsum-Verlauf
           </Text>
           {logs.length === 0 ? (
-            <Text className="text-slate-500 text-xs italic">Noch keine Getränke geloggt.</Text>
+            <Text className="text-content-faint text-xs italic">Noch keine Getränke geloggt.</Text>
           ) : (
             logs.slice(0, 15).map((log) => {
               const drink = drinks.find((d) => d.id === log.drinkId);
@@ -348,19 +350,19 @@ export default function ProfileScreen() {
               return (
                 <View
                   key={log.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 mb-2 flex-row justify-between items-center"
+                  className="bg-surface border border-line rounded-2xl p-3.5 mb-2 flex-row justify-between items-center"
                 >
                   <View className="flex-row items-center flex-1" style={{ gap: 10 }}>
                     <Ionicons
                       name={getCategoryIcon(drink.category)}
                       size={15}
-                      color={drink.abv > 0 ? "#f43f5e" : "#34d399"}
+                      color={drink.abv > 0 ? c.danger : c.success}
                     />
                     <View className="flex-1">
-                      <Text className="text-white text-xs font-bold" numberOfLines={1}>
+                      <Text className="text-content text-xs font-bold" numberOfLines={1}>
                         {drink.name}
                       </Text>
-                      <Text className="text-slate-500 text-[9px] mt-0.5">
+                      <Text className="text-content-faint text-[9px] mt-0.5">
                         {drink.volume}ml • {drink.abv}% • {formattedTime} Uhr
                       </Text>
                     </View>
@@ -370,7 +372,7 @@ export default function ProfileScreen() {
                     accessibilityLabel={`${drink.name} aus dem Verlauf löschen`}
                     className="p-1.5 active:scale-90"
                   >
-                    <Ionicons name="trash-outline" size={15} color="#f43f5e" />
+                    <Ionicons name="trash-outline" size={15} color={c.danger} />
                   </TouchableOpacity>
                 </View>
               );

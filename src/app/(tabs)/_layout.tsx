@@ -15,6 +15,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { User } from "@/services/mockData";
 import { Avatar } from "@/components/Avatar";
 import { useUnread } from "@/components/UnreadProvider";
+import { useThemeColors } from "@/services/theme";
 
 const { width: screenWidth } = Dimensions.get("window");
 const drawerWidth = screenWidth < 800 ? Math.min(screenWidth * 0.8, 340) : screenWidth * 0.35;
@@ -42,7 +43,7 @@ function DrawerLink({
       onPress={onPress}
       accessibilityRole="link"
       accessibilityLabel={label}
-      className="bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-3 flex-row items-center active:scale-95"
+      className="bg-surface border border-line p-4 rounded-3xl mb-3 flex-row items-center active:scale-95"
     >
       <View
         style={{ backgroundColor: `${color}1a`, borderColor: `${color}33` }}
@@ -51,15 +52,15 @@ function DrawerLink({
         <Ionicons name={icon} size={19} color={color} />
       </View>
       <View className="flex-1 ml-3.5">
-        <Text className="text-white text-xs font-black">{label}</Text>
-        <Text className="text-slate-500 text-[9px] font-semibold mt-0.5">{hint}</Text>
+        <Text className="text-content text-xs font-black">{label}</Text>
+        <Text className="text-content-faint text-[9px] font-semibold mt-0.5">{hint}</Text>
       </View>
       {badge && badge > 0 ? (
         <View
           style={{ backgroundColor: color }}
           className="min-w-[20px] h-[20px] rounded-full items-center justify-center px-1.5 mr-1.5"
         >
-          <Text className="text-[10px] font-black text-slate-950">
+          <Text className="text-[10px] font-black text-on-accent">
             {badge > 99 ? "99+" : badge}
           </Text>
         </View>
@@ -80,6 +81,7 @@ function DrawerLink({
  * bestimmten JSX-Reihenfolge stehen mussten.
  */
 export default function TabsLayout() {
+  const c = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { unread } = useUnread();
@@ -160,26 +162,26 @@ export default function TabsLayout() {
   });
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <Tabs
         screenOptions={{
           tabBarStyle: {
-            backgroundColor: "#020617",
+            backgroundColor: c.bg,
             borderTopWidth: 1,
             borderTopColor: "rgba(255, 255, 255, 0.08)",
             height: insets.bottom > 0 ? 56 + insets.bottom : 64,
             paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
             paddingTop: 8,
           },
-          tabBarActiveTintColor: "#22d3ee",
-          tabBarInactiveTintColor: "#64748b",
+          tabBarActiveTintColor: c.accent,
+          tabBarInactiveTintColor: c.contentFaint,
           headerStyle: {
-            backgroundColor: "#020617",
+            backgroundColor: c.bg,
             borderBottomWidth: 1,
             borderBottomColor: "rgba(255, 255, 255, 0.08)",
           },
           headerTitleStyle: {
-            color: "#ffffff",
+            color: c.content,
             fontWeight: "900",
             letterSpacing: 1.2,
           },
@@ -189,13 +191,13 @@ export default function TabsLayout() {
               accessibilityLabel="Menü öffnen"
               className="ml-4 p-1.5 relative active:scale-95"
             >
-              <Ionicons name="menu-outline" size={26} color="#22d3ee" />
+              <Ionicons name="menu-outline" size={26} color={c.accent} />
               {/* Ungelesene Nachrichten. Sitzt am Menü-Symbol, weil die Chats
                   über das Menü erreichbar sind — die Glocke rechts steht fuer
                   etwas anderes (offene Beitrittsanfragen). */}
               {unread.total > 0 && (
-                <View className="absolute top-0 right-0 bg-cyan-400 min-w-[18px] h-[18px] rounded-full items-center justify-center border border-slate-950 px-1">
-                  <Text className="text-[10px] font-black text-slate-950 text-center">
+                <View className="absolute top-0 right-0 bg-accent min-w-[18px] h-[18px] rounded-full items-center justify-center border border-surface-alt px-1">
+                  <Text className="text-[10px] font-black text-on-accent text-center">
                     {unread.total > 99 ? "99+" : unread.total}
                   </Text>
                 </View>
@@ -208,9 +210,11 @@ export default function TabsLayout() {
               accessibilityLabel="Benachrichtigungen"
               className="mr-4 relative p-1.5 active:scale-90"
             >
-              <Ionicons name="notifications" size={24} color="#22d3ee" />
+              <Ionicons name="notifications" size={24} color={c.accent} />
               {notificationCount > 0 && (
-                <View className="absolute top-0 right-0 bg-rose-500 min-w-[18px] h-[18px] rounded-full items-center justify-center border border-slate-950 px-1">
+                <View className="absolute top-0 right-0 bg-danger min-w-[18px] h-[18px] rounded-full items-center justify-center border border-surface-alt px-1">
+                  {/* Fest weiss: ein Warnabzeichen ist in beiden Schemata ein
+                      kraeftiges Rot, auf dem dunkle Ziffern untergehen. */}
                   <Text className="text-[10px] font-black text-white text-center">
                     {notificationCount}
                   </Text>
@@ -297,11 +301,11 @@ export default function TabsLayout() {
               bottom: 0,
               width: drawerWidth,
             }}
-            className="bg-slate-950 border-r border-slate-800"
+            className="bg-surface-alt border-r border-line"
           >
-            <View className="flex-1 pt-12 pb-6 px-5 bg-slate-950">
+            <View className="flex-1 pt-12 pb-6 px-5 bg-surface-alt">
               <View className="flex-row justify-between items-center mb-6">
-                <Text className="text-white text-lg font-black tracking-widest uppercase">
+                <Text className="text-content text-lg font-black tracking-widest uppercase">
                   TrinkDuell
                 </Text>
                 <TouchableOpacity
@@ -309,7 +313,7 @@ export default function TabsLayout() {
                   accessibilityLabel="Menü schließen"
                   className="p-1"
                 >
-                  <Ionicons name="close-outline" size={24} color="#64748b" />
+                  <Ionicons name="close-outline" size={24} color={c.contentFaint} />
                 </TouchableOpacity>
               </View>
 
@@ -320,29 +324,29 @@ export default function TabsLayout() {
                   onPress={() => goTo("/profile")}
                   accessibilityRole="link"
                   accessibilityLabel="Profil öffnen"
-                  className="flex-row items-center bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-6 active:scale-95"
+                  className="flex-row items-center bg-surface border border-line p-4 rounded-3xl mb-6 active:scale-95"
                 >
                   <Avatar
                     uri={dbUser?.avatar}
                     name={dbUser?.name}
                     size={48}
-                    className="border border-slate-700"
+                    className="border border-line-strong"
                   />
                   <View className="flex-1 ml-3.5">
-                    <Text className="text-white text-sm font-black" numberOfLines={1}>
+                    <Text className="text-content text-sm font-black" numberOfLines={1}>
                       {dbUser?.name || "Gast"}
                     </Text>
-                    <Text className="text-cyan-400 text-[9px] font-black uppercase tracking-widest mt-0.5">
+                    <Text className="text-accent-ink text-[9px] font-black uppercase tracking-widest mt-0.5">
                       Level {dbUser?.currentLevel || dbUser?.level || 1} ·{" "}
                       {dbUser?.title || "Neuling"}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#22d3ee" />
+                  <Ionicons name="chevron-forward" size={16} color={c.accent} />
                 </TouchableOpacity>
 
                 <DrawerLink
                   icon="people-outline"
-                  color="#c084fc"
+                  color={c.accent2}
                   label="Freunde"
                   hint="Freunde, Gruppen & Events"
                   badge={unread.total}
@@ -351,7 +355,7 @@ export default function TabsLayout() {
 
                 <DrawerLink
                   icon="settings-outline"
-                  color="#22d3ee"
+                  color={c.accent}
                   label="Einstellungen"
                   hint="Konto, Datenschutz, Rechtliches"
                   onPress={() => goTo("/settings")}
@@ -359,7 +363,7 @@ export default function TabsLayout() {
 
                 <DrawerLink
                   icon="help-circle-outline"
-                  color="#34d399"
+                  color={c.success}
                   label="Hilfe & Feedback"
                   hint="Häufige Fragen und Kontakt"
                   onPress={() => goTo("/help")}
@@ -370,7 +374,7 @@ export default function TabsLayout() {
                 {dbUser?.isModerator && (
                   <DrawerLink
                     icon="shield-outline"
-                    color="#fbbf24"
+                    color={c.warning}
                     label="Meldungen"
                     hint="Gemeldete Inhalte bearbeiten"
                     onPress={() => goTo("/moderation")}

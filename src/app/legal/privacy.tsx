@@ -99,15 +99,15 @@ const SECTIONS: Section[] = [
 
 export default function PrivacyPolicyScreen() {
   return (
-    <View className="flex-1 bg-slate-950 px-6 pt-6">
+    <View className="flex-1 bg-bg px-6 pt-6">
       <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
-        <Text className="text-white text-xl font-black tracking-wide mb-1">Datenschutzerklärung</Text>
-        <Text className="text-cyan-400 text-[10px] font-bold uppercase tracking-widest mb-6">TrinkDuell</Text>
+        <Text className="text-content text-xl font-black tracking-wide mb-1">Datenschutzerklärung</Text>
+        <Text className="text-accent-ink text-[10px] font-bold uppercase tracking-widest mb-6">TrinkDuell</Text>
 
         {SECTIONS.map((section) => (
           <View key={section.title} className="mb-6">
-            <Text className="text-cyan-400 text-sm font-black mb-2">{section.title}</Text>
-            <Text className="text-slate-300 text-xs leading-relaxed">{section.body}</Text>
+            <Text className="text-accent-ink text-sm font-black mb-2">{section.title}</Text>
+            <Text className="text-content-muted text-xs leading-relaxed">{section.body}</Text>
           </View>
         ))}
 

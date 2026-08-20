@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { triggerHaptic } from "@/services/haptics";
 import { GameShell } from "./GameShell";
+import { useThemeColors } from "@/services/theme";
 
+// Kennfarbe des Spiels — Identitaet, kein semantischer UI-Ton. Steht auf
+// Modulebene und wird deshalb nicht aus dem Theme gezogen.
 const ACCENT = "#34d399";
 
 export interface Card {
@@ -44,6 +47,7 @@ const PHASE_INFO: { question: string; options: { key: string; label: string }[] 
  * you're through; guess wrong and you take a sip and start over.
  */
 export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMinimize: () => void }) {
+  const c = useThemeColors();
   const [deck, setDeck] = useState<Card[]>(() => freshDeck());
   const [cards, setCards] = useState<Card[]>([]);
   const [phase, setPhase] = useState<Phase>(0);
@@ -103,31 +107,31 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
 
   return (
     <GameShell title="Busfahrer" accent={ACCENT} onCancel={onCancel} onMinimize={onMinimize}>
-      <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest text-center mb-4">
+      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-4">
         Stufe {phase + 1} von 4
       </Text>
 
       {/* Aufgedeckte Karten */}
       <View className="flex-row justify-center flex-wrap mb-6">
-        {cards.map((c, i) => (
+        {cards.map((karte, i) => (
           <View
             key={i}
-            className="bg-slate-900 border border-white/10 rounded-2xl w-16 h-24 items-center justify-center mx-1 mb-2"
+            className="bg-surface border border-line rounded-2xl w-16 h-24 items-center justify-center mx-1 mb-2"
           >
             <Text
-              style={{ color: isRed(c) ? "#f43f5e" : "#e2e8f0" }}
+              style={{ color: isRed(karte) ? c.danger : c.content }}
               className="text-2xl font-black"
             >
-              {c.label}
+              {karte.label}
             </Text>
-            <Text style={{ color: isRed(c) ? "#f43f5e" : "#e2e8f0" }} className="text-lg">
-              {c.suit}
+            <Text style={{ color: isRed(karte) ? c.danger : c.content }} className="text-lg">
+              {karte.suit}
             </Text>
           </View>
         ))}
         {cards.length === 0 && (
-          <View className="bg-slate-900/40 border border-dashed border-white/10 rounded-2xl w-16 h-24 items-center justify-center">
-            <Text className="text-slate-600 text-2xl">?</Text>
+          <View className="bg-surface/40 border border-dashed border-line rounded-2xl w-16 h-24 items-center justify-center">
+            <Text className="text-content-faint text-2xl">?</Text>
           </View>
         )}
       </View>
@@ -135,7 +139,7 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
       <View className="flex-1 justify-center">
         {result === null ? (
           <>
-            <Text className="text-white text-lg font-black text-center mb-6">
+            <Text className="text-content text-lg font-black text-center mb-6">
               {PHASE_INFO[phase].question}
             </Text>
             <View className="flex-row flex-wrap justify-center">
@@ -144,9 +148,9 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
                   key={opt.key}
                   onPress={() => choose(opt.key)}
                   style={{ borderColor: ACCENT }}
-                  className="bg-slate-900 border-2 rounded-2xl px-6 py-4 m-1.5 min-w-[110px] items-center active:scale-95"
+                  className="bg-surface border-2 rounded-2xl px-6 py-4 m-1.5 min-w-[110px] items-center active:scale-95"
                 >
-                  <Text className="text-white text-sm font-black">{opt.label}</Text>
+                  <Text className="text-content text-sm font-black">{opt.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -157,7 +161,7 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
               {result === "won" ? "🎉" : result === "correct" ? "✅" : "🍻"}
             </Text>
             <Text
-              style={{ color: result === "wrong" ? "#f43f5e" : ACCENT }}
+              style={{ color: result === "wrong" ? c.danger : ACCENT }}
               className="text-xl font-black text-center mb-2"
             >
               {result === "won"
@@ -166,7 +170,7 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
                 ? "Richtig — weiter!"
                 : "Daneben!"}
             </Text>
-            <Text className="text-slate-400 text-xs font-bold text-center leading-relaxed px-6">
+            <Text className="text-content-muted text-xs font-bold text-center leading-relaxed px-6">
               {result === "won"
                 ? "Du bist durch und darfst einen Schluck verteilen. Nächste Person ist dran."
                 : result === "correct"
@@ -179,7 +183,7 @@ export function Busfahrer({ onCancel, onMinimize }: { onCancel: () => void; onMi
               style={{ backgroundColor: ACCENT }}
               className="mt-8 px-8 py-4 rounded-2xl active:scale-95"
             >
-              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+              <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                 {result === "correct" ? "Nächste Stufe" : "Nächste Person"}
               </Text>
             </TouchableOpacity>

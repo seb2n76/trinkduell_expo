@@ -13,6 +13,7 @@ import { apiService } from "@/services/api";
 import { GroupQuest } from "@/services/mockData";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
+import { useThemeColors } from "@/services/theme";
 
 const QUEST_TYPEN = [
   { key: "drinks" as const, label: "Getränke", einheit: "Stück", icon: "beer-outline" },
@@ -30,6 +31,7 @@ const questEinheit = (typ: string) => QUEST_TYPEN.find((t) => t.key === typ)?.ei
  * deshalb immer aktuell — und ein Neuladen nach jeder Aktion nötig.
  */
 export default function GroupQuestsScreen() {
+  const c = useThemeColors();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
 
   const [quests, setQuests] = useState<GroupQuest[]>([]);
@@ -96,7 +98,7 @@ export default function GroupQuestsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <Stack.Screen options={{ title: name ? `Quests · ${name}` : "Quests" }} />
 
       <ScrollView
@@ -106,19 +108,19 @@ export default function GroupQuestsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="w-full self-center" style={{ maxWidth: 640 }}>
-          <Text className="text-slate-500 text-[10px] font-semibold mb-5 px-1 leading-4">
+          <Text className="text-content-faint text-[10px] font-semibold mb-5 px-1 leading-4">
             Gemeinsames Ziel für {name || "die Gruppe"}. Zählt alles, was Mitglieder im Zeitraum
             eintragen.
           </Text>
 
           {loading ? (
             <View className="py-12 items-center">
-              <ActivityIndicator color="#34d399" />
+              <ActivityIndicator color={c.success} />
             </View>
           ) : quests.length === 0 ? (
-            <View className="py-12 bg-slate-900/40 border border-white/5 rounded-2xl items-center justify-center mb-6">
-              <Ionicons name="trophy-outline" size={32} color="#475569" />
-              <Text className="text-slate-500 text-xs font-bold text-center mt-2">
+            <View className="py-12 bg-surface/40 border border-line rounded-2xl items-center justify-center mb-6">
+              <Ionicons name="trophy-outline" size={32} color={c.contentFaint} />
+              <Text className="text-content-faint text-xs font-bold text-center mt-2">
                 Noch keine Quest.
               </Text>
             </View>
@@ -128,11 +130,11 @@ export default function GroupQuestsScreen() {
                 const anteil =
                   q.targetValue > 0 ? Math.min(100, (q.currentValue / q.targetValue) * 100) : 0;
                 const farbe =
-                  q.status === "completed" ? "#34d399" : q.status === "failed" ? "#f43f5e" : "#22d3ee";
+                  q.status === "completed" ? c.success : q.status === "failed" ? c.danger : c.accent;
                 return (
-                  <View key={q.id} className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 mb-2.5">
+                  <View key={q.id} className="bg-surface border border-line rounded-2xl p-3.5 mb-2.5">
                     <View className="flex-row items-center mb-2">
-                      <Text className="text-white text-xs font-black flex-1 mr-2" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black flex-1 mr-2" numberOfLines={1}>
                         {q.title}
                       </Text>
                       <Text
@@ -146,13 +148,13 @@ export default function GroupQuestsScreen() {
                           : "läuft"}
                       </Text>
                     </View>
-                    <View className="h-2 w-full bg-slate-950 rounded-full overflow-hidden mb-1.5">
+                    <View className="h-2 w-full bg-surface-alt rounded-full overflow-hidden mb-1.5">
                       <View
                         style={{ width: `${anteil}%`, backgroundColor: farbe }}
                         className="h-full rounded-full"
                       />
                     </View>
-                    <Text className="text-slate-500 text-[9px] font-bold">
+                    <Text className="text-content-faint text-[9px] font-bold">
                       {q.currentValue} / {q.targetValue} {questEinheit(q.type)}
                     </Text>
                   </View>
@@ -171,21 +173,21 @@ export default function GroupQuestsScreen() {
                 setShowForm(true);
               }}
               accessibilityLabel="Neue Quest anlegen"
-              className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl py-3.5 items-center flex-row justify-center"
+              className="bg-success/10 border border-success/30 rounded-2xl py-3.5 items-center flex-row justify-center"
             >
-              <Ionicons name="add" size={16} color="#34d399" />
-              <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider ml-2">
+              <Ionicons name="add" size={16} color={c.success} />
+              <Text className="text-success text-xs font-black uppercase tracking-wider ml-2">
                 Neue Quest
               </Text>
             </TouchableOpacity>
           ) : (
-            <View className="border-t border-white/5 pt-5">
+            <View className="border-t border-line pt-5">
               <View className="flex-row items-center justify-between mb-3">
-                <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest">
                   Neue Quest
                 </Text>
                 <TouchableOpacity onPress={() => setShowForm(false)} className="p-1">
-                  <Ionicons name="close" size={18} color="#64748b" />
+                  <Ionicons name="close" size={18} color={c.contentFaint} />
                 </TouchableOpacity>
               </View>
 
@@ -193,10 +195,10 @@ export default function GroupQuestsScreen() {
                 value={newTitle}
                 onChangeText={setNewTitle}
                 placeholder="Titel, z. B. 50 Getränke zusammen"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 maxLength={80}
                 accessibilityLabel="Quest-Titel"
-                className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3 text-white text-sm mb-2.5"
+                className="bg-surface border border-line rounded-2xl px-4 py-3 text-content text-sm mb-2.5"
               />
 
               <View className="flex-row mb-2.5" style={{ gap: 8 }}>
@@ -208,13 +210,13 @@ export default function GroupQuestsScreen() {
                       onPress={() => setNewType(t.key)}
                       accessibilityLabel={`Quest-Typ ${t.label}`}
                       className={`flex-1 py-2.5 rounded-xl border items-center ${
-                        aktiv ? "bg-emerald-500/10 border-emerald-500/40" : "bg-slate-900 border-white/5"
+                        aktiv ? "bg-success/10 border-success/40" : "bg-surface border-line"
                       }`}
                     >
-                      <Ionicons name={t.icon as any} size={14} color={aktiv ? "#34d399" : "#64748b"} />
+                      <Ionicons name={t.icon as any} size={14} color={aktiv ? c.success : c.contentFaint} />
                       <Text
                         className={`text-[9px] font-black uppercase mt-1 ${
-                          aktiv ? "text-emerald-400" : "text-slate-500"
+                          aktiv ? "text-success" : "text-content-faint"
                         }`}
                       >
                         {t.label}
@@ -226,7 +228,7 @@ export default function GroupQuestsScreen() {
 
               <View className="flex-row mb-2.5" style={{ gap: 8 }}>
                 <View className="flex-1">
-                  <Text className="text-slate-500 text-[9px] font-black uppercase mb-1.5">
+                  <Text className="text-content-faint text-[9px] font-black uppercase mb-1.5">
                     Ziel ({questEinheit(newType)})
                   </Text>
                   <TextInput
@@ -234,11 +236,11 @@ export default function GroupQuestsScreen() {
                     onChangeText={setNewTarget}
                     keyboardType="numeric"
                     accessibilityLabel="Zielwert"
-                    className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm"
+                    className="bg-surface border border-line rounded-xl px-3 py-2.5 text-content text-sm"
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-slate-500 text-[9px] font-black uppercase mb-1.5">
+                  <Text className="text-content-faint text-[9px] font-black uppercase mb-1.5">
                     Dauer (Std)
                   </Text>
                   <TextInput
@@ -246,15 +248,15 @@ export default function GroupQuestsScreen() {
                     onChangeText={setNewHours}
                     keyboardType="numeric"
                     accessibilityLabel="Dauer in Stunden"
-                    className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm"
+                    className="bg-surface border border-line rounded-xl px-3 py-2.5 text-content text-sm"
                   />
                 </View>
               </View>
 
               {error ? (
-                <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-2.5 flex-row items-start">
-                  <Ionicons name="alert-circle" size={15} color="#f43f5e" />
-                  <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{error}</Text>
+                <View className="bg-danger/10 border border-danger/30 rounded-2xl p-3 mb-2.5 flex-row items-start">
+                  <Ionicons name="alert-circle" size={15} color={c.danger} />
+                  <Text className="text-danger text-[11px] leading-4 ml-2 flex-1">{error}</Text>
                 </View>
               ) : null}
 
@@ -263,15 +265,15 @@ export default function GroupQuestsScreen() {
                 disabled={busy || !newTitle.trim()}
                 accessibilityLabel="Quest anlegen"
                 className={`rounded-2xl py-3 items-center ${
-                  busy || !newTitle.trim() ? "bg-slate-800" : "bg-emerald-500"
+                  busy || !newTitle.trim() ? "bg-surface-alt" : "bg-success"
                 }`}
               >
                 {busy ? (
-                  <ActivityIndicator size="small" color="#0f172a" />
+                  <ActivityIndicator size="small" color={c.onAccent} />
                 ) : (
                   <Text
                     className={`text-[11px] font-black uppercase tracking-wider ${
-                      !newTitle.trim() ? "text-slate-600" : "text-slate-950"
+                      !newTitle.trim() ? "text-content-faint" : "text-on-accent"
                     }`}
                   >
                     Quest anlegen

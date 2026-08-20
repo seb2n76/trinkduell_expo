@@ -90,46 +90,46 @@ export function AchievementModal({ achievementId, onClose }: AchievementModalPro
         <Animated.View 
           entering={ZoomIn.springify().damping(12).stiffness(100)}
           exiting={ZoomOut.duration(150)}
-          className="w-11/12 max-w-sm bg-slate-900 border-2 border-fuchsia-500 rounded-3xl p-6 items-center shadow-2xl relative overflow-hidden"
+          className="w-11/12 max-w-sm bg-surface border-2 border-accent-2 rounded-3xl p-6 items-center shadow-2xl relative overflow-hidden"
         >
           {/* Neon backglow effects */}
-          <View className="absolute -top-24 -left-24 w-48 h-48 bg-fuchsia-500/10 rounded-full blur-3xl" />
-          <View className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl" />
+          <View className="absolute -top-24 -left-24 w-48 h-48 bg-accent-2/10 rounded-full blur-3xl" />
+          <View className="absolute -bottom-24 -right-24 w-48 h-48 bg-accent/10 rounded-full blur-3xl" />
 
           {/* Close button */}
           <TouchableOpacity 
             onPress={onClose}
-            className="absolute top-4 right-4 bg-slate-800/80 p-2 rounded-full border border-white/10 active:scale-90"
+            className="absolute top-4 right-4 bg-surface-alt/80 p-2 rounded-full border border-line active:scale-90"
           >
             <Ionicons name="close" size={18} color="#f5f5f7" />
           </TouchableOpacity>
 
           {/* Achievement Trophy Icon */}
-          <View className="w-20 h-20 bg-gradient-to-tr from-fuchsia-500/20 to-cyan-500/20 border-2 border-cyan-400 rounded-full items-center justify-center mb-4 mt-2 shadow-lg shadow-cyan-500/50">
+          <View className="w-20 h-20 bg-gradient-to-tr from-fuchsia-500/20 to-cyan-500/20 border-2 border-accent rounded-full items-center justify-center mb-4 mt-2 shadow-lg">
             <Text className="text-4xl">{metadata.icon}</Text>
           </View>
 
           {/* Success Label */}
-          <Text className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-1">
+          <Text className="text-accent-ink text-xs font-black uppercase tracking-widest mb-1">
             Erfolg Freigeschaltet!
           </Text>
 
           {/* Title */}
-          <Text className="text-white text-xl font-black text-center mb-2 px-2">
+          <Text className="text-content text-xl font-black text-center mb-2 px-2">
             {metadata.title}
           </Text>
 
           {/* Description */}
-          <Text className="text-slate-300 text-xs text-center leading-relaxed mb-6 px-4">
+          <Text className="text-content-muted text-xs text-center leading-relaxed mb-6 px-4">
             {metadata.description}
           </Text>
 
           {/* Action button */}
           <TouchableOpacity 
             onPress={onClose}
-            className="w-full bg-fuchsia-500 py-3 rounded-2xl items-center shadow-md active:scale-95 active:bg-fuchsia-600"
+            className="w-full bg-accent-2 py-3 rounded-2xl items-center shadow-md active:scale-95 active:bg-accent-2"
           >
-            <Text className="text-white font-black text-xs tracking-widest uppercase">
+            <Text className="text-on-accent font-black text-xs tracking-widest uppercase">
               Sehr Geil!
             </Text>
           </TouchableOpacity>

@@ -1,11 +1,12 @@
 import React from "react";
 import { View, Text, Image } from "react-native";
+import { useThemeColors } from "@/services/theme";
 
 interface AvatarProps {
   uri?: string | null;
   name?: string | null;
   size?: number;
-  /** Extra classes for the border/ring, e.g. "border-2 border-cyan-400". */
+  /** Extra classes for the border/ring, e.g. "border-2 border-accent". */
   className?: string;
 }
 
@@ -43,6 +44,7 @@ function initialsFor(name: string): string {
  * accounts had a real (and misleading) profile photo.
  */
 export function Avatar({ uri, name, size = 40, className = "" }: AvatarProps) {
+  const c = useThemeColors();
   const displayName = (name || "").trim();
 
   if (uri) {
@@ -61,13 +63,16 @@ export function Avatar({ uri, name, size = 40, className = "" }: AvatarProps) {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: displayName ? colorForName(displayName) : "#334155",
+        backgroundColor: displayName ? colorForName(displayName) : c.lineStrong,
         alignItems: "center",
         justifyContent: "center",
       }}
       className={className}
     >
       <Text
+        // Immer weiss, unabhaengig vom Schema: der Kreis darunter ist stets
+        // ein kraeftiger, dunkler Farbton aus PLACEHOLDER_COLORS. Mit
+        // c.content waeren die Initialen im Hell-Modus dunkel auf dunkel.
         style={{ fontSize: Math.max(9, size * 0.38), fontWeight: "900", color: "#ffffff" }}
       >
         {displayName ? initialsFor(displayName) : "?"}

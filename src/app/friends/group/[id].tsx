@@ -6,6 +6,7 @@ import { apiService, GroupMembers } from "@/services/api";
 import { User } from "@/services/mockData";
 import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
+import { useThemeColors } from "@/services/theme";
 
 /**
  * Eine Gruppe verwalten.
@@ -16,6 +17,7 @@ import { notify, confirmAction } from "@/services/dialogs";
  * sich die Frage nicht mehr — und der Zurück-Weg ist der übliche.
  */
 export default function GroupManageScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
 
@@ -178,12 +180,12 @@ export default function GroupManageScreen() {
   const isAdmin = members?.isAdmin ?? false;
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <Stack.Screen options={{ title: name || "Gruppe" }} />
 
       {loading && !members ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#c084fc" />
+          <ActivityIndicator size="large" color={c.accent2} />
         </View>
       ) : (
         <ScrollView
@@ -192,7 +194,7 @@ export default function GroupManageScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View className="w-full self-center" style={{ maxWidth: 640 }}>
-            <Text className="text-slate-500 text-[10px] font-semibold mb-5 px-1">
+            <Text className="text-content-faint text-[10px] font-semibold mb-5 px-1">
               {isAdmin
                 ? "Du bist Admin — du kannst Mitglieder hinzufügen und entfernen."
                 : "Du bist Mitglied dieser Gruppe."}
@@ -201,39 +203,39 @@ export default function GroupManageScreen() {
             {/* Einladungscode — nur der Admin bekommt ihn vom Server */}
             {inviteCode && (
               <View className="mb-7">
-                <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
                   Einladungscode
                 </Text>
-                <View className="bg-cyan-400/5 border border-cyan-400/25 rounded-3xl p-4">
+                <View className="bg-accent/5 border border-accent/25 rounded-3xl p-4">
                   <Text
                     selectable
                     accessibilityLabel={`Einladungscode ${inviteCode}`}
-                    className="text-white text-2xl font-black tracking-[6px] mb-2"
+                    className="text-content text-2xl font-black tracking-[6px] mb-2"
                   >
                     {inviteCode}
                   </Text>
-                  <Text className="text-slate-400 text-[10px] leading-4 mb-3">
+                  <Text className="text-content-muted text-[10px] leading-4 mb-3">
                     Wer diesen Code eingibt, wird sofort Mitglied — ohne weitere Freigabe.
                   </Text>
                   <TouchableOpacity
                     onPress={handleRotateInvite}
                     disabled={inviteBusy}
                     accessibilityLabel="Einladungscode erneuern"
-                    className="bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center flex-row justify-center"
+                    className="bg-surface-alt border border-line rounded-xl py-2.5 items-center flex-row justify-center"
                   >
                     {inviteBusy ? (
-                      <ActivityIndicator size="small" color="#22d3ee" />
+                      <ActivityIndicator size="small" color={c.accent} />
                     ) : (
                       <>
-                        <Ionicons name="refresh" size={13} color="#94a3b8" />
-                        <Text className="text-slate-300 text-[10px] font-black uppercase tracking-wider ml-1.5">
+                        <Ionicons name="refresh" size={13} color={c.contentMuted} />
+                        <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider ml-1.5">
                           Code erneuern
                         </Text>
                       </>
                     )}
                   </TouchableOpacity>
                 </View>
-                <Text className="text-slate-600 text-[10px] leading-4 mt-2 px-1">
+                <Text className="text-content-faint text-[10px] leading-4 mt-2 px-1">
                   Nach einem Rauswurf erneuern — sonst kommt die Person mit dem alten Code einfach
                   zurück.
                 </Text>
@@ -243,19 +245,19 @@ export default function GroupManageScreen() {
             {/* Offene Beitrittsanfragen — nur der Admin sieht sie */}
             {isAdmin && (members?.pending.length ?? 0) > 0 && (
               <View className="mb-7">
-                <Text className="text-amber-400 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+                <Text className="text-warning text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
                   Offene Anfragen ({members?.pending.length})
                 </Text>
                 {members?.pending.map((p) => (
                   <View
                     key={p.id}
-                    className="flex-row items-center bg-amber-500/5 border border-amber-500/20 rounded-2xl px-3.5 py-2.5 mb-2"
+                    className="flex-row items-center bg-warning/5 border border-warning/20 rounded-2xl px-3.5 py-2.5 mb-2"
                   >
-                    <Text className="text-white text-xs font-black flex-1" numberOfLines={1}>
+                    <Text className="text-content text-xs font-black flex-1" numberOfLines={1}>
                       {p.name}
                     </Text>
                     {busyUserId === p.id ? (
-                      <ActivityIndicator size="small" color="#fbbf24" />
+                      <ActivityIndicator size="small" color={c.warning} />
                     ) : (
                       <>
                         <TouchableOpacity
@@ -263,14 +265,14 @@ export default function GroupManageScreen() {
                           accessibilityLabel={`${p.name} ablehnen`}
                           className="px-2.5 py-1.5"
                         >
-                          <Text className="text-slate-400 text-[10px] font-black uppercase">Nein</Text>
+                          <Text className="text-content-muted text-[10px] font-black uppercase">Nein</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleJoinRequest(p.id, true)}
                           accessibilityLabel={`${p.name} aufnehmen`}
-                          className="bg-amber-400 px-3 py-1.5 rounded-xl"
+                          className="bg-warning px-3 py-1.5 rounded-xl"
                         >
-                          <Text className="text-slate-950 text-[10px] font-black uppercase">
+                          <Text className="text-on-accent text-[10px] font-black uppercase">
                             Aufnehmen
                           </Text>
                         </TouchableOpacity>
@@ -283,7 +285,7 @@ export default function GroupManageScreen() {
 
             {/* Mitglieder */}
             <View className="mb-7">
-              <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+              <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
                 Mitglieder ({members?.members.length ?? 0})
               </Text>
               {members?.members.map((m) => {
@@ -294,31 +296,31 @@ export default function GroupManageScreen() {
                 return (
                   <View
                     key={m.id}
-                    className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-3.5 py-3 mb-2"
+                    className="flex-row items-center bg-surface border border-line rounded-2xl px-3.5 py-3 mb-2"
                   >
-                    <View className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
-                      <Ionicons name="person" size={14} color="#c084fc" />
+                    <View className="w-8 h-8 rounded-xl bg-accent-2/10 border border-accent-2/20 items-center justify-center">
+                      <Ionicons name="person" size={14} color={c.accent2} />
                     </View>
                     <View className="flex-1 ml-3">
-                      <Text className="text-white text-xs font-black" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black" numberOfLines={1}>
                         {m.name}
                         {binIch ? " (du)" : ""}
                       </Text>
                       {m.isAdmin && (
-                        <Text className="text-purple-400 text-[9px] font-black uppercase mt-0.5">
+                        <Text className="text-accent-2-ink text-[9px] font-black uppercase mt-0.5">
                           Admin
                         </Text>
                       )}
                     </View>
                     {busyUserId === m.id ? (
-                      <ActivityIndicator size="small" color="#f43f5e" />
+                      <ActivityIndicator size="small" color={c.danger} />
                     ) : darfEntfernen ? (
                       <TouchableOpacity
                         onPress={() => handleRemoveMember(m)}
                         accessibilityLabel={`${m.name} aus der Gruppe entfernen`}
                         className="p-2"
                       >
-                        <Ionicons name="person-remove-outline" size={16} color="#f43f5e" />
+                        <Ionicons name="person-remove-outline" size={16} color={c.danger} />
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -329,11 +331,11 @@ export default function GroupManageScreen() {
             {/* Freunde hinzufügen — nur der Admin */}
             {isAdmin && (
               <View className="mb-7">
-                <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
                   Freunde hinzufügen
                 </Text>
                 {addableFriends.length === 0 ? (
-                  <Text className="text-slate-600 text-[11px] font-medium py-2 px-1">
+                  <Text className="text-content-faint text-[11px] font-medium py-2 px-1">
                     {friends.length === 0
                       ? "Du hast noch keine Freunde hinzugefügt."
                       : "Alle deine Freunde sind schon in dieser Gruppe."}
@@ -345,18 +347,18 @@ export default function GroupManageScreen() {
                       onPress={() => handleAddMember(f)}
                       disabled={busyUserId === f.id}
                       accessibilityLabel={`${f.name} zur Gruppe hinzufügen`}
-                      className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-3.5 py-3 mb-2"
+                      className="flex-row items-center bg-surface border border-line rounded-2xl px-3.5 py-3 mb-2"
                     >
-                      <View className="w-8 h-8 rounded-xl bg-slate-950 border border-white/10 items-center justify-center">
-                        <Ionicons name="person-outline" size={14} color="#64748b" />
+                      <View className="w-8 h-8 rounded-xl bg-surface-alt border border-line items-center justify-center">
+                        <Ionicons name="person-outline" size={14} color={c.contentFaint} />
                       </View>
-                      <Text className="text-white text-xs font-black flex-1 ml-3" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black flex-1 ml-3" numberOfLines={1}>
                         {f.name}
                       </Text>
                       {busyUserId === f.id ? (
-                        <ActivityIndicator size="small" color="#c084fc" />
+                        <ActivityIndicator size="small" color={c.accent2} />
                       ) : (
-                        <Ionicons name="add-circle-outline" size={18} color="#c084fc" />
+                        <Ionicons name="add-circle-outline" size={18} color={c.accent2} />
                       )}
                     </TouchableOpacity>
                   ))
@@ -370,29 +372,29 @@ export default function GroupManageScreen() {
                 router.push({ pathname: "/friends/quests/[id]", params: { id, name: name || "" } });
               }}
               accessibilityLabel="Quests dieser Gruppe"
-              className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl py-3.5 items-center flex-row justify-center mb-7"
+              className="bg-success/10 border border-success/30 rounded-2xl py-3.5 items-center flex-row justify-center mb-7"
             >
-              <Ionicons name="trophy-outline" size={16} color="#34d399" />
-              <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider ml-2">
+              <Ionicons name="trophy-outline" size={16} color={c.success} />
+              <Text className="text-success text-xs font-black uppercase tracking-wider ml-2">
                 Quests
               </Text>
             </TouchableOpacity>
 
             {/* Abgesetzt: das Verlassen kann die Gruppe samt Chatverlauf
                 löschen und steht deshalb nicht zwischen den Mitgliederzeilen. */}
-            <View className="border-t border-slate-800 pt-6">
+            <View className="border-t border-line pt-6">
               <TouchableOpacity
                 onPress={handleLeaveGroup}
                 disabled={busyUserId === meId}
                 accessibilityLabel="Gruppe verlassen"
-                className="bg-rose-500/10 border border-rose-500/30 rounded-2xl py-3.5 items-center flex-row justify-center"
+                className="bg-danger/10 border border-danger/30 rounded-2xl py-3.5 items-center flex-row justify-center"
               >
                 {busyUserId === meId ? (
-                  <ActivityIndicator size="small" color="#f43f5e" />
+                  <ActivityIndicator size="small" color={c.danger} />
                 ) : (
                   <>
-                    <Ionicons name="exit-outline" size={16} color="#f43f5e" />
-                    <Text className="text-rose-400 text-xs font-black uppercase tracking-wider ml-2">
+                    <Ionicons name="exit-outline" size={16} color={c.danger} />
+                    <Text className="text-danger text-xs font-black uppercase tracking-wider ml-2">
                       {(members?.members.length ?? 0) <= 1 ? "Gruppe auflösen" : "Gruppe verlassen"}
                     </Text>
                   </>

@@ -15,6 +15,7 @@ import { Avatar } from "@/components/Avatar";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
+import { useThemeColors } from "@/services/theme";
 
 /**
  * Direktnachrichten und Gruppenchat.
@@ -24,6 +25,7 @@ import { useUnread } from "@/components/UnreadProvider";
  * Chat einen Zurück-Weg und die volle Höhe.
  */
 export default function ChatScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const { markRead } = useUnread();
   const { id, type, name } = useLocalSearchParams<{ id: string; type?: string; name?: string }>();
@@ -102,7 +104,7 @@ export default function ChatScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <Stack.Screen
         options={{
           title: name || (isGroup ? "Gruppenchat" : "Chat"),
@@ -112,18 +114,18 @@ export default function ChatScreen() {
 
       {/* Gesprächspartner im Kopf der Liste: die Stack-Titelzeile zeigt nur
           den Namen, das Bild ordnet das Gespräch schneller zu. */}
-      <View className="flex-row items-center px-5 py-3 border-b border-white/5 bg-slate-900">
+      <View className="flex-row items-center px-5 py-3 border-b border-line bg-surface">
         <Avatar
           uri={isGroup ? undefined : partnerAvatar}
           name={name || (isGroup ? "Gruppe" : "Chat")}
           size={32}
-          className="border border-cyan-400/40"
+          className="border border-accent/40"
         />
         <View className="ml-3 flex-1">
-          <Text className="text-white font-black text-xs" numberOfLines={1}>
+          <Text className="text-content font-black text-xs" numberOfLines={1}>
             {name || (isGroup ? "Gruppenchat" : "Chat")}
           </Text>
-          <Text className="text-cyan-400 text-[9px] font-bold">
+          <Text className="text-accent-ink text-[9px] font-bold">
             {isGroup ? "Gruppe" : `@${(name || "").toLowerCase().replace(/\s+/g, "_")}`}
           </Text>
         </View>
@@ -136,15 +138,15 @@ export default function ChatScreen() {
       >
         {loading ? (
           <View className="py-16 items-center justify-center">
-            <ActivityIndicator size="large" color="#22d3ee" />
+            <ActivityIndicator size="large" color={c.accent} />
           </View>
         ) : messages.length === 0 ? (
-          <View className="py-16 items-center justify-center bg-white/5 border border-white/5 rounded-3xl p-6 my-4">
-            <Ionicons name="chatbubbles-outline" size={36} color="#64748b" />
-            <Text className="text-white text-xs font-black uppercase text-center mt-2">
+          <View className="py-16 items-center justify-center bg-surface border border-line rounded-3xl p-6 my-4">
+            <Ionicons name="chatbubbles-outline" size={36} color={c.contentFaint} />
+            <Text className="text-content text-xs font-black uppercase text-center mt-2">
               Noch keine Nachrichten
             </Text>
-            <Text className="text-slate-400 text-[10px] text-center mt-1">
+            <Text className="text-content-muted text-[10px] text-center mt-1">
               Schreibe die erste Nachricht!
             </Text>
           </View>
@@ -156,19 +158,19 @@ export default function ChatScreen() {
                 <View
                   className={`max-w-[78%] px-4 py-2.5 rounded-2xl ${
                     isMe
-                      ? "bg-cyan-500 rounded-tr-none"
-                      : "bg-slate-900 border border-white/10 rounded-tl-none"
+                      ? "bg-accent rounded-tr-none"
+                      : "bg-surface border border-line rounded-tl-none"
                   }`}
                 >
                   {!isMe && msg.sender_name && (
-                    <Text className="text-cyan-400 text-[9px] font-black mb-1">{msg.sender_name}</Text>
+                    <Text className="text-accent-ink text-[9px] font-black mb-1">{msg.sender_name}</Text>
                   )}
-                  <Text className={`text-xs font-bold ${isMe ? "text-slate-950" : "text-white"}`}>
+                  <Text className={`text-xs font-bold ${isMe ? "text-on-accent" : "text-content"}`}>
                     {msg.content}
                   </Text>
                   <Text
                     className={`text-[8px] mt-1 text-right font-medium ${
-                      isMe ? "text-slate-950/70" : "text-slate-500"
+                      isMe ? "text-on-accent/70" : "text-content-faint"
                     }`}
                   >
                     {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -184,28 +186,28 @@ export default function ChatScreen() {
       </ScrollView>
 
       <View
-        className="flex-row items-center px-5 py-3 border-t border-white/10 bg-slate-950"
+        className="flex-row items-center px-5 py-3 border-t border-line bg-surface-alt"
         style={{ gap: 8 }}
       >
         <TextInput
           placeholder="Nachricht schreiben..."
-          placeholderTextColor="#475569"
+          placeholderTextColor={c.contentFaint}
           value={inputText}
           onChangeText={setInputText}
           onSubmitEditing={handleSend}
           accessibilityLabel="Nachricht schreiben"
-          className="flex-1 bg-slate-900 border border-white/10 rounded-2xl px-4 py-3 text-white text-xs font-bold"
+          className="flex-1 bg-surface border border-line rounded-2xl px-4 py-3 text-content text-xs font-bold"
         />
         <TouchableOpacity
           onPress={handleSend}
           disabled={!inputText.trim() || sending}
           accessibilityLabel="Nachricht senden"
-          className="bg-cyan-400 p-3 rounded-2xl active:scale-95 disabled:opacity-40"
+          className="bg-accent p-3 rounded-2xl active:scale-95 disabled:opacity-40"
         >
           {sending ? (
-            <ActivityIndicator size="small" color="#020617" />
+            <ActivityIndicator size="small" color={c.onAccent} />
           ) : (
-            <Ionicons name="send" size={16} color="#020617" />
+            <Ionicons name="send" size={16} color={c.onAccent} />
           )}
         </TouchableOpacity>
       </View>

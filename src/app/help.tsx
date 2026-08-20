@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
+import { useThemeColors } from "@/services/theme";
 
 /**
  * Hilfe & FAQ.
@@ -89,27 +90,28 @@ const FAQ: FaqItem[] = [
 ];
 
 export default function HelpScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const [offen, setOffen] = useState<number | null>(null);
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-4 pt-5 pb-16"
         showsVerticalScrollIndicator={false}
       >
         <View className="w-full self-center" style={{ maxWidth: 640 }}>
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
             Häufige Fragen
           </Text>
 
-          <View className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden mb-7">
+          <View className="bg-surface border border-line rounded-3xl overflow-hidden mb-7">
             {FAQ.map((item, index) => {
               const istOffen = offen === index;
               const letzte = index === FAQ.length - 1;
               return (
-                <View key={item.frage} className={letzte && !istOffen ? "" : "border-b border-slate-800"}>
+                <View key={item.frage} className={letzte && !istOffen ? "" : "border-b border-line"}>
                   <TouchableOpacity
                     onPress={() => {
                       triggerHaptic("light");
@@ -119,18 +121,18 @@ export default function HelpScreen() {
                     accessibilityState={{ expanded: istOffen }}
                     className="flex-row items-center px-4 py-3.5"
                   >
-                    <Text className="text-white text-xs font-black flex-1 mr-3 leading-4">
+                    <Text className="text-content text-xs font-black flex-1 mr-3 leading-4">
                       {item.frage}
                     </Text>
                     <Ionicons
                       name={istOffen ? "chevron-up" : "chevron-down"}
                       size={15}
-                      color="#475569"
+                      color={c.contentFaint}
                     />
                   </TouchableOpacity>
                   {istOffen && (
                     <View className="px-4 pb-4 -mt-1">
-                      <Text className="text-slate-400 text-[11px] leading-5">{item.antwort}</Text>
+                      <Text className="text-content-muted text-[11px] leading-5">{item.antwort}</Text>
                     </View>
                   )}
                 </View>
@@ -138,49 +140,49 @@ export default function HelpScreen() {
             })}
           </View>
 
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
             Weiter nicht geholfen?
           </Text>
-          <View className="bg-slate-900 border border-slate-800 rounded-3xl p-4 mb-7">
-            <Text className="text-slate-400 text-[11px] leading-5 mb-3">
+          <View className="bg-surface border border-line rounded-3xl p-4 mb-7">
+            <Text className="text-content-muted text-[11px] leading-5 mb-3">
               Schreib uns, was nicht funktioniert hat — am besten mit dem, was du getan hast und was
               stattdessen passiert ist.
             </Text>
-            <Text selectable className="text-cyan-400 text-xs font-black">
+            <Text selectable className="text-accent-ink text-xs font-black">
               {SUPPORT_ADRESSE}
             </Text>
           </View>
 
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
             Rechtliches
           </Text>
-          <View className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden mb-7">
+          <View className="bg-surface border border-line rounded-3xl overflow-hidden mb-7">
             <TouchableOpacity
               onPress={() => router.push("/legal/privacy")}
-              className="flex-row items-center px-4 py-3.5 border-b border-slate-800"
+              className="flex-row items-center px-4 py-3.5 border-b border-line"
             >
-              <Ionicons name="shield-checkmark-outline" size={16} color="#22d3ee" />
-              <Text className="text-white text-xs font-black flex-1 ml-3">Datenschutzerklärung</Text>
-              <Ionicons name="chevron-forward" size={15} color="#475569" />
+              <Ionicons name="shield-checkmark-outline" size={16} color={c.accent} />
+              <Text className="text-content text-xs font-black flex-1 ml-3">Datenschutzerklärung</Text>
+              <Ionicons name="chevron-forward" size={15} color={c.contentFaint} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/legal/terms")}
               className="flex-row items-center px-4 py-3.5"
             >
-              <Ionicons name="reader-outline" size={16} color="#22d3ee" />
-              <Text className="text-white text-xs font-black flex-1 ml-3">Nutzungsbedingungen</Text>
-              <Ionicons name="chevron-forward" size={15} color="#475569" />
+              <Ionicons name="reader-outline" size={16} color={c.accent} />
+              <Text className="text-content text-xs font-black flex-1 ml-3">Nutzungsbedingungen</Text>
+              <Ionicons name="chevron-forward" size={15} color={c.contentFaint} />
             </TouchableOpacity>
           </View>
 
-          <View className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
+          <View className="bg-warning/5 border border-warning/20 rounded-2xl p-4">
             <View className="flex-row items-center mb-1.5">
-              <Ionicons name="warning-outline" size={15} color="#fbbf24" />
-              <Text className="text-amber-400 text-[10px] font-black uppercase tracking-wider ml-2">
+              <Ionicons name="warning-outline" size={15} color={c.warning} />
+              <Text className="text-warning text-[10px] font-black uppercase tracking-wider ml-2">
                 Trink verantwortungsvoll
               </Text>
             </View>
-            <Text className="text-amber-200/60 text-[11px] leading-5">
+            <Text className="text-warning text-[11px] leading-5">
               TrinkDuell ist ein Spiel. Kein Punktestand ist es wert, dass du oder jemand anderes zu
               Schaden kommt. Fahr nicht, wenn du getrunken hast, und pass auf deine Leute auf.
             </Text>

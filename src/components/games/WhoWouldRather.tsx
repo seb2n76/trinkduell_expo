@@ -5,6 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { GameShell, GameButton } from "./GameShell";
 import { Intensity, WHO_WOULD_RATHER, pickRandom } from "@/games/content";
 
+// Kennfarbe des Spiels — Identitaet, kein semantischer UI-Ton.
 const ACCENT = "#c084fc";
 
 interface Player {
@@ -65,12 +66,12 @@ export function WhoWouldRather({
     >
       <View
         style={{ borderColor: ACCENT }}
-        className="bg-slate-900 border-2 rounded-3xl p-5 mb-4"
+        className="bg-surface border-2 rounded-3xl p-5 mb-4"
       >
-        <Text className="text-white text-base font-black text-center leading-relaxed">{prompt}</Text>
+        <Text className="text-content text-base font-black text-center leading-relaxed">{prompt}</Text>
       </View>
 
-      <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest text-center mb-3">
+      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-3">
         {revealed
           ? winners.length > 1
             ? "Gleichstand — alle nehmen einen Schluck"
@@ -89,17 +90,17 @@ export function WhoWouldRather({
               disabled={revealed}
               style={isWinner ? { borderColor: ACCENT } : undefined}
               className={`flex-row items-center p-3 rounded-2xl mb-2 border ${
-                isWinner ? "bg-purple-500/15" : "bg-slate-900 border-white/5"
+                isWinner ? "bg-accent-2/15" : "bg-surface border-line"
               }`}
             >
-              <Avatar uri={p.avatar} name={p.name} size={36} className="border border-white/10" />
-              <Text className="text-white text-xs font-black flex-1 ml-3">{p.name}</Text>
+              <Avatar uri={p.avatar} name={p.name} size={36} className="border border-line" />
+              <Text className="text-content text-xs font-black flex-1 ml-3">{p.name}</Text>
               {count > 0 && (
                 <View
                   style={{ backgroundColor: ACCENT }}
                   className="px-2.5 py-1 rounded-full"
                 >
-                  <Text className="text-slate-950 text-[10px] font-black">{count}</Text>
+                  <Text className="text-on-accent text-[10px] font-black">{count}</Text>
                 </View>
               )}
             </TouchableOpacity>

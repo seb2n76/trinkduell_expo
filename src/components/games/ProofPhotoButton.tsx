@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiService } from "@/services/api";
 import { uploadImage } from "@/services/upload";
 import { triggerHaptic } from "@/services/haptics";
+import { useThemeColors } from "@/services/theme";
 
 interface ProofPhotoButtonProps {
   /** Landet als Text über dem Bild im Feed, z. B. der Spielname. */
@@ -26,6 +27,7 @@ interface ProofPhotoButtonProps {
  * R2-Zugangsdaten (lokale Entwicklung) ist genau das der Fall.
  */
 export function ProofPhotoButton({ context, playerName }: ProofPhotoButtonProps) {
+  const c = useThemeColors();
   const [uploadEnabled, setUploadEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -105,14 +107,14 @@ export function ProofPhotoButton({ context, playerName }: ProofPhotoButtonProps)
       onPress={handlePress}
       disabled={busy}
       accessibilityLabel="Beweisfoto aufnehmen"
-      className="flex-row items-center justify-center py-2.5 px-4 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-400/30 active:scale-95 disabled:opacity-50"
+      className="flex-row items-center justify-center py-2.5 px-4 rounded-2xl bg-accent-2/10 border border-accent-2/30 active:scale-95 disabled:opacity-50"
     >
       {busy ? (
-        <ActivityIndicator color="#d946ef" size="small" />
+        <ActivityIndicator color={c.accent2} size="small" />
       ) : (
         <>
-          <Ionicons name="camera-outline" size={15} color="#d946ef" />
-          <Text className="text-fuchsia-400 text-[10px] font-black uppercase tracking-wider ml-2">
+          <Ionicons name="camera-outline" size={15} color={c.accent2} />
+          <Text className="text-accent-2-ink text-[10px] font-black uppercase tracking-wider ml-2">
             Beweisfoto
           </Text>
         </>

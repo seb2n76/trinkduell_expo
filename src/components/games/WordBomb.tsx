@@ -3,7 +3,9 @@ import { View, Text } from "react-native";
 import { triggerHaptic } from "@/services/haptics";
 import { GameShell, GameButton } from "./GameShell";
 import { WORD_BOMB_CATEGORIES, pickRandom } from "@/games/content";
+import { useThemeColors } from "@/services/theme";
 
+// Kennfarbe des Spiels — Identitaet, kein semantischer UI-Ton.
 const ACCENT = "#fb923c";
 
 /**
@@ -21,6 +23,7 @@ export function WordBomb({
   onCancel: () => void;
   onMinimize: () => void;
 }) {
+  const c = useThemeColors();
   const [category, setCategory] = useState(() => pickRandom(WORD_BOMB_CATEGORIES));
   const [status, setStatus] = useState<"ready" | "running" | "exploded">("ready");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,30 +59,30 @@ export function WordBomb({
   return (
     <GameShell title="Wortbombe" accent={ACCENT} onCancel={onCancel} onMinimize={onMinimize}>
       <View className="flex-1 items-center justify-center">
-        <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3">
+        <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
           Kategorie
         </Text>
 
         <View
-          style={{ borderColor: status === "exploded" ? "#f43f5e" : ACCENT }}
-          className="w-full bg-slate-900 border-2 rounded-3xl p-8 items-center shadow-2xl"
+          style={{ borderColor: status === "exploded" ? c.danger : ACCENT }}
+          className="w-full bg-surface border-2 rounded-3xl p-8 items-center shadow-2xl"
         >
           {status === "exploded" ? (
             <>
               <Text className="text-6xl mb-3">💥</Text>
-              <Text className="text-rose-400 text-xl font-black text-center mb-2">
+              <Text className="text-danger text-xl font-black text-center mb-2">
                 Bombe geplatzt!
               </Text>
-              <Text className="text-slate-400 text-xs font-bold text-center leading-relaxed">
+              <Text className="text-content-muted text-xs font-bold text-center leading-relaxed">
                 Wer das Handy hält, nimmt einen Schluck.
               </Text>
             </>
           ) : (
             <>
-              <Text className="text-white text-2xl font-black text-center leading-relaxed mb-3">
+              <Text className="text-content text-2xl font-black text-center leading-relaxed mb-3">
                 {category}
               </Text>
-              <Text className="text-slate-400 text-xs font-bold text-center leading-relaxed">
+              <Text className="text-content-muted text-xs font-bold text-center leading-relaxed">
                 {status === "running"
                   ? "Nenne ein Wort und gib das Handy weiter!"
                   : "Reihum ein passendes Wort nennen — dann weitergeben."}
@@ -89,7 +92,7 @@ export function WordBomb({
         </View>
 
         {status === "running" && (
-          <Text className="text-slate-600 text-[10px] font-bold mt-6 text-center">
+          <Text className="text-content-faint text-[10px] font-bold mt-6 text-center">
             Die Zeit läuft — wie lange, weiß niemand.
           </Text>
         )}

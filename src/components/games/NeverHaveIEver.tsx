@@ -4,6 +4,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { GameShell, PromptCard, GameButton } from "./GameShell";
 import { Intensity, NEVER_HAVE_I_EVER, pickRandom } from "@/games/content";
 
+// Kennfarbe des Spiels — Identitaet, kein semantischer UI-Ton.
 const ACCENT = "#38bdf8";
 
 export function NeverHaveIEver({
@@ -37,7 +38,7 @@ export function NeverHaveIEver({
       intensity={intensity}
       onIntensityChange={changeIntensity}
     >
-      <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest text-center mb-2">
+      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-2">
         Runde {round}
       </Text>
 

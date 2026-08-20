@@ -28,16 +28,14 @@ import {
   type LocationMode,
   type Coordinates,
 } from "@/services/location";
+import { useThemeColors, useTheme, type ThemeColors } from "@/services/theme";
 // Lazy on purpose: the camera module is only needed once someone taps
 // "Scannen", and it has no business in the bundle everyone loads first.
 const BarcodeScanner = React.lazy(() => import("@/components/BarcodeScanner"));
 
-/** Kartenhintergrund. Etwas heller als der Seitenhintergrund (slate-950),
-  * damit Karten ohne kräftigen Rahmen auskommen. */
-/** Seitenhintergrund: tiefes Navy statt reinem Schwarz. */
-const PAGE_BG = "#0B111E";
-
-const CARD_BG = "#161F30";
+// Seitengrund und Kartenflaeche kommen aus dem Theme. Vorher standen hier
+// zwei feste Navy-Toene (#0B111E / #161F30) — die blieben im Hell-Modus
+// dunkel und waren der einzige Screen, auf dem das noch auffiel.
 
 /**
  * Vier Reiter statt sechs Kategorien.
@@ -139,24 +137,28 @@ interface UndoState {
   expiresAt: number;
 }
 
-const getRankBadgeStyles = (rank: User["rank"]) => {
+// Nimmt die Farben als Argument statt sie per Hook zu holen: die Funktion
+// steht auf Modulebene, dort gibt es keinen Hook-Kontext.
+const getRankBadgeStyles = (rank: User["rank"], c: ThemeColors) => {
   switch (rank) {
     case "Diamant":
-      return { bg: "bg-cyan-400/10 border-cyan-400/20", color: "#22d3ee", label: "Diamant" };
+      return { bg: "bg-accent/10 border-accent/20", color: c.accent, label: "Diamant" };
     case "Platin":
-      return { bg: "bg-fuchsia-500/10 border-fuchsia-500/20", color: "#d946ef", label: "Platin" };
+      return { bg: "bg-accent-2/10 border-accent-2/20", color: c.accent2, label: "Platin" };
     case "Gold":
-      return { bg: "bg-yellow-400/10 border-yellow-400/20", color: "#eab308", label: "Gold" };
+      return { bg: "bg-warning/10 border-warning/20", color: c.warning, label: "Gold" };
     case "Silber":
-      return { bg: "bg-slate-300/10 border-slate-300/20", color: "#cbd5e1", label: "Silber" };
+      return { bg: "bg-surface-alt/10 border-line-strong/20", color: c.contentMuted, label: "Silber" };
     case "Bronze":
-      return { bg: "bg-amber-600/10 border-amber-600/20", color: "#d97706", label: "Bronze" };
+      return { bg: "bg-warning/10 border-warning/20", color: c.warning, label: "Bronze" };
     default:
-      return { bg: "bg-slate-500/10 border-slate-500/20", color: "#94a3b8", label: "Unranked" };
+      return { bg: "bg-surface-alt/10 border-line-strong/20", color: c.contentMuted, label: "Unranked" };
   }
 };
 
 export default function DashboardScreen() {
+  const c = useThemeColors();
+  const { scheme } = useTheme();
   const router = useRouter();
   const { user: authUser, updateUserContext } = useAuth();
   const user = authUser;
@@ -873,15 +875,15 @@ export default function DashboardScreen() {
   const tileHeight = Math.min(tileWidth * 0.9, 132);
 
   return (
-    <View className="flex-1" style={{ backgroundColor: PAGE_BG }}>
+    <View className="flex-1" style={{ backgroundColor: c.bg }}>
       
       {/* Toast Success Banner */}
       {successBanner && (
-        <View className="absolute top-4 left-4 right-4 bg-slate-900/95 border border-cyan-400/40 rounded-2xl p-4 flex-row items-center space-x-3 shadow-2xl z-50">
-          <View className="bg-cyan-400/20 p-2 rounded-full">
-            <Ionicons name="checkmark-circle" size={20} color="#22d3ee" />
+        <View className="absolute top-4 left-4 right-4 bg-surface/95 border border-accent/40 rounded-2xl p-4 flex-row items-center space-x-3 shadow-2xl z-50">
+          <View className="bg-accent/20 p-2 rounded-full">
+            <Ionicons name="checkmark-circle" size={20} color={c.accent} />
           </View>
-          <Text className="text-white text-xs font-black flex-1 ml-2">{successBanner}</Text>
+          <Text className="text-content text-xs font-black flex-1 ml-2">{successBanner}</Text>
         </View>
       )}
 
@@ -917,18 +919,18 @@ export default function DashboardScreen() {
           const xpProgress = user.xpProgressInCurrentLevel !== undefined ? user.xpProgressInCurrentLevel : 0;
           const xpNeeded = user.xpForNextLevel || 100;
           const fillPercentage = xpNeeded > 0 ? Math.min(100, (xpProgress / xpNeeded) * 100) : 0;
-          const rank = getRankBadgeStyles(user.rank);
+          const rank = getRankBadgeStyles(user.rank, c);
 
           return (
-            <View className="mb-4 rounded-2xl border border-slate-800 p-4" style={{ backgroundColor: CARD_BG }}>
+            <View className="mb-4 rounded-2xl border border-line p-4" style={{ backgroundColor: c.surface }}>
               <View className="flex-row items-center">
                 <View className="flex-1 pr-3">
-                  <Text className="text-white text-base font-black tracking-wide" numberOfLines={1}>
+                  <Text className="text-content text-base font-black tracking-wide" numberOfLines={1}>
                     {user.name || "Dein Benutzername"}
                   </Text>
                   <View className="flex-row items-center mt-1">
                     <Ionicons name="ribbon" size={12} color={rank.color} />
-                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider ml-1">
+                    <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider ml-1">
                       {rank.label} · Lv. {currentLevel}
                     </Text>
                   </View>
@@ -940,18 +942,18 @@ export default function DashboardScreen() {
                 <View
                   className={`flex-row items-center px-2.5 py-1.5 rounded-xl border mr-2 ${
                     katerSchutz.active
-                      ? "bg-emerald-500/10 border-emerald-400/30"
-                      : "bg-slate-950 border-slate-800"
+                      ? "bg-success/10 border-success/30"
+                      : "bg-surface-alt border-line"
                   }`}
                 >
                   <Ionicons
                     name={katerSchutz.active ? "shield-checkmark" : "water-outline"}
                     size={13}
-                    color={katerSchutz.active ? "#10B981" : "#38bdf8"}
+                    color={katerSchutz.active ? c.success : c.accent}
                   />
                   <Text
                     className={`text-[10px] font-black ml-1 ${
-                      katerSchutz.active ? "text-emerald-400" : "text-sky-400"
+                      katerSchutz.active ? "text-success" : "text-accent-ink"
                     }`}
                   >
                     {katerSchutz.active ? `${katerSchutz.minutesLeft} Min` : "Wasser?"}
@@ -961,13 +963,13 @@ export default function DashboardScreen() {
 
               <View className="mt-3">
                 <View className="flex-row justify-between items-center mb-1.5">
-                  <Text className="text-slate-500 text-[9px] font-black uppercase tracking-wider">
+                  <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider">
                     {xpProgress}/{xpNeeded} XP
                   </Text>
-                  <Text className="text-slate-500 text-[9px] font-black">{user.points} gesamt</Text>
+                  <Text className="text-content-faint text-[9px] font-black">{user.points} gesamt</Text>
                 </View>
-                <View className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
-                  <View style={{ width: `${fillPercentage}%` }} className="h-full bg-cyan-400 rounded-full" />
+                <View className="h-1.5 w-full bg-surface-alt rounded-full overflow-hidden">
+                  <View style={{ width: `${fillPercentage}%` }} className="h-full bg-accent rounded-full" />
                 </View>
               </View>
             </View>
@@ -977,15 +979,15 @@ export default function DashboardScreen() {
         {/* Level-Up bleibt eine eigene Karte: sie erscheint selten, ist dann
             aber die wichtigste Sache auf dem Bildschirm. */}
         {user && (user.isLevelLocked || (user.points >= getCumulativeXpForLevel(user.level || 1) + Math.floor(Math.pow(user.level || 1, 1.5) * 100))) && user.active_quest && (
-          <View className="mb-4 bg-slate-900 border border-amber-500/40 rounded-2xl p-4">
+          <View className="mb-4 bg-surface border border-warning/40 rounded-2xl p-4">
             <View className="flex-row items-center mb-2.5">
-              <Ionicons name="flame" size={18} color="#fbbf24" />
-              <Text className="text-white text-sm font-black tracking-wide ml-2 flex-1">
+              <Ionicons name="flame" size={18} color={c.warning} />
+              <Text className="text-content text-sm font-black tracking-wide ml-2 flex-1">
                 Bereit für Level {(user.level || 1) + 1}?
               </Text>
             </View>
-            <View className="bg-slate-950 border border-slate-800 p-3 rounded-xl mb-3">
-              <Text className="text-amber-400 text-[11px] font-black text-center italic">
+            <View className="bg-surface-alt border border-line p-3 rounded-xl mb-3">
+              <Text className="text-warning text-[11px] font-black text-center italic">
                 &quot;{user.active_quest}&quot;
               </Text>
             </View>
@@ -993,14 +995,14 @@ export default function DashboardScreen() {
               activeOpacity={0.8}
               onPress={handleLevelUp}
               disabled={isLevelingUp}
-              className="w-full bg-amber-400 py-3 rounded-xl items-center flex-row justify-center disabled:opacity-50"
+              className="w-full bg-warning py-3 rounded-xl items-center flex-row justify-center disabled:opacity-50"
             >
               {isLevelingUp ? (
-                <ActivityIndicator size="small" color="#020617" />
+                <ActivityIndicator size="small" color={c.onAccent} />
               ) : (
                 <>
-                  <Ionicons name="checkmark-done" size={15} color="#020617" />
-                  <Text className="text-slate-950 font-black text-[11px] uppercase tracking-wider ml-1.5">
+                  <Ionicons name="checkmark-done" size={15} color={c.onAccent} />
+                  <Text className="text-on-accent font-black text-[11px] uppercase tracking-wider ml-1.5">
                     Quest abschließen
                   </Text>
                 </>
@@ -1015,12 +1017,12 @@ export default function DashboardScreen() {
         <View className="mb-5">
           <View className="flex-row items-center justify-between mb-2.5">
             <View className="flex-row items-center">
-              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mr-2">
+              <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mr-2">
                 Duelle & Quests
               </Text>
               {hasActiveChallenges && (
-                <View className="bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                  <Text className="text-amber-400 text-[8px] font-black uppercase tracking-wider">
+                <View className="bg-warning/15 border border-warning/30 px-2 py-0.5 rounded-full">
+                  <Text className="text-warning text-[8px] font-black uppercase tracking-wider">
                     {relevantDuels.length + activeQuests.length} aktiv
                   </Text>
                 </View>
@@ -1034,10 +1036,10 @@ export default function DashboardScreen() {
               accessibilityLabel="Zu den Spielen und Duellen"
               className="flex-row items-center"
             >
-              <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider mr-1">
+              <Text className="text-accent-ink text-[10px] font-black uppercase tracking-wider mr-1">
                 Alle Spiele
               </Text>
-              <Ionicons name="chevron-forward" size={11} color="#22d3ee" />
+              <Ionicons name="chevron-forward" size={11} color={c.accent} />
             </TouchableOpacity>
           </View>
 
@@ -1069,41 +1071,41 @@ export default function DashboardScreen() {
                       triggerHaptic("light");
                       router.push("/games");
                     }}
-                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: CARD_BG }}
-                    className="border border-amber-500/30 rounded-2xl p-3.5 justify-between"
+                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: c.surface }}
+                    className="border border-warning/30 rounded-2xl p-3.5 justify-between"
                   >
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="flex-row items-center">
-                        <View className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/30 items-center justify-center mr-2">
-                          <Ionicons name="trophy" size={12} color="#fbbf24" />
+                        <View className="w-6 h-6 rounded-lg bg-warning/15 border border-warning/30 items-center justify-center mr-2">
+                          <Ionicons name="trophy" size={12} color={c.warning} />
                         </View>
-                        <Text className="text-amber-400 text-[10px] font-black uppercase tracking-wider">
+                        <Text className="text-warning text-[10px] font-black uppercase tracking-wider">
                           {isPending ? "Herausforderung" : "1v1 Duell"}
                         </Text>
                       </View>
-                      <View className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md">
-                        <Text className="text-slate-400 text-[9px] font-bold">
+                      <View className="bg-surface-alt border border-line px-2 py-0.5 rounded-md">
+                        <Text className="text-content-muted text-[9px] font-bold">
                           {timeLeft}
                         </Text>
                       </View>
                     </View>
 
                     <View className="mb-2.5">
-                      <Text className="text-white text-xs font-black" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black" numberOfLines={1}>
                         vs. {oppName}
                       </Text>
                       {isPending ? (
-                        <Text className="text-cyan-400 text-[10px] font-bold mt-0.5">
+                        <Text className="text-accent-ink text-[10px] font-bold mt-0.5">
                           Tippe zum Annehmen ⚔️
                         </Text>
                       ) : (
                         <View className="flex-row items-center justify-between mt-1">
-                          <Text className="text-amber-300 text-sm font-black tracking-wider">
+                          <Text className="text-warning text-sm font-black tracking-wider">
                             Du {myScore} : {oppScore} {oppName.split(" ")[0]}
                           </Text>
                           <Text
                             className={`text-[9px] font-black uppercase ${
-                              isLeading ? "text-emerald-400" : isTie ? "text-amber-400" : "text-rose-400"
+                              isLeading ? "text-success" : isTie ? "text-warning" : "text-danger"
                             }`}
                           >
                             {isLeading ? "Führung! 👑" : isTie ? "Gleichstand" : "Rückstand"}
@@ -1112,15 +1114,15 @@ export default function DashboardScreen() {
                       )}
                     </View>
 
-                    <View className="pt-2 border-t border-white/5 flex-row items-center justify-between">
-                      <Text className="text-slate-500 text-[9px] font-bold">
+                    <View className="pt-2 border-t border-line flex-row items-center justify-between">
+                      <Text className="text-content-faint text-[9px] font-bold">
                         {isPending ? "Wartet auf Start" : "Live-Punkterennen"}
                       </Text>
                       <View className="flex-row items-center">
-                        <Text className="text-amber-400 text-[9px] font-black uppercase mr-1">
+                        <Text className="text-warning text-[9px] font-black uppercase mr-1">
                           Zum Duell
                         </Text>
-                        <Ionicons name="arrow-forward" size={10} color="#fbbf24" />
+                        <Ionicons name="arrow-forward" size={10} color={c.warning} />
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -1140,21 +1142,21 @@ export default function DashboardScreen() {
                       triggerHaptic("light");
                       router.push("/games");
                     }}
-                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: CARD_BG }}
-                    className="border border-cyan-500/30 rounded-2xl p-3.5 justify-between"
+                    style={{ width: isDesktop ? 340 : screenWidth * 0.72, backgroundColor: c.surface }}
+                    className="border border-accent/30 rounded-2xl p-3.5 justify-between"
                   >
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="flex-row items-center">
-                        <View className="w-6 h-6 rounded-lg bg-cyan-400/15 border border-cyan-400/30 items-center justify-center mr-2">
-                          <Ionicons name="flag" size={12} color="#22d3ee" />
+                        <View className="w-6 h-6 rounded-lg bg-accent/15 border border-accent/30 items-center justify-center mr-2">
+                          <Ionicons name="flag" size={12} color={c.accent} />
                         </View>
-                        <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider">
+                        <Text className="text-accent-ink text-[10px] font-black uppercase tracking-wider">
                           Gruppen-Quest
                         </Text>
                       </View>
                       {timeLeft ? (
-                        <View className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md">
-                          <Text className="text-slate-400 text-[9px] font-bold">
+                        <View className="bg-surface-alt border border-line px-2 py-0.5 rounded-md">
+                          <Text className="text-content-muted text-[9px] font-bold">
                             {timeLeft}
                           </Text>
                         </View>
@@ -1162,31 +1164,31 @@ export default function DashboardScreen() {
                     </View>
 
                     <View className="mb-2.5">
-                      <Text className="text-white text-xs font-black mb-1.5" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black mb-1.5" numberOfLines={1}>
                         {quest.title}
                       </Text>
                       <View className="flex-row justify-between items-center mb-1">
-                        <Text className="text-slate-400 text-[9px] font-bold">
+                        <Text className="text-content-muted text-[9px] font-bold">
                           Fortschritt
                         </Text>
-                        <Text className="text-cyan-300 text-[9px] font-black">
+                        <Text className="text-accent-ink text-[9px] font-black">
                           {quest.currentValue}/{quest.targetValue} ({progressPct}%)
                         </Text>
                       </View>
-                      <View className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
-                        <View style={{ width: `${progressPct}%` }} className="h-full bg-cyan-400 rounded-full" />
+                      <View className="h-1.5 w-full bg-surface-alt rounded-full overflow-hidden">
+                        <View style={{ width: `${progressPct}%` }} className="h-full bg-accent rounded-full" />
                       </View>
                     </View>
 
-                    <View className="pt-2 border-t border-white/5 flex-row items-center justify-between">
-                      <Text className="text-slate-500 text-[9px] font-bold">
+                    <View className="pt-2 border-t border-line flex-row items-center justify-between">
+                      <Text className="text-content-faint text-[9px] font-bold">
                         Gemeinsam lösen
                       </Text>
                       <View className="flex-row items-center">
-                        <Text className="text-cyan-400 text-[9px] font-black uppercase mr-1">
+                        <Text className="text-accent-ink text-[9px] font-black uppercase mr-1">
                           Details
                         </Text>
-                        <Ionicons name="arrow-forward" size={10} color="#22d3ee" />
+                        <Ionicons name="arrow-forward" size={10} color={c.accent} />
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -1202,21 +1204,21 @@ export default function DashboardScreen() {
                   triggerHaptic("light");
                   router.push("/games");
                 }}
-                style={{ backgroundColor: CARD_BG }}
-                className="flex-1 border border-slate-800 rounded-2xl p-3 flex-row items-center"
+                style={{ backgroundColor: c.surface }}
+                className="flex-1 border border-line rounded-2xl p-3 flex-row items-center"
               >
-                <View className="w-8 h-8 rounded-xl bg-amber-400/10 border border-amber-400/20 items-center justify-center mr-2.5">
-                  <Ionicons name="trophy-outline" size={16} color="#fbbf24" />
+                <View className="w-8 h-8 rounded-xl bg-warning/10 border border-warning/20 items-center justify-center mr-2.5">
+                  <Ionicons name="trophy-outline" size={16} color={c.warning} />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-white text-[11px] font-black" numberOfLines={1}>
+                  <Text className="text-content text-[11px] font-black" numberOfLines={1}>
                     1v1 Duell
                   </Text>
-                  <Text className="text-slate-400 text-[9px] font-bold mt-0.5">
+                  <Text className="text-content-muted text-[9px] font-bold mt-0.5">
                     Freunde fordern
                   </Text>
                 </View>
-                <Ionicons name="add" size={14} color="#64748b" />
+                <Ionicons name="add" size={14} color={c.contentFaint} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1225,21 +1227,21 @@ export default function DashboardScreen() {
                   triggerHaptic("light");
                   router.push("/games");
                 }}
-                style={{ backgroundColor: CARD_BG }}
-                className="flex-1 border border-slate-800 rounded-2xl p-3 flex-row items-center"
+                style={{ backgroundColor: c.surface }}
+                className="flex-1 border border-line rounded-2xl p-3 flex-row items-center"
               >
-                <View className="w-8 h-8 rounded-xl bg-cyan-400/10 border border-cyan-400/20 items-center justify-center mr-2.5">
-                  <Ionicons name="flag-outline" size={16} color="#22d3ee" />
+                <View className="w-8 h-8 rounded-xl bg-accent/10 border border-accent/20 items-center justify-center mr-2.5">
+                  <Ionicons name="flag-outline" size={16} color={c.accent} />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-white text-[11px] font-black" numberOfLines={1}>
+                  <Text className="text-content text-[11px] font-black" numberOfLines={1}>
                     Quests
                   </Text>
-                  <Text className="text-slate-400 text-[9px] font-bold mt-0.5">
+                  <Text className="text-content-muted text-[9px] font-bold mt-0.5">
                     Gruppen-Ziele
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color="#64748b" />
+                <Ionicons name="chevron-forward" size={14} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
           )}
@@ -1257,20 +1259,20 @@ export default function DashboardScreen() {
             setShowScanner(true);
           }}
           accessibilityLabel="Getränk scannen"
-          className="mb-5 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 flex-row items-center px-4 py-4"
+          className="mb-5 rounded-2xl border border-accent/30 bg-accent/10 flex-row items-center px-4 py-4"
         >
-          <View className="bg-cyan-400 rounded-xl p-2.5">
-            <Ionicons name="barcode-outline" size={22} color="#020617" />
+          <View className="bg-accent rounded-xl p-2.5">
+            <Ionicons name="barcode-outline" size={22} color={c.onAccent} />
           </View>
           <View className="flex-1 ml-3.5">
-            <Text className="text-cyan-300 text-sm font-black uppercase tracking-wider">
+            <Text className="text-accent-ink text-sm font-black uppercase tracking-wider">
               Getränk scannen
             </Text>
-            <Text className="text-cyan-400/60 text-[10px] font-bold mt-0.5">
+            <Text className="text-accent-ink text-[10px] font-bold mt-0.5">
               Barcode einlesen und sofort eintragen
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#22d3ee" />
+          <Ionicons name="chevron-forward" size={18} color={c.accent} />
         </TouchableOpacity>
 
         {/* Check-in. Nur im Modus „Nur bei Check-in" — bei „Automatisch"
@@ -1280,25 +1282,25 @@ export default function DashboardScreen() {
           <View
             className={`mb-5 rounded-2xl border p-3.5 flex-row items-center ${
               checkInAktiv
-                ? "bg-emerald-500/10 border-emerald-400/30"
-                : "border-slate-800"
+                ? "bg-success/10 border-success/30"
+                : "border-line"
             }`}
-            style={checkInAktiv ? undefined : { backgroundColor: CARD_BG }}
+            style={checkInAktiv ? undefined : { backgroundColor: c.surface }}
           >
             <Ionicons
               name={checkInAktiv ? "location" : "location-outline"}
               size={18}
-              color={checkInAktiv ? "#10B981" : "#64748b"}
+              color={checkInAktiv ? c.success : c.contentFaint}
             />
             <View className="flex-1 ml-3">
               <Text
                 className={`text-[11px] font-black uppercase tracking-wider ${
-                  checkInAktiv ? "text-emerald-400" : "text-slate-400"
+                  checkInAktiv ? "text-success" : "text-content-muted"
                 }`}
               >
                 {checkInAktiv ? "Eingecheckt" : "Check-in"}
               </Text>
-              <Text className="text-slate-500 text-[10px] font-bold mt-0.5 leading-3.5">
+              <Text className="text-content-faint text-[10px] font-bold mt-0.5 leading-3.5">
                 {checkInAktiv
                   ? "Dein nächstes Getränk bekommt diesen Ort."
                   : "Ort einmalig festhalten — nur für dein nächstes Getränk."}
@@ -1306,7 +1308,7 @@ export default function DashboardScreen() {
             </View>
 
             {checkInBusy ? (
-              <ActivityIndicator size="small" color="#10B981" />
+              <ActivityIndicator size="small" color={c.success} />
             ) : checkInAktiv ? (
               <TouchableOpacity
                 onPress={() => {
@@ -1316,15 +1318,15 @@ export default function DashboardScreen() {
                 accessibilityLabel="Check-in verwerfen"
                 className="px-3 py-1.5"
               >
-                <Text className="text-slate-400 text-[10px] font-black uppercase">Verwerfen</Text>
+                <Text className="text-content-muted text-[10px] font-black uppercase">Verwerfen</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={handleCheckIn}
                 accessibilityLabel="Jetzt einchecken"
-                className="bg-emerald-500/15 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl"
+                className="bg-success/15 border border-success/30 px-3.5 py-1.5 rounded-xl"
               >
-                <Text className="text-emerald-400 text-[10px] font-black uppercase">Einchecken</Text>
+                <Text className="text-success text-[10px] font-black uppercase">Einchecken</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1333,11 +1335,11 @@ export default function DashboardScreen() {
             3. SCHNELLWAHL — drei Slots, ein Tipp
             ========================================== */}
         <View className="flex-row items-center justify-between mb-2.5">
-          <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+          <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider">
             Deine Favoriten
           </Text>
           <View className="flex-row items-center">
-            {savingPicks && <ActivityIndicator color="#22d3ee" size="small" className="mr-3" />}
+            {savingPicks && <ActivityIndicator color={c.accent} size="small" className="mr-3" />}
             {myDrinks.length > 0 && (
               <TouchableOpacity
                 onPress={() => {
@@ -1346,12 +1348,12 @@ export default function DashboardScreen() {
                 }}
                 accessibilityLabel={editMode ? "Bearbeiten beenden" : "Favoriten bearbeiten"}
                 className={`px-3 py-1.5 rounded-xl border ${
-                  editMode ? "bg-cyan-400/10 border-cyan-400/40" : "bg-slate-950 border-slate-800"
+                  editMode ? "bg-accent/10 border-accent/40" : "bg-surface-alt border-line"
                 }`}
               >
                 <Text
                   className={`text-[10px] font-black uppercase tracking-wider ${
-                    editMode ? "text-cyan-400" : "text-slate-400"
+                    editMode ? "text-accent-ink" : "text-content-muted"
                   }`}
                 >
                   {editMode ? "Fertig" : "Bearbeiten"}
@@ -1382,14 +1384,14 @@ export default function DashboardScreen() {
                   delayLongPress={350}
                   disabled={editMode}
                   accessibilityLabel={`${item.name} eintragen (lange drücken für Optionen)`}
-                  style={{ height: tileHeight, backgroundColor: CARD_BG, borderColor: `${accent}40` }}
+                  style={{ height: tileHeight, backgroundColor: c.surface, borderColor: `${accent}40` }}
                   className="border rounded-2xl p-2 items-center justify-center mb-1"
                 >
                   <Text className="text-2xl mb-1">{getCategoryIconChar(item.category, item.name)}</Text>
-                  <Text className="text-white text-[11px] font-black text-center" numberOfLines={1}>
+                  <Text className="text-content text-[11px] font-black text-center" numberOfLines={1}>
                     {item.name}
                   </Text>
-                  <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                  <Text className="text-content-faint text-[9px] font-bold mt-0.5">
                     {(item.volume / 1000).toFixed(2)}l · {item.abv}%
                   </Text>
                 </TouchableOpacity>
@@ -1400,24 +1402,24 @@ export default function DashboardScreen() {
                       onPress={() => moveQuickPick(index, -1)}
                       disabled={index === 0}
                       accessibilityLabel={`${item.name} nach vorne`}
-                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-950 border border-slate-800 mr-0.5 disabled:opacity-30"
+                      className="flex-1 py-1.5 items-center rounded-lg bg-surface-alt border border-line mr-0.5 disabled:opacity-30"
                     >
-                      <Ionicons name="chevron-back" size={12} color="#94a3b8" />
+                      <Ionicons name="chevron-back" size={12} color={c.contentMuted} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => toggleQuickPick(item)}
                       accessibilityLabel={`${item.name} aus den Favoriten entfernen`}
-                      className="flex-1 py-1.5 items-center rounded-lg bg-rose-500/10 border border-rose-500/30 mx-0.5"
+                      className="flex-1 py-1.5 items-center rounded-lg bg-danger/10 border border-danger/30 mx-0.5"
                     >
-                      <Ionicons name="close" size={12} color="#f43f5e" />
+                      <Ionicons name="close" size={12} color={c.danger} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => moveQuickPick(index, 1)}
                       disabled={index === myDrinks.length - 1}
                       accessibilityLabel={`${item.name} nach hinten`}
-                      className="flex-1 py-1.5 items-center rounded-lg bg-slate-950 border border-slate-800 ml-0.5 disabled:opacity-30"
+                      className="flex-1 py-1.5 items-center rounded-lg bg-surface-alt border border-line ml-0.5 disabled:opacity-30"
                     >
-                      <Ionicons name="chevron-forward" size={12} color="#94a3b8" />
+                      <Ionicons name="chevron-forward" size={12} color={c.contentMuted} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1439,10 +1441,10 @@ export default function DashboardScreen() {
               }}
               accessibilityLabel="Favorit hinzufügen"
               style={{ width: tileWidth, height: tileHeight }}
-              className="border border-dashed border-slate-700 rounded-2xl items-center justify-center mb-1"
+              className="border border-dashed border-line-strong rounded-2xl items-center justify-center mb-1"
             >
-              <Ionicons name="add" size={20} color="#475569" />
-              <Text className="text-slate-600 text-[9px] font-black uppercase tracking-wider mt-1 text-center px-1">
+              <Ionicons name="add" size={20} color={c.contentFaint} />
+              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider mt-1 text-center px-1">
                 Favorit
               </Text>
             </TouchableOpacity>
@@ -1452,9 +1454,9 @@ export default function DashboardScreen() {
         {/* Angebot nach einem Scan. Bewusst ein Streifen und kein Dialog: das
             Getränk ist schon geloggt, die Frage darf niemanden aufhalten. */}
         {pendingQuickPick && (
-          <View className="mb-5 bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-3.5 flex-row items-center">
-            <Ionicons name="add-circle-outline" size={18} color="#22d3ee" />
-            <Text className="text-cyan-300/90 text-[11px] leading-4 ml-2.5 flex-1">
+          <View className="mb-5 bg-accent/10 border border-accent/30 rounded-2xl p-3.5 flex-row items-center">
+            <Ionicons name="add-circle-outline" size={18} color={c.accent} />
+            <Text className="text-accent-ink text-[11px] leading-4 ml-2.5 flex-1">
               „{pendingQuickPick.name}“ zu den Favoriten?
             </Text>
             <TouchableOpacity
@@ -1462,7 +1464,7 @@ export default function DashboardScreen() {
               accessibilityLabel="Nicht hinzufügen"
               className="px-3 py-1.5"
             >
-              <Text className="text-slate-400 text-[10px] font-black uppercase">Nein</Text>
+              <Text className="text-content-muted text-[10px] font-black uppercase">Nein</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={async () => {
@@ -1471,9 +1473,9 @@ export default function DashboardScreen() {
                 await toggleQuickPick(drink);
               }}
               accessibilityLabel={`${pendingQuickPick.name} zu den Favoriten hinzufügen`}
-              className="bg-cyan-400 px-3 py-1.5 rounded-xl"
+              className="bg-accent px-3 py-1.5 rounded-xl"
             >
-              <Text className="text-slate-950 text-[10px] font-black uppercase">Ja</Text>
+              <Text className="text-on-accent text-[10px] font-black uppercase">Ja</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1497,15 +1499,19 @@ export default function DashboardScreen() {
                 }}
                 accessibilityLabel={`Kategorie ${tab.label}`}
                 style={{
-                  backgroundColor: active ? `${tab.accent}1A` : CARD_BG,
-                  borderColor: active ? `${tab.accent}66` : "#1e293b",
+                  backgroundColor: active ? `${tab.accent}1A` : c.surface,
+                  borderColor: active ? `${tab.accent}66` : c.line,
                 }}
                 className="flex-1 border rounded-xl py-2.5 items-center"
               >
                 <Text className="text-base">{tab.icon}</Text>
                 <Text
                   className="text-[9px] font-black uppercase tracking-wider mt-0.5"
-                  style={{ color: active ? tab.accent : "#64748b" }}
+                  // Die Kennfarbe der Kategorie traegt auf Dunkel gut, auf
+                  // Weiss scheitert sie am Kontrast (#F59E0B kommt auf 2:1).
+                  // Dort uebernimmt die Textfarbe; erkennbar bleibt die
+                  // Kategorie ueber Tonung, Rahmen und Symbol.
+                  style={{ color: active ? (scheme === "dark" ? tab.accent : c.content) : c.contentFaint }}
                   numberOfLines={1}
                 >
                   {tab.label}
@@ -1516,8 +1522,8 @@ export default function DashboardScreen() {
         </View>
 
         {categoryCards.length === 0 ? (
-          <View className="py-8 items-center rounded-2xl border border-slate-800" style={{ backgroundColor: CARD_BG }}>
-            <Text className="text-slate-500 text-[11px] font-bold">Hier ist noch nichts hinterlegt.</Text>
+          <View className="py-8 items-center rounded-2xl border border-line" style={{ backgroundColor: c.surface }}>
+            <Text className="text-content-faint text-[11px] font-bold">Hier ist noch nichts hinterlegt.</Text>
           </View>
         ) : (
           <View className={isDesktop ? "flex-row" : ""} style={isDesktop ? { gap } : undefined}>
@@ -1537,15 +1543,15 @@ export default function DashboardScreen() {
                   }}
                   delayLongPress={350}
                   accessibilityLabel={`${item.name} eintragen (lange drücken für Optionen)`}
-                  style={{ backgroundColor: CARD_BG, borderColor: `${accent}33` }}
+                  style={{ backgroundColor: c.surface, borderColor: `${accent}33` }}
                   className={`border rounded-2xl px-3.5 py-3 flex-row items-center mb-2 ${isDesktop ? "flex-1" : ""}`}
                 >
                   <Text className="text-xl">{getCategoryIconChar(item.category, item.name)}</Text>
                   <View className="flex-1 ml-3">
-                    <Text className="text-white text-xs font-black" numberOfLines={1}>
+                    <Text className="text-content text-xs font-black" numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                    <Text className="text-content-faint text-[9px] font-bold mt-0.5">
                       {(item.volume / 1000).toFixed(2)}l · {item.abv}% Vol.
                     </Text>
                   </View>
@@ -1573,8 +1579,8 @@ export default function DashboardScreen() {
           accessibilityLabel={`Alle ${activeCategoryLabel} anzeigen und suchen`}
           className="mt-1 mb-8 flex-row items-center justify-center py-3"
         >
-          <Ionicons name="search-outline" size={13} color="#64748b" />
-          <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider ml-1.5">
+          <Ionicons name="search-outline" size={13} color={c.contentFaint} />
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider ml-1.5">
             Alle {activeCategoryLabel} anzeigen ({categoryTotal})
           </Text>
         </TouchableOpacity>
@@ -1583,12 +1589,12 @@ export default function DashboardScreen() {
             6. RECENT LOGS SECTION (LAST 3 + UNDO)
             ========================================== */}
         <View className="mb-12">
-          <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-3">Letzte 3 Drinks</Text>
+          <Text className="text-content-muted text-[10px] font-black uppercase tracking-widest mb-3">Letzte 3 Drinks</Text>
           
           {lastThreeLogs.length === 0 ? (
-            <View className="bg-slate-900/10 border border-dashed border-slate-800 rounded-3xl p-6 items-center">
-              <Ionicons name="beer-outline" size={20} color="#334155" className="mb-1.5" />
-              <Text className="text-slate-500 text-[9px] font-black uppercase tracking-wider text-center">
+            <View className="bg-surface/10 border border-dashed border-line rounded-3xl p-6 items-center">
+              <Ionicons name="beer-outline" size={20} color={c.lineStrong} className="mb-1.5" />
+              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider text-center">
                 Noch keine Drinks eingetragen
               </Text>
             </View>
@@ -1599,21 +1605,21 @@ export default function DashboardScreen() {
               return (
                 <View
                   key={log.id}
-                  style={{ backgroundColor: CARD_BG }}
-                  className="flex-row items-center justify-between border border-slate-800 rounded-2xl p-3.5 mb-2"
+                  style={{ backgroundColor: c.surface }}
+                  className="flex-row items-center justify-between border border-line rounded-2xl p-3.5 mb-2"
                 >
                   <View className="flex-1 pr-4">
-                    <Text className="text-white text-xs font-black">{details.name}</Text>
-                    <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                    <Text className="text-content text-xs font-black">{details.name}</Text>
+                    <Text className="text-content-faint text-[9px] font-bold mt-0.5">
                       {(details.volume / 1000).toFixed(2)}l • {details.abv}% Vol. • {logTime} Uhr
                     </Text>
                   </View>
                   <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={() => handleToggleDeletePrompt(log.id, details.name)}
-                    className="bg-slate-950 p-2.5 rounded-xl border border-rose-500/20 active:bg-rose-500/15"
+                    className="bg-surface-alt p-2.5 rounded-xl border border-danger/20 active:bg-danger/15"
                   >
-                    <Ionicons name="close" size={16} color="#f43f5e" />
+                    <Ionicons name="close" size={16} color={c.danger} />
                   </TouchableOpacity>
                 </View>
               );
@@ -1637,31 +1643,31 @@ export default function DashboardScreen() {
         onRequestClose={() => setShowPickerModal(false)}
       >
         <View className="flex-1 bg-black/80 justify-end">
-          <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[85%]">
+          <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             <View className="flex-row justify-between items-center mb-1">
-              <Text className="text-white text-base font-black uppercase tracking-wider">
+              <Text className="text-content text-base font-black uppercase tracking-wider">
                 {pickerCategory ? activeCategoryLabel : "Alle Getränke"}
               </Text>
               <TouchableOpacity onPress={() => setShowPickerModal(false)} className="p-1">
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
-            <Text className="text-slate-500 text-[10px] font-semibold mb-4">
+            <Text className="text-content-faint text-[10px] font-semibold mb-4">
               Antippen trägt ein · Stern macht zum Favoriten ({myDrinks.length}/{QUICK_PICK_SLOTS})
             </Text>
 
-            <View className="bg-slate-900 border border-white/5 rounded-2xl flex-row items-center px-4 py-3 mb-4">
-              <Ionicons name="search" size={16} color="#475569" />
+            <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-3 mb-4">
+              <Ionicons name="search" size={16} color={c.contentFaint} />
               <TextInput
                 placeholder={pickerCategory ? "Im ganzen Katalog suchen…" : "Getränk suchen…"}
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 value={drinkSearch}
                 onChangeText={setDrinkSearch}
-                className="flex-1 text-white font-bold text-sm ml-3"
+                className="flex-1 text-content font-bold text-sm ml-3"
               />
               {drinkSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setDrinkSearch("")} accessibilityLabel="Suche leeren">
-                  <Ionicons name="close-circle" size={16} color="#475569" />
+                  <Ionicons name="close-circle" size={16} color={c.contentFaint} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1669,7 +1675,7 @@ export default function DashboardScreen() {
             <ScrollView className="mb-4">
               {catalogSearchResults.length === 0 ? (
                 <View className="py-10 items-center">
-                  <Text className="text-slate-500 text-xs font-bold text-center">
+                  <Text className="text-content-faint text-xs font-bold text-center">
                     Nichts gefunden. Lege das Getränk unten selbst an oder scanne den Barcode.
                   </Text>
                 </View>
@@ -1682,8 +1688,8 @@ export default function DashboardScreen() {
                       key={item.id}
                       className="flex-row items-center rounded-2xl mb-2 border pr-2"
                       style={{
-                        backgroundColor: chosen ? `${accent}14` : CARD_BG,
-                        borderColor: chosen ? `${accent}66` : "#1e293b",
+                        backgroundColor: chosen ? `${accent}14` : c.surface,
+                        borderColor: chosen ? `${accent}66` : c.line,
                       }}
                     >
                       {/* Antippen trägt ein. Das ist der häufigere Wunsch: wer
@@ -1701,10 +1707,10 @@ export default function DashboardScreen() {
                           {getCategoryIconChar(item.category, item.name)}
                         </Text>
                         <View className="flex-1">
-                          <Text className="text-white text-xs font-black" numberOfLines={1}>
+                          <Text className="text-content text-xs font-black" numberOfLines={1}>
                             {item.name}
                           </Text>
-                          <Text className="text-slate-500 text-[9px] font-bold mt-0.5">
+                          <Text className="text-content-faint text-[9px] font-bold mt-0.5">
                             {(item.volume / 1000).toFixed(2)}l · {item.abv}% · {item.category}
                           </Text>
                         </View>
@@ -1723,7 +1729,7 @@ export default function DashboardScreen() {
                         <Ionicons
                           name={chosen ? "star" : "star-outline"}
                           size={18}
-                          color={chosen ? accent : "#475569"}
+                          color={chosen ? accent : c.contentFaint}
                         />
                       </TouchableOpacity>
                     </View>
@@ -1739,9 +1745,9 @@ export default function DashboardScreen() {
                 setPendingEan(null);
                 setShowAddModal(true);
               }}
-              className="w-full bg-slate-900 border border-white/10 py-3.5 rounded-2xl items-center active:scale-95"
+              className="w-full bg-surface border border-line py-3.5 rounded-2xl items-center active:scale-95"
             >
-              <Text className="text-slate-300 font-black text-xs uppercase tracking-wider">
+              <Text className="text-content-muted font-black text-xs uppercase tracking-wider">
                 + Eigenes Getränk anlegen
               </Text>
             </TouchableOpacity>
@@ -1754,9 +1760,9 @@ export default function DashboardScreen() {
           ========================================== */}
       <Modal visible={showAddModal} transparent={true} animationType="slide" onRequestClose={() => setShowAddModal(false)}>
         <View className="flex-1 bg-black/80 justify-end">
-          <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10">
+          <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-5">
-              <Text className="text-white text-base font-black uppercase tracking-wider">
+              <Text className="text-content text-base font-black uppercase tracking-wider">
                 {pendingEan ? "Neues Getränk benennen" : "Eigenes Getränk erstellen"}
               </Text>
               <TouchableOpacity
@@ -1766,14 +1772,14 @@ export default function DashboardScreen() {
                 }}
                 className="p-1"
               >
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
 
             {pendingEan && (
-              <View className="bg-cyan-400/10 border border-cyan-400/20 rounded-2xl p-3.5 mb-4 flex-row">
-                <Ionicons name="barcode-outline" size={16} color="#22d3ee" />
-                <Text className="text-cyan-300/90 text-[11px] leading-4 ml-2.5 flex-1">
+              <View className="bg-accent/10 border border-accent/20 rounded-2xl p-3.5 mb-4 flex-row">
+                <Ionicons name="barcode-outline" size={16} color={c.accent} />
+                <Text className="text-accent-ink text-[11px] leading-4 ml-2.5 flex-1">
                   Diesen Barcode kennen wir noch nicht ({pendingEan}). Sag uns, was es ist — dann
                   findet ihn beim nächsten Mal jeder sofort.
                 </Text>
@@ -1781,17 +1787,17 @@ export default function DashboardScreen() {
             )}
 
             {/* Drink Name */}
-            <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1.5">Getränke-Name</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-1.5">Getränke-Name</Text>
             <TextInput
               placeholder="z. B. Craft Beer, Hauswein, Gin Tonic"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.contentFaint}
               value={formName}
               onChangeText={setFormName}
-              className="bg-slate-900 border border-white/5 rounded-2xl px-4 py-3.5 text-white font-bold text-sm mb-4"
+              className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content font-bold text-sm mb-4"
             />
 
             {/* Category Select */}
-            <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1.5">Kategorie</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-1.5">Kategorie</Text>
             <View className="flex-row flex-wrap gap-1.5 mb-4">
               {([
                 { key: "Bier", label: "Biere" },
@@ -1811,10 +1817,10 @@ export default function DashboardScreen() {
                       }
                     }}
                     className={`px-3 py-2.5 rounded-xl border ${
-                      isActive ? "bg-cyan-400/10 border-cyan-400/35" : "bg-slate-900 border-white/5"
+                      isActive ? "bg-accent/10 border-accent/35" : "bg-surface border-line"
                     }`}
                   >
-                    <Text className={`text-xs font-black uppercase tracking-wider ${isActive ? "text-cyan-400" : "text-slate-400"}`}>
+                    <Text className={`text-xs font-black uppercase tracking-wider ${isActive ? "text-accent-ink" : "text-content-muted"}`}>
                       {cat.label}
                     </Text>
                   </TouchableOpacity>
@@ -1823,53 +1829,53 @@ export default function DashboardScreen() {
             </View>
 
             {/* Volume in ml */}
-            <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1.5">Menge (ml)</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-1.5">Menge (ml)</Text>
             <TextInput
               placeholder="z. B. 330, 500"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.contentFaint}
               keyboardType="number-pad"
               value={formVolume}
               onChangeText={setFormVolume}
-              className="bg-slate-900 border border-white/5 rounded-2xl px-4 py-3.5 text-white font-bold text-sm mb-4"
+              className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content font-bold text-sm mb-4"
             />
 
             {/* ABV */}
-            <Text className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1.5">Alkoholgehalt (% Vol.)</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-wider mb-1.5">Alkoholgehalt (% Vol.)</Text>
             <TextInput
               placeholder="z. B. 4.9"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.contentFaint}
               keyboardType="decimal-pad"
               editable={formCategory !== "Alkoholfrei"}
               value={formCategory === "Alkoholfrei" ? "0.0" : formAbv}
               onChangeText={setFormAbv}
-              className="bg-slate-900 border border-white/5 rounded-2xl px-4 py-3.5 text-white font-bold text-sm mb-6"
+              className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content font-bold text-sm mb-6"
             />
 
             {/* Action buttons */}
             {isValuesTooHigh && (
-              <View className="mb-4 bg-rose-500/10 border border-rose-500/20 p-3 rounded-2xl flex-row items-center space-x-2">
-                <Ionicons name="warning" size={16} color="#ef4444" />
-                <Text className="text-rose-500 text-xs font-black">Werte zu hoch!</Text>
+              <View className="mb-4 bg-danger/10 border border-danger/20 p-3 rounded-2xl flex-row items-center space-x-2">
+                <Ionicons name="warning" size={16} color={c.danger} />
+                <Text className="text-danger text-xs font-black">Werte zu hoch!</Text>
               </View>
             )}
 
             <View className="flex-row space-x-3">
               <TouchableOpacity
                 onPress={() => setShowAddModal(false)}
-                className="flex-1 bg-slate-900 border border-white/5 py-4 rounded-2xl items-center"
+                className="flex-1 bg-surface border border-line py-4 rounded-2xl items-center"
               >
-                <Text className="text-slate-400 font-black text-xs uppercase tracking-wider">Abbrechen</Text>
+                <Text className="text-content-muted font-black text-xs uppercase tracking-wider">Abbrechen</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleCreateCustomDrink}
                 disabled={isValuesTooHigh}
                 className={`flex-1 py-4 rounded-2xl items-center shadow-lg ${
                   isValuesTooHigh
-                    ? "bg-slate-800 shadow-none opacity-40"
-                    : "bg-cyan-400 shadow-cyan-500/20 active:scale-95"
+                    ? "bg-surface-alt shadow-none opacity-40"
+                    : "bg-accent active:scale-95"
                 }`}
               >
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Speichern</Text>
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Speichern</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1905,7 +1911,7 @@ export default function DashboardScreen() {
         onRequestClose={() => setPortionOptionsDrink(null)}
       >
         <View className="flex-1 bg-black/80 justify-end">
-          <View className="bg-slate-950 border-t border-white/10 rounded-t-3xl p-6 pb-10 max-h-[85%]">
+          <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             {portionOptionsDrink && (() => {
               const accent = accentForCategory(portionOptionsDrink.category);
               const presets = getVolumePresets(portionOptionsDrink.category, portionOptionsDrink.volume);
@@ -1925,21 +1931,21 @@ export default function DashboardScreen() {
                         {getCategoryIconChar(portionOptionsDrink.category, portionOptionsDrink.name)}
                       </Text>
                       <View className="flex-1">
-                        <Text className="text-white text-base font-black uppercase tracking-wider" numberOfLines={1}>
+                        <Text className="text-content text-base font-black uppercase tracking-wider" numberOfLines={1}>
                           {portionOptionsDrink.name}
                         </Text>
-                        <Text className="text-slate-400 text-[10px] font-bold">
+                        <Text className="text-content-muted text-[10px] font-bold">
                           {portionOptionsDrink.category} · {portionOptionsDrink.abv}% Vol.
                         </Text>
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => setPortionOptionsDrink(null)} className="p-1">
-                      <Ionicons name="close" size={24} color="#64748b" />
+                      <Ionicons name="close" size={24} color={c.contentFaint} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Portionsgröße / Volumen */}
-                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                  <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
                     Portionsgröße
                   </Text>
                   <View className="flex-row flex-wrap gap-2 mb-4">
@@ -1953,19 +1959,19 @@ export default function DashboardScreen() {
                             setSelectedPortionVolume(preset.volume);
                           }}
                           style={{
-                            backgroundColor: isSelected ? `${accent}20` : CARD_BG,
-                            borderColor: isSelected ? accent : "#334155",
+                            backgroundColor: isSelected ? `${accent}20` : c.surface,
+                            borderColor: isSelected ? accent : c.lineStrong,
                           }}
                           className="border px-3.5 py-2.5 rounded-xl flex-row items-center"
                         >
                           <Text
                             className="text-xs font-black"
-                            style={{ color: isSelected ? accent : "#cbd5e1" }}
+                            style={{ color: isSelected ? accent : c.contentMuted }}
                           >
                             {preset.label}
                           </Text>
                           {preset.volume === portionOptionsDrink.volume && (
-                            <Text className="text-slate-500 text-[9px] font-bold ml-1.5">
+                            <Text className="text-content-faint text-[9px] font-bold ml-1.5">
                               (Standard)
                             </Text>
                           )}
@@ -1975,24 +1981,24 @@ export default function DashboardScreen() {
                   </View>
 
                   {/* Anzahl / Runde */}
-                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                  <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
                     Anzahl / Runde
                   </Text>
-                  <View className="flex-row items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-2 mb-4">
+                  <View className="flex-row items-center justify-between bg-surface border border-line rounded-2xl p-2 mb-4">
                     <TouchableOpacity
                       onPress={() => {
                         triggerHaptic("light");
                         setSelectedPortionCount((c) => Math.max(1, c - 1));
                       }}
                       disabled={selectedPortionCount <= 1}
-                      className="bg-slate-950 border border-slate-800 p-3 rounded-xl disabled:opacity-30"
+                      className="bg-surface-alt border border-line p-3 rounded-xl disabled:opacity-30"
                     >
-                      <Ionicons name="remove" size={18} color="#cbd5e1" />
+                      <Ionicons name="remove" size={18} color={c.contentMuted} />
                     </TouchableOpacity>
 
                     <View className="items-center px-4">
-                      <Text className="text-white text-lg font-black">{selectedPortionCount}x</Text>
-                      <Text className="text-slate-400 text-[10px] font-bold">
+                      <Text className="text-content text-lg font-black">{selectedPortionCount}x</Text>
+                      <Text className="text-content-muted text-[10px] font-bold">
                         {((selectedPortionVolume * selectedPortionCount) / 1000).toFixed(2)} l gesamt
                       </Text>
                     </View>
@@ -2003,9 +2009,9 @@ export default function DashboardScreen() {
                         setSelectedPortionCount((c) => Math.min(10, c + 1));
                       }}
                       disabled={selectedPortionCount >= 10}
-                      className="bg-slate-950 border border-slate-800 p-3 rounded-xl disabled:opacity-30"
+                      className="bg-surface-alt border border-line p-3 rounded-xl disabled:opacity-30"
                     >
-                      <Ionicons name="add" size={18} color="#cbd5e1" />
+                      <Ionicons name="add" size={18} color={c.contentMuted} />
                     </TouchableOpacity>
                   </View>
 
@@ -2027,13 +2033,13 @@ export default function DashboardScreen() {
                           }}
                           className={`flex-1 py-2 rounded-xl border items-center ${
                             isChipActive
-                              ? "bg-cyan-400/15 border-cyan-400/40"
-                              : "bg-slate-900 border-slate-800"
+                              ? "bg-accent/15 border-accent/40"
+                              : "bg-surface border-line"
                           }`}
                         >
                           <Text
                             className={`text-[10px] font-black ${
-                              isChipActive ? "text-cyan-400" : "text-slate-400"
+                              isChipActive ? "text-accent-ink" : "text-content-muted"
                             }`}
                           >
                             {chip.label}
@@ -2047,9 +2053,9 @@ export default function DashboardScreen() {
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={handleLogWithPortion}
-                    className="w-full bg-cyan-400 py-4 rounded-2xl items-center shadow-lg shadow-cyan-500/20 active:scale-95"
+                    className="w-full bg-accent py-4 rounded-2xl items-center shadow-lg active:scale-95"
                   >
-                    <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                       {selectedPortionCount}x {portionOptionsDrink.name} eintragen (+{totalEstimatedPoints} XP)
                     </Text>
                   </TouchableOpacity>
@@ -2074,17 +2080,17 @@ export default function DashboardScreen() {
             maxWidth: 600,
             alignSelf: "center",
           }}
-          className="bg-slate-900/95 border border-cyan-400/40 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md flex-row items-center justify-between"
+          className="bg-surface/95 border border-accent/40 rounded-2xl p-3.5 shadow-2xl backdrop-blur-md flex-row items-center justify-between"
         >
           <View className="flex-row items-center flex-1 mr-3">
-            <View className="bg-cyan-400/20 p-2 rounded-xl border border-cyan-400/30 mr-2.5">
-              <Ionicons name="checkmark" size={16} color="#22d3ee" />
+            <View className="bg-accent/20 p-2 rounded-xl border border-accent/30 mr-2.5">
+              <Ionicons name="checkmark" size={16} color={c.accent} />
             </View>
             <View className="flex-1">
-              <Text className="text-white text-xs font-black" numberOfLines={1}>
+              <Text className="text-content text-xs font-black" numberOfLines={1}>
                 {undoState.drinkName} geloggt
               </Text>
-              <Text className="text-cyan-400 text-[10px] font-bold">
+              <Text className="text-accent-ink text-[10px] font-bold">
                 +{undoState.pointsEarned} XP · Läuft in 5 Sek. ab
               </Text>
             </View>
@@ -2095,10 +2101,10 @@ export default function DashboardScreen() {
               activeOpacity={0.8}
               onPress={handleUndo}
               accessibilityLabel="Eintrag rückgängig machen"
-              className="bg-amber-400 px-3.5 py-2 rounded-xl flex-row items-center mr-1.5 shadow-md shadow-amber-500/20"
+              className="bg-warning px-3.5 py-2 rounded-xl flex-row items-center mr-1.5 shadow-md"
             >
-              <Ionicons name="arrow-undo" size={13} color="#020617" />
-              <Text className="text-slate-950 text-[11px] font-black uppercase tracking-wider ml-1">
+              <Ionicons name="arrow-undo" size={13} color={c.onAccent} />
+              <Text className="text-on-accent text-[11px] font-black uppercase tracking-wider ml-1">
                 Rückgängig
               </Text>
             </TouchableOpacity>
@@ -2111,7 +2117,7 @@ export default function DashboardScreen() {
               accessibilityLabel="Schließen"
               className="p-1.5"
             >
-              <Ionicons name="close" size={18} color="#64748b" />
+              <Ionicons name="close" size={18} color={c.contentFaint} />
             </TouchableOpacity>
           </View>
         </View>

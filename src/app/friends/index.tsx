@@ -22,6 +22,7 @@ import { Avatar } from "@/components/Avatar";
 import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
+import { useThemeColors } from "@/services/theme";
 
 type TabKey = "friends" | "groups" | "events";
 
@@ -59,6 +60,7 @@ const eventRestzeit = (endTimestamp: string) => {
  * Höhe und seinen eigenen Scrollbereich.
  */
 export default function FriendsScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const { unreadFor } = useUnread();
 
@@ -374,22 +376,22 @@ export default function FriendsScreen() {
     <View className="flex-1">
       {/* Suchfeld bleibt stehen, die Treffer scrollen darunter. */}
       <View className="px-4 pt-4 pb-3">
-        <View className="flex-row items-center bg-slate-900 border border-white/5 rounded-2xl px-3">
-          <Ionicons name="search" size={15} color="#64748b" />
+        <View className="flex-row items-center bg-surface border border-line rounded-2xl px-3">
+          <Ionicons name="search" size={15} color={c.contentFaint} />
           <TextInput
             placeholder="Nutzer suchen..."
-            placeholderTextColor="#475569"
+            placeholderTextColor={c.contentFaint}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
             autoCorrect={false}
             accessibilityLabel="Nutzer suchen"
-            className="flex-1 py-3 px-2 text-white text-xs font-bold"
+            className="flex-1 py-3 px-2 text-content text-xs font-bold"
           />
-          {isSearching && <ActivityIndicator size="small" color="#c084fc" />}
+          {isSearching && <ActivityIndicator size="small" color={c.accent2} />}
           {!isSearching && searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery("")} className="p-1">
-              <Ionicons name="close-circle" size={16} color="#475569" />
+              <Ionicons name="close-circle" size={16} color={c.contentFaint} />
             </TouchableOpacity>
           )}
         </View>
@@ -403,7 +405,7 @@ export default function FriendsScreen() {
       >
         {searchQuery.trim().length > 0 && (
           <View className="mb-6">
-            <Text className="text-cyan-400 text-[10px] font-black uppercase tracking-wider mb-3">
+            <Text className="text-accent-ink text-[10px] font-black uppercase tracking-wider mb-3">
               {isSearching
                 ? "Suche..."
                 : searchResults.length > 0
@@ -412,8 +414,8 @@ export default function FriendsScreen() {
             </Text>
 
             {!isSearching && searchResults.length === 0 && (
-              <View className="bg-slate-900/60 border border-white/5 rounded-2xl p-4">
-                <Text className="text-slate-400 text-[11px] text-center leading-relaxed">
+              <View className="bg-surface/60 border border-line rounded-2xl p-4">
+                <Text className="text-content-muted text-[11px] text-center leading-relaxed">
                   Niemand mit diesem Namen gefunden. Achte auf die genaue Schreibweise — der Name
                   muss so eingegeben werden, wie er bei der Registrierung gewählt wurde.
                 </Text>
@@ -427,20 +429,20 @@ export default function FriendsScreen() {
               return (
                 <View
                   key={resUser.id}
-                  className="bg-slate-900 border border-cyan-500/20 rounded-2xl p-3 flex-row justify-between items-center mb-2"
+                  className="bg-surface border border-accent/20 rounded-2xl p-3 flex-row justify-between items-center mb-2"
                 >
                   <View className="flex-row items-center flex-1 mr-2">
                     <Avatar
                       uri={resUser.avatar}
                       name={resUser.name}
                       size={36}
-                      className="border border-white/10"
+                      className="border border-line"
                     />
                     <View className="flex-1 ml-3">
-                      <Text className="text-white text-xs font-black" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black" numberOfLines={1}>
                         {resUser.name}
                       </Text>
-                      <Text className="text-cyan-400/90 text-[10px] font-bold">
+                      <Text className="text-accent-ink text-[10px] font-bold">
                         Lv. {resUser.currentLevel || resUser.level || 1} ·{" "}
                         {resUser.title || "Neuling"}
                       </Text>
@@ -449,28 +451,28 @@ export default function FriendsScreen() {
 
                   {alreadyFriend ? (
                     <View className="flex-row items-center px-3 py-1.5">
-                      <Ionicons name="checkmark-circle" size={14} color="#34d399" />
-                      <Text className="text-emerald-400 font-black text-[10px] uppercase ml-1">
+                      <Ionicons name="checkmark-circle" size={14} color={c.success} />
+                      <Text className="text-success font-black text-[10px] uppercase ml-1">
                         Befreundet
                       </Text>
                     </View>
                   ) : incomingRequest ? (
                     <TouchableOpacity
                       onPress={() => handleAcceptFriendRequest(resUser.name)}
-                      className="bg-purple-500 px-3 py-1.5 rounded-xl flex-row items-center"
+                      className="bg-accent-2 px-3 py-1.5 rounded-xl flex-row items-center"
                     >
-                      <Ionicons name="checkmark" size={12} color="#020617" />
-                      <Text className="text-slate-950 font-black text-[10px] uppercase ml-1">
+                      <Ionicons name="checkmark" size={12} color={c.onAccent} />
+                      <Text className="text-on-accent font-black text-[10px] uppercase ml-1">
                         Annehmen
                       </Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       onPress={() => handleSendFriendRequest(resUser.name)}
-                      className="bg-cyan-400 px-3 py-1.5 rounded-xl flex-row items-center"
+                      className="bg-accent px-3 py-1.5 rounded-xl flex-row items-center"
                     >
-                      <Ionicons name="person-add" size={12} color="#020617" />
-                      <Text className="text-slate-950 font-black text-[10px] uppercase ml-1">
+                      <Ionicons name="person-add" size={12} color={c.onAccent} />
+                      <Text className="text-on-accent font-black text-[10px] uppercase ml-1">
                         Anfragen
                       </Text>
                     </TouchableOpacity>
@@ -483,40 +485,40 @@ export default function FriendsScreen() {
 
         {loading ? (
           <View className="py-12 justify-center items-center">
-            <ActivityIndicator size="large" color="#a855f7" />
+            <ActivityIndicator size="large" color={c.accent2} />
           </View>
         ) : (
           <>
             {pendingRequests.length > 0 && (
               <View className="mb-6">
-                <Text className="text-purple-400 text-[10px] font-black uppercase tracking-wider mb-3">
+                <Text className="text-accent-2-ink text-[10px] font-black uppercase tracking-wider mb-3">
                   Ausstehende Anfragen ({pendingRequests.length})
                 </Text>
                 {pendingRequests.map((req) => (
                   <View
                     key={req.id}
-                    className="bg-slate-900 border border-purple-500/15 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                    className="bg-surface border border-accent-2/15 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
                   >
                     <View className="flex-row items-center flex-1 mr-2">
                       <Avatar
                         uri={req.avatar}
                         name={req.name}
                         size={32}
-                        className="border border-white/10"
+                        className="border border-line"
                       />
                       <View className="flex-1 ml-3">
-                        <Text className="text-white text-xs font-black">{req.name}</Text>
-                        <Text className="text-purple-400 text-[9px] font-bold">
+                        <Text className="text-content text-xs font-black">{req.name}</Text>
+                        <Text className="text-accent-2-ink text-[9px] font-bold">
                           @{req.name.toLowerCase().replace(/\s+/g, "_")}
                         </Text>
                       </View>
                     </View>
                     <TouchableOpacity
                       onPress={() => handleAcceptFriendRequest(req.name)}
-                      className="bg-purple-500 px-3 py-1.5 rounded-xl flex-row items-center"
+                      className="bg-accent-2 px-3 py-1.5 rounded-xl flex-row items-center"
                     >
-                      <Ionicons name="checkmark" size={14} color="#020617" />
-                      <Text className="text-slate-950 font-black text-[10px] uppercase ml-1">
+                      <Ionicons name="checkmark" size={14} color={c.onAccent} />
+                      <Text className="text-on-accent font-black text-[10px] uppercase ml-1">
                         Annehmen
                       </Text>
                     </TouchableOpacity>
@@ -525,16 +527,16 @@ export default function FriendsScreen() {
               </View>
             )}
 
-            <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-3">
+            <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-3">
               Meine Freunde ({friendsList.length})
             </Text>
             {friendsList.length === 0 ? (
-              <View className="py-12 bg-slate-900/40 border border-white/5 rounded-2xl items-center justify-center">
-                <Ionicons name="people-outline" size={32} color="#475569" />
-                <Text className="text-slate-500 text-xs font-bold text-center mt-2">
+              <View className="py-12 bg-surface/40 border border-line rounded-2xl items-center justify-center">
+                <Ionicons name="people-outline" size={32} color={c.contentFaint} />
+                <Text className="text-content-faint text-xs font-bold text-center mt-2">
                   Noch keine Freunde hinzugefügt.
                 </Text>
-                <Text className="text-slate-600 text-[10px] text-center mt-1 px-6 leading-4">
+                <Text className="text-content-faint text-[10px] text-center mt-1 px-6 leading-4">
                   Such oben nach einem Namen, um eine Anfrage zu schicken.
                 </Text>
               </View>
@@ -542,20 +544,20 @@ export default function FriendsScreen() {
               friendsList.map((friend) => (
                 <View
                   key={friend.id}
-                  className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                  className="bg-surface border border-line rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
                 >
                   <View className="flex-row items-center flex-1 mr-2">
                     <Avatar
                       uri={friend.avatar}
                       name={friend.name}
                       size={36}
-                      className="border border-white/10"
+                      className="border border-line"
                     />
                     <View className="flex-1 ml-3">
-                      <Text className="text-white text-xs font-black" numberOfLines={1}>
+                      <Text className="text-content text-xs font-black" numberOfLines={1}>
                         {friend.name}
                       </Text>
-                      <Text className="text-cyan-400 text-[9px] font-bold mt-0.5">
+                      <Text className="text-accent-ink text-[9px] font-bold mt-0.5">
                         @{friend.name.toLowerCase().replace(/\s+/g, "_")}
                       </Text>
                     </View>
@@ -565,15 +567,15 @@ export default function FriendsScreen() {
                     <TouchableOpacity
                       onPress={() => openDirectChat(friend)}
                       accessibilityLabel={`Chat mit ${friend.name} öffnen`}
-                      className="bg-cyan-400/10 border border-cyan-400/30 px-3 py-1.5 rounded-xl relative flex-row items-center"
+                      className="bg-accent/10 border border-accent/30 px-3 py-1.5 rounded-xl relative flex-row items-center"
                     >
-                      <Ionicons name="chatbubble-ellipses-outline" size={14} color="#22d3ee" />
-                      <Text className="text-cyan-400 text-[10px] font-black uppercase ml-1">
+                      <Ionicons name="chatbubble-ellipses-outline" size={14} color={c.accent} />
+                      <Text className="text-accent-ink text-[10px] font-black uppercase ml-1">
                         Chat
                       </Text>
                       {unreadFor({ userId: friend.id }) > 0 && (
-                        <View className="absolute -top-1.5 -right-1.5 bg-cyan-400 min-w-[16px] h-[16px] rounded-full items-center justify-center border border-slate-950 px-1">
-                          <Text className="text-[9px] font-black text-slate-950">
+                        <View className="absolute -top-1.5 -right-1.5 bg-accent min-w-[16px] h-[16px] rounded-full items-center justify-center border border-surface-alt px-1">
+                          <Text className="text-[9px] font-black text-on-accent">
                             {unreadFor({ userId: friend.id })}
                           </Text>
                         </View>
@@ -586,9 +588,9 @@ export default function FriendsScreen() {
                         setActionTargetUser(friend);
                       }}
                       accessibilityLabel={`Optionen für ${friend.name}`}
-                      className="ml-2 w-8 h-8 items-center justify-center rounded-xl bg-white/5 border border-white/10"
+                      className="ml-2 w-8 h-8 items-center justify-center rounded-xl bg-surface border border-line"
                     >
-                      <Ionicons name="ellipsis-horizontal" size={14} color="#94a3b8" />
+                      <Ionicons name="ellipsis-horizontal" size={14} color={c.contentMuted} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -608,19 +610,19 @@ export default function FriendsScreen() {
             triggerHaptic("light");
             setShowCreateGroup(true);
           }}
-          className="flex-1 bg-purple-500/10 border border-purple-500/30 p-3 rounded-2xl flex-row items-center justify-center active:scale-95"
+          className="flex-1 bg-accent-2/10 border border-accent-2/30 p-3 rounded-2xl flex-row items-center justify-center active:scale-95"
         >
-          <Ionicons name="people-circle-outline" size={17} color="#c084fc" />
-          <Text className="text-purple-300 font-black text-xs uppercase tracking-wider ml-2">
+          <Ionicons name="people-circle-outline" size={17} color={c.accent2} />
+          <Text className="text-accent-2-ink font-black text-xs uppercase tracking-wider ml-2">
             Neue Gruppe
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openCodeDialog("group")}
           accessibilityLabel="Gruppe per Code beitreten"
-          className="bg-slate-900 border border-white/10 px-4 rounded-2xl items-center justify-center"
+          className="bg-surface border border-line px-4 rounded-2xl items-center justify-center"
         >
-          <Ionicons name="enter-outline" size={18} color="#94a3b8" />
+          <Ionicons name="enter-outline" size={18} color={c.contentMuted} />
         </TouchableOpacity>
       </View>
 
@@ -631,15 +633,15 @@ export default function FriendsScreen() {
       >
         {loading ? (
           <View className="py-12 items-center">
-            <ActivityIndicator size="large" color="#c084fc" />
+            <ActivityIndicator size="large" color={c.accent2} />
           </View>
         ) : groupsList.length === 0 ? (
-          <View className="py-12 bg-slate-900/40 border border-white/5 rounded-2xl items-center justify-center">
-            <Ionicons name="people-circle-outline" size={32} color="#475569" />
-            <Text className="text-slate-500 text-xs font-bold text-center mt-2">
+          <View className="py-12 bg-surface/40 border border-line rounded-2xl items-center justify-center">
+            <Ionicons name="people-circle-outline" size={32} color={c.contentFaint} />
+            <Text className="text-content-faint text-xs font-bold text-center mt-2">
               Noch keine Gruppe.
             </Text>
-            <Text className="text-slate-600 text-[10px] text-center mt-1 px-6 leading-4">
+            <Text className="text-content-faint text-[10px] text-center mt-1 px-6 leading-4">
               Leg eine an oder tritt mit einem Einladungscode bei — Gruppen lassen sich bewusst
               nicht durchsuchen.
             </Text>
@@ -650,17 +652,17 @@ export default function FriendsScreen() {
             return (
               <View
                 key={group.id}
-                className="bg-slate-900 border border-purple-500/15 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                className="bg-surface border border-accent-2/15 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
               >
                 <View className="flex-row items-center flex-1 mr-2">
-                  <View className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
-                    <Ionicons name="people" size={16} color="#c084fc" />
+                  <View className="w-9 h-9 rounded-xl bg-accent-2/10 border border-accent-2/20 items-center justify-center">
+                    <Ionicons name="people" size={16} color={c.accent2} />
                   </View>
                   <View className="flex-1 ml-3">
-                    <Text className="text-white text-xs font-black" numberOfLines={1}>
+                    <Text className="text-content text-xs font-black" numberOfLines={1}>
                       {group.name}
                     </Text>
-                    <Text className="text-purple-400 text-[9px] font-bold mt-0.5">
+                    <Text className="text-accent-2-ink text-[9px] font-bold mt-0.5">
                       {(group.memberIds || []).length}{" "}
                       {(group.memberIds || []).length === 1 ? "Mitglied" : "Mitglieder"}
                       {isAdmin ? " · Admin" : ""}
@@ -674,21 +676,21 @@ export default function FriendsScreen() {
                     router.push({ pathname: "/friends/group/[id]", params: { id: group.id, name: group.name } });
                   }}
                   accessibilityLabel={`Gruppe ${group.name} verwalten`}
-                  className="bg-slate-950 border border-white/10 px-2.5 py-1.5 rounded-xl mr-1.5"
+                  className="bg-surface-alt border border-line px-2.5 py-1.5 rounded-xl mr-1.5"
                 >
-                  <Ionicons name="settings-outline" size={14} color="#94a3b8" />
+                  <Ionicons name="settings-outline" size={14} color={c.contentMuted} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => openGroupChat(group)}
                   accessibilityLabel={`Gruppenchat ${group.name} öffnen`}
-                  className="bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl relative flex-row items-center"
+                  className="bg-accent-2/10 border border-accent-2/30 px-3 py-1.5 rounded-xl relative flex-row items-center"
                 >
-                  <Ionicons name="chatbubble-ellipses-outline" size={14} color="#c084fc" />
-                  <Text className="text-purple-300 text-[10px] font-black uppercase ml-1">Chat</Text>
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={c.accent2} />
+                  <Text className="text-accent-2-ink text-[10px] font-black uppercase ml-1">Chat</Text>
                   {unreadFor({ groupId: group.id }) > 0 && (
-                    <View className="absolute -top-1.5 -right-1.5 bg-purple-400 min-w-[16px] h-[16px] rounded-full items-center justify-center border border-slate-950 px-1">
-                      <Text className="text-[9px] font-black text-slate-950">
+                    <View className="absolute -top-1.5 -right-1.5 bg-accent-2 min-w-[16px] h-[16px] rounded-full items-center justify-center border border-surface-alt px-1">
+                      <Text className="text-[9px] font-black text-on-accent">
                         {unreadFor({ groupId: group.id })}
                       </Text>
                     </View>
@@ -712,19 +714,19 @@ export default function FriendsScreen() {
             setEventInviteCode(null);
             setShowCreateEvent(true);
           }}
-          className="flex-1 bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex-row items-center justify-center active:scale-95"
+          className="flex-1 bg-warning/10 border border-warning/30 p-3 rounded-2xl flex-row items-center justify-center active:scale-95"
         >
-          <Ionicons name="flame-outline" size={17} color="#fbbf24" />
-          <Text className="text-amber-300 font-black text-xs uppercase tracking-wider ml-2">
+          <Ionicons name="flame-outline" size={17} color={c.warning} />
+          <Text className="text-warning font-black text-xs uppercase tracking-wider ml-2">
             Event starten
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openCodeDialog("event")}
           accessibilityLabel="Event per Code beitreten"
-          className="bg-slate-900 border border-white/10 px-4 rounded-2xl items-center justify-center"
+          className="bg-surface border border-line px-4 rounded-2xl items-center justify-center"
         >
-          <Ionicons name="enter-outline" size={18} color="#94a3b8" />
+          <Ionicons name="enter-outline" size={18} color={c.contentMuted} />
         </TouchableOpacity>
       </View>
 
@@ -735,15 +737,15 @@ export default function FriendsScreen() {
       >
         {loading ? (
           <View className="py-12 items-center">
-            <ActivityIndicator size="large" color="#fbbf24" />
+            <ActivityIndicator size="large" color={c.warning} />
           </View>
         ) : eventsList.length === 0 ? (
-          <View className="py-12 bg-slate-900/40 border border-white/5 rounded-2xl items-center justify-center">
-            <Ionicons name="flame-outline" size={32} color="#475569" />
-            <Text className="text-slate-500 text-xs font-bold text-center mt-2">
+          <View className="py-12 bg-surface/40 border border-line rounded-2xl items-center justify-center">
+            <Ionicons name="flame-outline" size={32} color={c.contentFaint} />
+            <Text className="text-content-faint text-xs font-bold text-center mt-2">
               Noch kein Event.
             </Text>
-            <Text className="text-slate-600 text-[10px] text-center mt-1 px-6 leading-4">
+            <Text className="text-content-faint text-[10px] text-center mt-1 px-6 leading-4">
               Starte eins für den Abend — die Teilnehmer kommen über einen Code dazu.
             </Text>
           </View>
@@ -755,42 +757,42 @@ export default function FriendsScreen() {
                 key={ev.id}
                 className={`border rounded-2xl p-3.5 flex-row items-center mb-2.5 ${
                   rest.vorbei
-                    ? "bg-slate-900/40 border-white/5"
-                    : "bg-slate-900 border-amber-500/20"
+                    ? "bg-surface/40 border-line"
+                    : "bg-surface border-warning/20"
                 }`}
               >
                 <View
                   className={`w-9 h-9 rounded-xl items-center justify-center border ${
-                    rest.vorbei ? "bg-slate-950 border-white/10" : "bg-amber-500/10 border-amber-500/25"
+                    rest.vorbei ? "bg-surface-alt border-line" : "bg-warning/10 border-warning/25"
                   }`}
                 >
                   <Ionicons
                     name={rest.vorbei ? "time-outline" : "flame"}
                     size={16}
-                    color={rest.vorbei ? "#64748b" : "#fbbf24"}
+                    color={rest.vorbei ? c.contentFaint : c.warning}
                   />
                 </View>
                 <View className="flex-1 ml-3">
                   <Text
-                    className={`text-xs font-black ${rest.vorbei ? "text-slate-500" : "text-white"}`}
+                    className={`text-xs font-black ${rest.vorbei ? "text-content-faint" : "text-content"}`}
                     numberOfLines={1}
                   >
                     {ev.name}
                   </Text>
                   <Text
                     className={`text-[9px] font-bold mt-0.5 ${
-                      rest.vorbei ? "text-slate-600" : "text-amber-400"
+                      rest.vorbei ? "text-content-faint" : "text-warning"
                     }`}
                   >
                     {(ev.memberIds || []).length} Teilnehmer · {rest.text}
                   </Text>
                 </View>
                 {ev.creatorId === dbUser?.id && !rest.vorbei && (
-                  <View className="bg-slate-950 border border-white/10 px-2.5 py-1 rounded-lg">
+                  <View className="bg-surface-alt border border-line px-2.5 py-1 rounded-lg">
                     <Text
                       selectable
                       accessibilityLabel={`Einladungscode ${ev.inviteCode}`}
-                      className="text-slate-300 text-[10px] font-black tracking-widest"
+                      className="text-content-muted text-[10px] font-black tracking-widest"
                     >
                       {ev.inviteCode}
                     </Text>
@@ -805,10 +807,10 @@ export default function FriendsScreen() {
   );
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       {/* Reiterleiste. Steht fest; darunter bekommt jeder Reiter die volle
           Resthöhe für seinen eigenen Scrollbereich. */}
-      <View className="flex-row bg-slate-900 border-b border-white/5 px-3 py-2" style={{ gap: 6 }}>
+      <View className="flex-row bg-surface border-b border-line px-3 py-2" style={{ gap: 6 }}>
         {TABS.map((t) => {
           const active = tab === t.key;
           const anzahl =
@@ -828,13 +830,13 @@ export default function FriendsScreen() {
               accessibilityState={{ selected: active }}
               accessibilityLabel={t.label}
               className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center ${
-                active ? "bg-white/5 border border-white/10" : ""
+                active ? "bg-surface border border-line" : ""
               }`}
             >
-              <Ionicons name={t.icon} size={14} color={active ? "#22d3ee" : "#64748b"} />
+              <Ionicons name={t.icon} size={14} color={active ? c.accent : c.contentFaint} />
               <Text
                 className={`text-[11px] font-black uppercase tracking-wider ml-1.5 ${
-                  active ? "text-cyan-400" : "text-slate-500"
+                  active ? "text-accent-ink" : "text-content-faint"
                 }`}
               >
                 {t.label}
@@ -842,7 +844,7 @@ export default function FriendsScreen() {
               {anzahl > 0 && (
                 <Text
                   className={`text-[10px] font-black ml-1 ${
-                    active ? "text-cyan-400/60" : "text-slate-600"
+                    active ? "text-accent-ink" : "text-content-faint"
                   }`}
                 >
                   {anzahl}
@@ -860,25 +862,25 @@ export default function FriendsScreen() {
           nur, wenn sie dort erreichbar sind, wo die Inhalte stehen. */}
       <Modal visible={!!actionTargetUser} animationType="fade" transparent>
         <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
+          <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
             <View className="flex-row items-center mb-6">
               <Avatar
                 uri={actionTargetUser?.avatar}
                 name={actionTargetUser?.name}
                 size={40}
-                className="border border-white/10"
+                className="border border-line"
               />
-              <Text className="text-white text-sm font-black ml-3 flex-1" numberOfLines={1}>
+              <Text className="text-content text-sm font-black ml-3 flex-1" numberOfLines={1}>
                 {actionTargetUser?.name}
               </Text>
             </View>
 
             <TouchableOpacity
               onPress={() => actionTargetUser && handleRemoveFriend(actionTargetUser)}
-              className="flex-row items-center py-4 border-b border-white/5"
+              className="flex-row items-center py-4 border-b border-line"
             >
-              <Ionicons name="person-remove-outline" size={18} color="#e2e8f0" />
-              <Text className="text-slate-200 text-xs font-bold ml-3">Freund entfernen</Text>
+              <Ionicons name="person-remove-outline" size={18} color={c.content} />
+              <Text className="text-content text-xs font-bold ml-3">Freund entfernen</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -889,25 +891,25 @@ export default function FriendsScreen() {
                 setReportDetails("");
                 setReportTargetUser(target);
               }}
-              className="flex-row items-center py-4 border-b border-white/5"
+              className="flex-row items-center py-4 border-b border-line"
             >
-              <Ionicons name="flag-outline" size={18} color="#fbbf24" />
-              <Text className="text-amber-400 text-xs font-bold ml-3">Melden</Text>
+              <Ionicons name="flag-outline" size={18} color={c.warning} />
+              <Text className="text-warning text-xs font-bold ml-3">Melden</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => actionTargetUser && handleBlockUser(actionTargetUser)}
               className="flex-row items-center py-4"
             >
-              <Ionicons name="ban-outline" size={18} color="#f43f5e" />
-              <Text className="text-rose-400 text-xs font-bold ml-3">Blockieren</Text>
+              <Ionicons name="ban-outline" size={18} color={c.danger} />
+              <Text className="text-danger text-xs font-bold ml-3">Blockieren</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => setActionTargetUser(null)}
-              className="mt-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 items-center"
+              className="mt-4 py-3.5 rounded-2xl bg-surface border border-line items-center"
             >
-              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">
+              <Text className="text-content-muted text-xs font-black uppercase tracking-wider">
                 Abbrechen
               </Text>
             </TouchableOpacity>
@@ -918,11 +920,11 @@ export default function FriendsScreen() {
       {/* Melden */}
       <Modal visible={!!reportTargetUser} animationType="slide" transparent>
         <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-6 pb-10">
-            <Text className="text-white text-base font-black mb-1">
+          <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
+            <Text className="text-content text-base font-black mb-1">
               {reportTargetUser?.name} melden
             </Text>
-            <Text className="text-slate-400 text-[11px] leading-4 mb-5">
+            <Text className="text-content-muted text-[11px] leading-4 mb-5">
               Wir sehen uns jede Meldung an. Bei Gefahr für Leib und Leben wende dich bitte
               zusätzlich an die Polizei.
             </Text>
@@ -933,18 +935,18 @@ export default function FriendsScreen() {
                 onPress={() => setReportReason(reason)}
                 className={`flex-row items-center py-3.5 px-4 rounded-2xl mb-2 border ${
                   reportReason === reason
-                    ? "bg-amber-400/10 border-amber-400/40"
-                    : "bg-slate-950/60 border-white/5"
+                    ? "bg-warning/10 border-warning/40"
+                    : "bg-surface-alt/60 border-line"
                 }`}
               >
                 <Ionicons
                   name={reportReason === reason ? "radio-button-on" : "radio-button-off"}
                   size={16}
-                  color={reportReason === reason ? "#fbbf24" : "#64748b"}
+                  color={reportReason === reason ? c.warning : c.contentFaint}
                 />
                 <Text
                   className={`text-xs font-bold ml-3 ${
-                    reportReason === reason ? "text-amber-400" : "text-slate-300"
+                    reportReason === reason ? "text-warning" : "text-content-muted"
                   }`}
                 >
                   {REPORT_REASON_LABELS[reason]}
@@ -959,25 +961,25 @@ export default function FriendsScreen() {
               onChangeText={setReportDetails}
               multiline
               maxLength={1000}
-              className="bg-slate-950/60 border border-white/5 rounded-2xl px-4 py-3 text-white text-xs mt-2 mb-4 min-h-[72px]"
+              className="bg-surface-alt/60 border border-line rounded-2xl px-4 py-3 text-content text-xs mt-2 mb-4 min-h-[72px]"
             />
 
             <TouchableOpacity
               onPress={handleSubmitReport}
               disabled={!reportReason || reportSubmitting}
-              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+              className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
             >
               {reportSubmitting ? (
-                <ActivityIndicator color="#020617" />
+                <ActivityIndicator color={c.onAccent} />
               ) : (
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                   Meldung absenden
                 </Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setReportTargetUser(null)} className="mt-3 py-3 items-center">
-              <Text className="text-slate-400 text-xs font-black uppercase tracking-wider">
+              <Text className="text-content-muted text-xs font-black uppercase tracking-wider">
                 Abbrechen
               </Text>
             </TouchableOpacity>
@@ -993,35 +995,35 @@ export default function FriendsScreen() {
         onRequestClose={() => setShowCreateGroup(false)}
       >
         <View className="flex-1 bg-black/85 justify-end">
-          <View className="bg-slate-950 border-t border-purple-500/30 rounded-t-3xl p-6 pb-8">
+          <View className="bg-surface-alt border-t border-accent-2/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-5">
-              <Text className="text-white text-base font-black uppercase tracking-wider">
+              <Text className="text-content text-base font-black uppercase tracking-wider">
                 Gruppe erstellen 👥
               </Text>
               <TouchableOpacity onPress={() => setShowCreateGroup(false)} className="p-1">
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
 
-            <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+            <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
               Gruppen-Name
             </Text>
             <TextInput
               placeholder="z. B. Stammtisch, Festival Crew 2026"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.contentFaint}
               value={newGroupName}
               onChangeText={setNewGroupName}
               accessibilityLabel="Gruppen-Name"
-              className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3 text-white font-bold text-xs mb-5"
+              className="bg-surface border border-line rounded-2xl px-4 py-3 text-content font-bold text-xs mb-5"
             />
 
-            <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+            <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
               Freunde auswählen ({selectedMemberIds.length})
             </Text>
 
             <ScrollView className="max-h-48 mb-6" showsVerticalScrollIndicator={false}>
               {friendsList.length === 0 ? (
-                <Text className="text-slate-500 text-xs italic text-center py-4">
+                <Text className="text-content-faint text-xs italic text-center py-4">
                   Füge zuerst Freunde hinzu!
                 </Text>
               ) : (
@@ -1037,14 +1039,14 @@ export default function FriendsScreen() {
                         );
                       }}
                       className={`p-3 rounded-2xl border flex-row justify-between items-center mb-2 ${
-                        isSelected ? "bg-purple-500/20 border-purple-500" : "bg-slate-900 border-white/5"
+                        isSelected ? "bg-accent-2/20 border-accent-2" : "bg-surface border-line"
                       }`}
                     >
-                      <Text className="text-white text-xs font-bold">{f.name}</Text>
+                      <Text className="text-content text-xs font-bold">{f.name}</Text>
                       <Ionicons
                         name={isSelected ? "checkmark-circle" : "ellipse-outline"}
                         size={18}
-                        color={isSelected ? "#c084fc" : "#64748b"}
+                        color={isSelected ? c.accent2 : c.contentFaint}
                       />
                     </TouchableOpacity>
                   );
@@ -1055,12 +1057,12 @@ export default function FriendsScreen() {
             <TouchableOpacity
               onPress={handleCreateGroup}
               disabled={!newGroupName.trim() || groupBusy}
-              className="w-full bg-purple-500 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+              className="w-full bg-accent-2 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
             >
               {groupBusy ? (
-                <ActivityIndicator size="small" color="#0f172a" />
+                <ActivityIndicator size="small" color={c.onAccent} />
               ) : (
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                   Gruppe jetzt erstellen
                 </Text>
               )}
@@ -1077,9 +1079,9 @@ export default function FriendsScreen() {
         onRequestClose={() => setShowCreateEvent(false)}
       >
         <View className="flex-1 bg-black/85 justify-end">
-          <View className="bg-slate-950 border-t border-amber-500/30 rounded-t-3xl p-6 pb-8">
+          <View className="bg-surface-alt border-t border-warning/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-2">
-              <Text className="text-white text-base font-black uppercase tracking-wider">
+              <Text className="text-content text-base font-black uppercase tracking-wider">
                 {eventInviteCode ? "Event läuft 🔥" : "Event starten 🔥"}
               </Text>
               <TouchableOpacity
@@ -1090,20 +1092,20 @@ export default function FriendsScreen() {
                 }}
                 className="p-1"
               >
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
 
             {eventInviteCode ? (
               <>
-                <Text className="text-slate-400 text-[11px] leading-relaxed mb-4">
+                <Text className="text-content-muted text-[11px] leading-relaxed mb-4">
                   Gib diesen Code weiter — damit kommen deine Leute dazu.
                 </Text>
-                <View className="bg-amber-500/5 border border-amber-500/25 rounded-2xl p-4 mb-5 items-center">
+                <View className="bg-warning/5 border border-warning/25 rounded-2xl p-4 mb-5 items-center">
                   <Text
                     selectable
                     accessibilityLabel={`Event-Code ${eventInviteCode}`}
-                    className="text-white text-2xl font-black tracking-[6px]"
+                    className="text-content text-2xl font-black tracking-[6px]"
                   >
                     {eventInviteCode}
                   </Text>
@@ -1113,16 +1115,16 @@ export default function FriendsScreen() {
                     setShowCreateEvent(false);
                     setEventInviteCode(null);
                   }}
-                  className="bg-amber-400 rounded-2xl py-3.5 items-center"
+                  className="bg-warning rounded-2xl py-3.5 items-center"
                 >
-                  <Text className="text-slate-950 text-xs font-black uppercase tracking-wider">
+                  <Text className="text-on-accent text-xs font-black uppercase tracking-wider">
                     Fertig
                   </Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+                <Text className="text-content-muted text-[11px] leading-relaxed mb-5">
                   Ein Event ist ein Abend mit festem Ende. Danach läuft es von selbst aus.
                 </Text>
 
@@ -1130,13 +1132,13 @@ export default function FriendsScreen() {
                   value={newEventName}
                   onChangeText={setNewEventName}
                   placeholder="Name, z. B. Geburtstag Lisa"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={c.contentFaint}
                   maxLength={60}
                   accessibilityLabel="Eventname"
-                  className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-3"
+                  className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content text-sm mb-3"
                 />
 
-                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
                   Dauer
                 </Text>
                 <View className="flex-row mb-3" style={{ gap: 8 }}>
@@ -1148,12 +1150,12 @@ export default function FriendsScreen() {
                         onPress={() => setNewEventHours(h)}
                         accessibilityLabel={`${h} Stunden`}
                         className={`flex-1 py-2.5 rounded-xl border items-center ${
-                          aktiv ? "bg-amber-500/10 border-amber-500/40" : "bg-slate-900 border-white/5"
+                          aktiv ? "bg-warning/10 border-warning/40" : "bg-surface border-line"
                         }`}
                       >
                         <Text
                           className={`text-[11px] font-black ${
-                            aktiv ? "text-amber-400" : "text-slate-400"
+                            aktiv ? "text-warning" : "text-content-muted"
                           }`}
                         >
                           {h} Std
@@ -1164,9 +1166,9 @@ export default function FriendsScreen() {
                 </View>
 
                 {eventError ? (
-                  <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
-                    <Ionicons name="alert-circle" size={15} color="#f43f5e" />
-                    <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">
+                  <View className="bg-danger/10 border border-danger/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                    <Ionicons name="alert-circle" size={15} color={c.danger} />
+                    <Text className="text-danger text-[11px] leading-4 ml-2 flex-1">
                       {eventError}
                     </Text>
                   </View>
@@ -1177,15 +1179,15 @@ export default function FriendsScreen() {
                   disabled={eventBusy || !newEventName.trim()}
                   accessibilityLabel="Event anlegen"
                   className={`rounded-2xl py-3.5 items-center ${
-                    eventBusy || !newEventName.trim() ? "bg-slate-800" : "bg-amber-400"
+                    eventBusy || !newEventName.trim() ? "bg-surface-alt" : "bg-warning"
                   }`}
                 >
                   {eventBusy ? (
-                    <ActivityIndicator size="small" color="#0f172a" />
+                    <ActivityIndicator size="small" color={c.onAccent} />
                   ) : (
                     <Text
                       className={`text-xs font-black uppercase tracking-wider ${
-                        !newEventName.trim() ? "text-slate-600" : "text-slate-950"
+                        !newEventName.trim() ? "text-content-faint" : "text-on-accent"
                       }`}
                     >
                       Event starten
@@ -1206,9 +1208,9 @@ export default function FriendsScreen() {
         onRequestClose={() => setCodeModalMode(null)}
       >
         <View className="flex-1 bg-black/85 justify-end">
-          <View className="bg-slate-950 border-t border-purple-500/30 rounded-t-3xl p-6 pb-8">
+          <View className="bg-surface-alt border-t border-accent-2/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-2">
-              <Text className="text-white text-base font-black uppercase tracking-wider">
+              <Text className="text-content text-base font-black uppercase tracking-wider">
                 {codeModalMode === "event" ? "Event beitreten" : "Gruppe beitreten"}
               </Text>
               <TouchableOpacity
@@ -1219,11 +1221,11 @@ export default function FriendsScreen() {
                 }}
                 className="p-1"
               >
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={c.contentFaint} />
               </TouchableOpacity>
             </View>
 
-            <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+            <Text className="text-content-muted text-[11px] leading-relaxed mb-5">
               {codeModalMode === "event"
                 ? "Gib den Code ein, den du vom Gastgeber bekommen hast."
                 : "Gib den Einladungscode ein, den du vom Gruppen-Admin bekommen hast. Gruppen lassen sich bewusst nicht durchsuchen."}
@@ -1233,19 +1235,19 @@ export default function FriendsScreen() {
               value={joinCodeInput}
               onChangeText={(t) => setJoinCodeInput(t.toUpperCase())}
               placeholder="z. B. A1B2C3D4"
-              placeholderTextColor="#475569"
+              placeholderTextColor={c.contentFaint}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={32}
               onSubmitEditing={handleJoinByCode}
               accessibilityLabel="Einladungscode eingeben"
-              className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-lg font-black tracking-[4px] mb-3"
+              className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content text-lg font-black tracking-[4px] mb-3"
             />
 
             {joinError ? (
-              <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
-                <Ionicons name="alert-circle" size={15} color="#f43f5e" />
-                <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{joinError}</Text>
+              <View className="bg-danger/10 border border-danger/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                <Ionicons name="alert-circle" size={15} color={c.danger} />
+                <Text className="text-danger text-[11px] leading-4 ml-2 flex-1">{joinError}</Text>
               </View>
             ) : null}
 
@@ -1254,15 +1256,15 @@ export default function FriendsScreen() {
               disabled={joinBusy || !joinCodeInput.trim()}
               accessibilityLabel="Mit Code beitreten"
               className={`rounded-2xl py-3.5 items-center ${
-                joinBusy || !joinCodeInput.trim() ? "bg-slate-800" : "bg-purple-500"
+                joinBusy || !joinCodeInput.trim() ? "bg-surface-alt" : "bg-accent-2"
               }`}
             >
               {joinBusy ? (
-                <ActivityIndicator size="small" color="#0f172a" />
+                <ActivityIndicator size="small" color={c.onAccent} />
               ) : (
                 <Text
                   className={`text-xs font-black uppercase tracking-wider ${
-                    !joinCodeInput.trim() ? "text-slate-600" : "text-white"
+                    !joinCodeInput.trim() ? "text-content-faint" : "text-content"
                   }`}
                 >
                   Beitreten

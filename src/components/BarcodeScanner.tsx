@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { isCameraScanSupported, getScanUnavailableReason, isValidEan } from "@/services/barcode";
+import { useThemeColors } from "@/services/theme";
 
 interface BarcodeScannerProps {
   visible: boolean;
@@ -21,6 +22,7 @@ interface BarcodeScannerProps {
  * label is scratched or the light is bad at a party.
  */
 export default function BarcodeScanner({ visible, onClose, onScanned, busy }: BarcodeScannerProps) {
+  const c = useThemeColors();
   const cameraSupported = isCameraScanSupported();
   const [permission, requestPermission] = useCameraPermissions();
   const [manualMode, setManualMode] = useState(!cameraSupported);
@@ -85,11 +87,11 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
       transparent={false}
       onShow={() => setWindowReady(true)}
     >
-      <View className="flex-1 bg-slate-950">
+      <View className="flex-1 bg-bg">
         <View className="flex-row items-center justify-between px-5 pt-14 pb-4">
-          <Text className="text-white text-base font-black">Barcode scannen</Text>
-          <TouchableOpacity onPress={onClose} className="w-9 h-9 items-center justify-center rounded-xl bg-white/5 border border-white/10">
-            <Ionicons name="close" size={18} color="#94a3b8" />
+          <Text className="text-content text-base font-black">Barcode scannen</Text>
+          <TouchableOpacity onPress={onClose} className="w-9 h-9 items-center justify-center rounded-xl bg-surface border border-line">
+            <Ionicons name="close" size={18} color={c.contentMuted} />
           </TouchableOpacity>
         </View>
 
@@ -133,20 +135,20 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                 heranzuhalten — und unterhalb der Makro-Grenze der meisten
                 Handykameras (etwa 10 cm) wird gar nichts mehr scharf. */}
             <View className="absolute inset-0 items-center justify-center pointer-events-none">
-              <View className="w-80 h-56 border-2 border-cyan-400/60 rounded-3xl" />
-              <Text className="text-white text-xs font-bold mt-4 px-8 text-center">
+              <View className="w-80 h-56 border-2 border-accent/60 rounded-3xl" />
+              <Text className="text-content text-xs font-bold mt-4 px-8 text-center">
                 {!cameraReady
                   ? "Kamera startet…"
                   : busy
                     ? "Getränk wird gesucht…"
                     : "Barcode ins Bild halten"}
               </Text>
-              <Text className="text-slate-400 text-[10px] font-semibold mt-2 px-10 text-center">
+              <Text className="text-content-muted text-[10px] font-semibold mt-2 px-10 text-center">
                 {cameraReady
                   ? "Etwa 15–20 cm Abstand — näher wird nicht mehr scharf. Bei wenig Licht die Lampe zuschalten."
                   : "Einen Moment, die Kamera wird vorbereitet."}
               </Text>
-              {(busy || !cameraReady) && <ActivityIndicator color="#22d3ee" className="mt-3" />}
+              {(busy || !cameraReady) && <ActivityIndicator color={c.accent} className="mt-3" />}
             </View>
 
             {/* Licht und Zoom: die beiden häufigsten Gründe, warum der Fokus
@@ -159,13 +161,13 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                 }}
                 accessibilityLabel={torchOn ? "Licht ausschalten" : "Licht einschalten"}
                 className={`w-11 h-11 items-center justify-center rounded-2xl border ${
-                  torchOn ? "bg-cyan-400/20 border-cyan-400/50" : "bg-slate-900/90 border-white/10"
+                  torchOn ? "bg-accent/20 border-accent/50" : "bg-surface/90 border-line"
                 }`}
               >
                 <Ionicons
                   name={torchOn ? "flashlight" : "flashlight-outline"}
                   size={18}
-                  color={torchOn ? "#22d3ee" : "#94a3b8"}
+                  color={torchOn ? c.accent : c.contentMuted}
                 />
               </TouchableOpacity>
 
@@ -177,9 +179,9 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                   setZoom((z) => (z >= 0.4 ? 0 : z + 0.2));
                 }}
                 accessibilityLabel="Zoom ändern"
-                className="ml-2 w-11 h-11 items-center justify-center rounded-2xl bg-slate-900/90 border border-white/10"
+                className="ml-2 w-11 h-11 items-center justify-center rounded-2xl bg-surface/90 border border-line"
               >
-                <Text className="text-slate-300 text-[10px] font-black">
+                <Text className="text-content-muted text-[10px] font-black">
                   {zoom === 0 ? "1x" : `${(1 + zoom * 5).toFixed(1)}x`}
                 </Text>
               </TouchableOpacity>
@@ -187,9 +189,9 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
 
             <TouchableOpacity
               onPress={() => setManualMode(true)}
-              className="absolute bottom-10 self-center bg-slate-900/90 border border-white/10 px-5 py-3 rounded-2xl"
+              className="absolute bottom-10 self-center bg-surface/90 border border-line px-5 py-3 rounded-2xl"
             >
-              <Text className="text-cyan-400 text-[11px] font-black uppercase tracking-wider">
+              <Text className="text-accent-ink text-[11px] font-black uppercase tracking-wider">
                 Stattdessen eintippen
               </Text>
             </TouchableOpacity>
@@ -197,9 +199,9 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
         ) : (
           <View className="flex-1 px-6 pt-4">
             {!cameraSupported && (
-              <View className="bg-amber-400/10 border border-amber-400/20 rounded-2xl p-4 mb-5 flex-row">
-                <Ionicons name="information-circle-outline" size={18} color="#fbbf24" />
-                <Text className="text-amber-300/90 text-[11px] leading-4 ml-2.5 flex-1">
+              <View className="bg-warning/10 border border-warning/20 rounded-2xl p-4 mb-5 flex-row">
+                <Ionicons name="information-circle-outline" size={18} color={c.warning} />
+                <Text className="text-warning text-[11px] leading-4 ml-2.5 flex-1">
                   {getScanUnavailableReason()}
                 </Text>
               </View>
@@ -208,38 +210,38 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
             {/* Startfehler der Kamera. Ohne diese Anzeige sähe man nur ein
                 schwarzes Bild und würde den Fehler beim Fokus suchen. */}
             {mountError && (
-              <View className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 mb-5 flex-row">
-                <Ionicons name="alert-circle-outline" size={18} color="#f43f5e" />
+              <View className="bg-danger/10 border border-danger/20 rounded-2xl p-4 mb-5 flex-row">
+                <Ionicons name="alert-circle-outline" size={18} color={c.danger} />
                 <View className="ml-2.5 flex-1">
-                  <Text className="text-rose-400 text-[11px] font-bold leading-4">
+                  <Text className="text-danger text-[11px] font-bold leading-4">
                     Die Kamera konnte nicht gestartet werden.
                   </Text>
-                  <Text className="text-rose-300/70 text-[10px] leading-4 mt-1">{mountError}</Text>
+                  <Text className="text-danger text-[10px] leading-4 mt-1">{mountError}</Text>
                 </View>
               </View>
             )}
 
             {cameraSupported && permission && !permission.granted && (
-              <View className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-5">
-                <Text className="text-slate-300 text-[11px] leading-4 mb-3">
+              <View className="bg-surface border border-line rounded-2xl p-4 mb-5">
+                <Text className="text-content-muted text-[11px] leading-4 mb-3">
                   Ohne Kamerazugriff können wir den Barcode nicht lesen. Du kannst ihn auch von
                   Hand eingeben.
                 </Text>
                 <TouchableOpacity
                   onPress={requestPermission}
-                  className="bg-cyan-400 py-2.5 rounded-xl items-center"
+                  className="bg-accent py-2.5 rounded-xl items-center"
                 >
-                  <Text className="text-slate-950 text-[11px] font-black uppercase tracking-wider">
+                  <Text className="text-on-accent text-[11px] font-black uppercase tracking-wider">
                     Kamera erlauben
                   </Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-2">
+            <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider mb-2">
               Barcode-Nummer
             </Text>
-            <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-3 mb-3">
+            <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-3 mb-3">
               <Ionicons name="barcode-outline" size={18} color="rgba(255,255,255,0.4)" />
               <TextInput
                 placeholder="8 oder 13 Ziffern"
@@ -252,26 +254,26 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
                 keyboardType="number-pad"
                 maxLength={13}
                 editable={!busy}
-                className="flex-1 text-white font-bold text-sm ml-3"
+                className="flex-1 text-content font-bold text-sm ml-3"
               />
             </View>
 
             {error && (
-              <View className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 mb-3 flex-row items-center">
-                <Ionicons name="alert-circle" size={16} color="#f43f5e" />
-                <Text className="text-rose-400 text-[11px] font-semibold flex-1 ml-2">{error}</Text>
+              <View className="bg-danger/10 border border-danger/20 rounded-xl p-3 mb-3 flex-row items-center">
+                <Ionicons name="alert-circle" size={16} color={c.danger} />
+                <Text className="text-danger text-[11px] font-semibold flex-1 ml-2">{error}</Text>
               </View>
             )}
 
             <TouchableOpacity
               onPress={() => submit(manualCode)}
               disabled={!manualCode || busy}
-              className="w-full bg-cyan-400 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+              className="w-full bg-accent py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
             >
               {busy ? (
-                <ActivityIndicator color="#020617" />
+                <ActivityIndicator color={c.onAccent} />
               ) : (
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                   Getränk suchen
                 </Text>
               )}
@@ -279,7 +281,7 @@ export default function BarcodeScanner({ visible, onClose, onScanned, busy }: Ba
 
             {cameraSupported && manualMode && (
               <TouchableOpacity onPress={() => setManualMode(false)} className="mt-4 py-3 items-center">
-                <Text className="text-slate-400 text-[11px] font-black uppercase tracking-wider">
+                <Text className="text-content-muted text-[11px] font-black uppercase tracking-wider">
                   Zurück zur Kamera
                 </Text>
               </TouchableOpacity>

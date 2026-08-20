@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemeColors } from "@/services/theme";
 
 /**
  * Bausteine für gruppierte Listen (Einstellungen, Profil, Hilfe).
@@ -23,14 +24,12 @@ export function SettingsSection({
 }) {
   return (
     <View className="mb-7">
-      <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
+      <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-2.5 px-1">
         {title}
       </Text>
-      <View className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden">
-        {children}
-      </View>
+      <View className="bg-surface border border-line rounded-3xl overflow-hidden">{children}</View>
       {footer ? (
-        <Text className="text-slate-600 text-[10px] leading-4 mt-2 px-1">{footer}</Text>
+        <Text className="text-content-faint text-[10px] leading-4 mt-2 px-1">{footer}</Text>
       ) : null}
     </View>
   );
@@ -38,13 +37,14 @@ export function SettingsSection({
 
 export function SettingsRow({
   icon,
-  iconColor = "#22d3ee",
+  /** Eigene Farbe statt des Akzents — für Zeilen, die sich abheben sollen. */
+  iconColor,
   label,
   /** Aktueller Wert oder Kurzbeschreibung — rechts bzw. unter dem Label. */
   value,
   hint,
   onPress,
-  /** Rot statt weiß. Für Abmelden und Konto löschen. */
+  /** Rot statt normal. Für Abmelden und Konto löschen. */
   danger,
   busy,
   /** Letzte Zeile einer Gruppe bekommt keine Trennlinie. */
@@ -64,7 +64,8 @@ export function SettingsRow({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
-  const farbe = danger ? "#f43f5e" : iconColor;
+  const c = useThemeColors();
+  const farbe = danger ? c.danger : iconColor || c.accent;
 
   return (
     <TouchableOpacity
@@ -72,7 +73,7 @@ export function SettingsRow({
       disabled={disabled || busy || !onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || label}
-      className={`flex-row items-center px-4 py-3.5 ${last ? "" : "border-b border-slate-800"} ${
+      className={`flex-row items-center px-4 py-3.5 ${last ? "" : "border-b border-line"} ${
         disabled ? "opacity-40" : ""
       }`}
     >
@@ -84,11 +85,13 @@ export function SettingsRow({
       </View>
 
       <View className="flex-1 ml-3.5">
-        <Text className={`text-xs font-black ${danger ? "text-rose-400" : "text-white"}`}>
+        <Text className={`text-xs font-black ${danger ? "text-danger" : "text-content"}`}>
           {label}
         </Text>
         {hint ? (
-          <Text className="text-slate-500 text-[10px] font-semibold mt-0.5 leading-4">{hint}</Text>
+          <Text className="text-content-faint text-[10px] font-semibold mt-0.5 leading-4">
+            {hint}
+          </Text>
         ) : null}
       </View>
 
@@ -97,13 +100,71 @@ export function SettingsRow({
       ) : (
         <>
           {value ? (
-            <Text className="text-slate-400 text-[11px] font-bold mr-1.5" numberOfLines={1}>
+            <Text className="text-content-muted text-[11px] font-bold mr-1.5" numberOfLines={1}>
               {value}
             </Text>
           ) : null}
-          {onPress ? <Ionicons name="chevron-forward" size={15} color="#475569" /> : null}
+          {onPress ? <Ionicons name="chevron-forward" size={15} color={c.contentFaint} /> : null}
         </>
       )}
     </TouchableOpacity>
+  );
+}
+
+/**
+ * Eine Zeile mit mehreren Möglichkeiten, von denen genau eine gilt.
+ *
+ * Für Einstellungen, deren Optionen so kurz sind, dass ein eigener Unterschirm
+ * mehr Weg als Nutzen wäre — die Wahl des Farbschemas etwa.
+ */
+export function SettingsChoice<T extends string>({
+  options,
+  value,
+  onChange,
+  last,
+}: {
+  options: { key: T; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[];
+  value: T;
+  onChange: (next: T) => void;
+  last?: boolean;
+}) {
+  const c = useThemeColors();
+
+  return (
+    <View className={`px-4 py-3.5 ${last ? "" : "border-b border-line"}`}>
+      <View className="flex-row" style={{ gap: 8 }}>
+        {options.map((option) => {
+          const aktiv = option.key === value;
+          return (
+            <TouchableOpacity
+              key={option.key}
+              onPress={() => onChange(option.key)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: aktiv }}
+              accessibilityLabel={option.label}
+              style={
+                aktiv
+                  ? { backgroundColor: `${c.accent}1a`, borderColor: `${c.accent}66` }
+                  : { borderColor: c.line }
+              }
+              className={`flex-1 items-center py-3 rounded-2xl border ${aktiv ? "" : "bg-surface-alt"}`}
+            >
+              <Ionicons
+                name={option.icon}
+                size={17}
+                color={aktiv ? c.accent : c.contentFaint}
+              />
+              <Text
+                className={`text-[10px] font-black uppercase tracking-wider mt-1.5 ${
+                  aktiv ? "text-accent-ink" : "text-content-faint"
+                }`}
+              >
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }

@@ -4,8 +4,10 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../_layout";
 import { triggerHaptic } from "@/services/haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemeColors } from "@/services/theme";
 
 export default function RegisterScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const { register } = useAuth();
   const [username, setUsername] = useState("");
@@ -68,39 +70,39 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-slate-950"
+      className="flex-1 bg-bg"
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="flex-1 justify-center px-6 py-12">
           
           {/* Logo / Title */}
           <View className="items-center mb-8">
-            <View className="bg-gradient-to-tr from-cyan-400 to-fuchsia-500 p-3.5 rounded-3xl mb-3 shadow-lg shadow-cyan-500/20">
-              <Ionicons name="beer" size={36} color="#ffffff" />
+            <View className="bg-gradient-to-tr from-cyan-400 to-fuchsia-500 p-3.5 rounded-3xl mb-3 shadow-lg">
+              <Ionicons name="beer" size={36} color={c.content} />
             </View>
-            <Text className="text-white text-2xl font-black tracking-widest text-center">
-              TRINK<Text className="text-cyan-400">DUELL</Text>
+            <Text className="text-content text-2xl font-black tracking-widest text-center">
+              TRINK<Text className="text-accent-ink">DUELL</Text>
             </Text>
-            <Text className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mt-1.5 text-center">
+            <Text className="text-content-muted text-[10px] font-semibold uppercase tracking-widest mt-1.5 text-center">
               Account erstellen
             </Text>
           </View>
 
           {/* Form Card */}
-          <View className="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
-            <Text className="text-white text-base font-black tracking-wide mb-5">Erstelle dein Profil</Text>
+          <View className="bg-surface border border-line rounded-3xl p-6 shadow-2xl">
+            <Text className="text-content text-base font-black tracking-wide mb-5">Erstelle dein Profil</Text>
 
             {error && (
-              <View className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 mb-4 flex-row items-center space-x-2">
-                <Ionicons name="alert-circle" size={18} color="#f43f5e" />
-                <Text className="text-rose-400 text-xs font-semibold flex-1 ml-2">{error}</Text>
+              <View className="bg-danger/10 border border-danger/20 rounded-xl p-3 mb-4 flex-row items-center space-x-2">
+                <Ionicons name="alert-circle" size={18} color={c.danger} />
+                <Text className="text-danger text-xs font-semibold flex-1 ml-2">{error}</Text>
               </View>
             )}
 
             {/* Input Username */}
             <View className="mb-3">
-              <Text className="text-slate-400 text-[9px] font-black uppercase tracking-wider mb-1.5">Username</Text>
-              <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-2.5">
+              <Text className="text-content-muted text-[9px] font-black uppercase tracking-wider mb-1.5">Username</Text>
+              <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-2.5">
                 <Ionicons name="person-outline" size={16} color="rgba(255,255,255,0.4)" />
                 <TextInput
                   placeholder="z. B. max_muster"
@@ -109,15 +111,15 @@ export default function RegisterScreen() {
                   onChangeText={setUsername}
                   autoCapitalize="none"
                   editable={!loading}
-                  className="flex-1 text-white font-bold text-sm ml-3"
+                  className="flex-1 text-content font-bold text-sm ml-3"
                 />
               </View>
             </View>
 
             {/* Input E-Mail */}
             <View className="mb-3">
-              <Text className="text-slate-400 text-[9px] font-black uppercase tracking-wider mb-1.5">E-Mail Adresse</Text>
-              <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-2.5">
+              <Text className="text-content-muted text-[9px] font-black uppercase tracking-wider mb-1.5">E-Mail Adresse</Text>
+              <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-2.5">
                 <Ionicons name="mail-outline" size={16} color="rgba(255,255,255,0.4)" />
                 <TextInput
                   placeholder="dein.name@domain.de"
@@ -127,15 +129,15 @@ export default function RegisterScreen() {
                   autoCapitalize="none"
                   keyboardType="email-address"
                   editable={!loading}
-                  className="flex-1 text-white font-bold text-sm ml-3"
+                  className="flex-1 text-content font-bold text-sm ml-3"
                 />
               </View>
             </View>
 
             {/* Input Password */}
             <View className="mb-3">
-              <Text className="text-slate-400 text-[9px] font-black uppercase tracking-wider mb-1.5">Passwort</Text>
-              <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-2.5">
+              <Text className="text-content-muted text-[9px] font-black uppercase tracking-wider mb-1.5">Passwort</Text>
+              <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-2.5">
                 <Ionicons name="lock-closed-outline" size={16} color="rgba(255,255,255,0.4)" />
                 <TextInput
                   placeholder="••••••••"
@@ -145,15 +147,15 @@ export default function RegisterScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   editable={!loading}
-                  className="flex-1 text-white font-bold text-sm ml-3"
+                  className="flex-1 text-content font-bold text-sm ml-3"
                 />
               </View>
             </View>
 
             {/* Input Password Confirmation */}
             <View className="mb-5">
-              <Text className="text-slate-400 text-[9px] font-black uppercase tracking-wider mb-1.5">Passwort bestätigen</Text>
-              <View className="bg-white/5 border border-white/10 rounded-2xl flex-row items-center px-4 py-2.5">
+              <Text className="text-content-muted text-[9px] font-black uppercase tracking-wider mb-1.5">Passwort bestätigen</Text>
+              <View className="bg-surface border border-line rounded-2xl flex-row items-center px-4 py-2.5">
                 <Ionicons name="lock-closed-outline" size={16} color="rgba(255,255,255,0.4)" />
                 <TextInput
                   placeholder="••••••••"
@@ -163,7 +165,7 @@ export default function RegisterScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   editable={!loading}
-                  className="flex-1 text-white font-bold text-sm ml-3"
+                  className="flex-1 text-content font-bold text-sm ml-3"
                 />
               </View>
             </View>
@@ -179,15 +181,15 @@ export default function RegisterScreen() {
             >
               <View
                 className={`w-5 h-5 rounded-md border items-center justify-center mr-2.5 mt-0.5 ${
-                  acceptedTerms ? "bg-fuchsia-500 border-fuchsia-500" : "border-white/20"
+                  acceptedTerms ? "bg-accent-2 border-accent-2" : "border-line"
                 }`}
               >
-                {acceptedTerms && <Ionicons name="checkmark" size={14} color="#ffffff" />}
+                {acceptedTerms && <Ionicons name="checkmark" size={14} color={c.content} />}
               </View>
-              <Text className="text-slate-400 text-xs leading-relaxed flex-1">
+              <Text className="text-content-muted text-xs leading-relaxed flex-1">
                 Ich bin 18 Jahre oder älter und akzeptiere die{" "}
                 <Text
-                  className="text-cyan-400 font-bold"
+                  className="text-accent-ink font-bold"
                   onPress={(e) => {
                     e.stopPropagation();
                     triggerHaptic("light");
@@ -198,7 +200,7 @@ export default function RegisterScreen() {
                 </Text>{" "}
                 und die{" "}
                 <Text
-                  className="text-cyan-400 font-bold"
+                  className="text-accent-ink font-bold"
                   onPress={(e) => {
                     e.stopPropagation();
                     triggerHaptic("light");
@@ -215,24 +217,24 @@ export default function RegisterScreen() {
             <TouchableOpacity
               onPress={handleRegister}
               disabled={loading || !acceptedTerms}
-              className={`rounded-2xl py-4 items-center justify-center shadow-lg shadow-fuchsia-500/20 active:scale-95 ${
-                loading || !acceptedTerms ? "bg-fuchsia-500/50 opacity-70" : "bg-fuchsia-500"
+              className={`rounded-2xl py-4 items-center justify-center shadow-lg active:scale-95 ${
+                loading || !acceptedTerms ? "bg-accent-2/50 opacity-70" : "bg-accent-2"
               }`}
             >
               {loading ? (
                 <View className="flex-row items-center space-x-2">
-                  <ActivityIndicator color="#ffffff" size="small" />
-                  <Text className="text-white text-xs font-black uppercase tracking-wider ml-2">Registrierung läuft...</Text>
+                  <ActivityIndicator color={c.content} size="small" />
+                  <Text className="text-content text-xs font-black uppercase tracking-wider ml-2">Registrierung läuft...</Text>
                 </View>
               ) : (
-                <Text className="text-white text-sm font-black uppercase tracking-wider">Registrieren & Starten</Text>
+                <Text className="text-content text-sm font-black uppercase tracking-wider">Registrieren & Starten</Text>
               )}
             </TouchableOpacity>
           </View>
 
           {/* Foot Links */}
           <View className="flex-row justify-center mt-6 space-x-2">
-            <Text className="text-slate-400 text-xs font-semibold">Bereits ein Konto?</Text>
+            <Text className="text-content-muted text-xs font-semibold">Bereits ein Konto?</Text>
             <TouchableOpacity
               onPress={() => {
                 triggerHaptic("light");
@@ -240,7 +242,7 @@ export default function RegisterScreen() {
               }}
               disabled={loading}
             >
-              <Text className="text-cyan-400 text-xs font-black ml-1">Hier einloggen</Text>
+              <Text className="text-accent-ink text-xs font-black ml-1">Hier einloggen</Text>
             </TouchableOpacity>
           </View>
 

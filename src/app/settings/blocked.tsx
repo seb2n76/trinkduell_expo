@@ -6,6 +6,7 @@ import { apiService } from "@/services/api";
 import { BlockedUser } from "@/services/mockData";
 import { Avatar } from "@/components/Avatar";
 import { notify } from "@/services/dialogs";
+import { useThemeColors } from "@/services/theme";
 
 /**
  * Blockierte Nutzer verwalten.
@@ -15,6 +16,7 @@ import { notify } from "@/services/dialogs";
  * die Stores verlangen, dass sie auffindbar rückgängig zu machen ist.
  */
 export default function BlockedUsersScreen() {
+  const c = useThemeColors();
   const [blocked, setBlocked] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -50,26 +52,26 @@ export default function BlockedUsersScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-5 pt-6 pb-16"
         showsVerticalScrollIndicator={false}
       >
         <View className="w-full self-center" style={{ maxWidth: 640 }}>
-          <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+          <Text className="text-content-muted text-[11px] leading-relaxed mb-5">
             Wen du blockierst, siehst du nicht mehr — weder im Feed, auf der Karte noch in der
             Rangliste, und umgekehrt genauso.
           </Text>
 
           {loading ? (
             <View className="py-12 items-center">
-              <ActivityIndicator color="#22d3ee" />
+              <ActivityIndicator color={c.accent} />
             </View>
           ) : blocked.length === 0 ? (
-            <View className="py-12 items-center bg-slate-900/40 border border-white/5 rounded-3xl">
-              <Ionicons name="checkmark-circle-outline" size={32} color="#475569" />
-              <Text className="text-slate-500 text-xs font-bold mt-2 text-center">
+            <View className="py-12 items-center bg-surface/40 border border-line rounded-3xl">
+              <Ionicons name="checkmark-circle-outline" size={32} color={c.contentFaint} />
+              <Text className="text-content-faint text-xs font-bold mt-2 text-center">
                 Du hast niemanden blockiert.
               </Text>
             </View>
@@ -77,28 +79,28 @@ export default function BlockedUsersScreen() {
             blocked.map((entry) => (
               <View
                 key={entry.id}
-                className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
+                className="bg-surface border border-line rounded-2xl p-3.5 flex-row justify-between items-center mb-2.5"
               >
                 <View className="flex-row items-center flex-1 mr-2">
                   <Avatar
                     uri={entry.avatar || undefined}
                     name={entry.username}
                     size={32}
-                    className="border border-white/10"
+                    className="border border-line"
                   />
-                  <Text className="text-white text-xs font-black ml-3 flex-1" numberOfLines={1}>
+                  <Text className="text-content text-xs font-black ml-3 flex-1" numberOfLines={1}>
                     {entry.username}
                   </Text>
                 </View>
                 {busyId === entry.id ? (
-                  <ActivityIndicator size="small" color="#22d3ee" />
+                  <ActivityIndicator size="small" color={c.accent} />
                 ) : (
                   <TouchableOpacity
                     onPress={() => handleUnblock(entry)}
                     accessibilityLabel={`Blockierung von ${entry.username} aufheben`}
-                    className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl"
+                    className="bg-surface border border-line px-3 py-1.5 rounded-xl"
                   >
-                    <Text className="text-slate-300 text-[10px] font-black uppercase">Aufheben</Text>
+                    <Text className="text-content-muted text-[10px] font-black uppercase">Aufheben</Text>
                   </TouchableOpacity>
                 )}
               </View>

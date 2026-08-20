@@ -4,8 +4,10 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../_layout";
 import { triggerHaptic } from "@/services/haptics";
+import { useThemeColors } from "@/services/theme";
 
 export default function ChangePasswordScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const { changePassword } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -69,7 +71,7 @@ export default function ChangePasswordScreen() {
   const unvollstaendig = !currentPassword || !newPassword || !repeatPassword;
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-5 pt-6 pb-16"
@@ -79,30 +81,30 @@ export default function ChangePasswordScreen() {
         <View className="w-full self-center" style={{ maxWidth: 640 }}>
           {done ? (
             <>
-              <View className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 mb-5">
+              <View className="bg-success/10 border border-success/30 rounded-2xl p-4 mb-5">
                 <View className="flex-row items-center mb-2">
-                  <Ionicons name="checkmark-circle" size={18} color="#34d399" />
-                  <Text className="text-emerald-400 text-xs font-black uppercase tracking-wider ml-2">
+                  <Ionicons name="checkmark-circle" size={18} color={c.success} />
+                  <Text className="text-success text-xs font-black uppercase tracking-wider ml-2">
                     Passwort geändert
                   </Text>
                 </View>
-                <Text className="text-emerald-300/80 text-[11px] leading-relaxed">
+                <Text className="text-success text-[11px] leading-relaxed">
                   Auf diesem Gerät bleibst du angemeldet. Alle anderen Geräte wurden abgemeldet
                   und brauchen ab jetzt das neue Passwort.
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => router.back()}
-                className="bg-cyan-500 rounded-2xl py-3.5 items-center"
+                className="bg-accent rounded-2xl py-3.5 items-center"
               >
-                <Text className="text-slate-950 text-xs font-black uppercase tracking-wider">
+                <Text className="text-on-accent text-xs font-black uppercase tracking-wider">
                   Fertig
                 </Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text className="text-slate-400 text-[11px] leading-relaxed mb-5">
+              <Text className="text-content-muted text-[11px] leading-relaxed mb-5">
                 Zur Sicherheit brauchen wir dein aktuelles Passwort. Danach werden alle anderen
                 Geräte abgemeldet — auf diesem bleibst du eingeloggt.
               </Text>
@@ -111,41 +113,41 @@ export default function ChangePasswordScreen() {
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 placeholder="Aktuelles Passwort"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 secureTextEntry
                 autoCapitalize="none"
                 autoComplete="current-password"
                 textContentType="password"
-                className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-2.5"
+                className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content text-sm mb-2.5"
               />
               <TextInput
                 value={newPassword}
                 onChangeText={setNewPassword}
                 placeholder="Neues Passwort (min. 8 Zeichen)"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 secureTextEntry
                 autoCapitalize="none"
                 autoComplete="new-password"
                 textContentType="newPassword"
-                className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-2.5"
+                className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content text-sm mb-2.5"
               />
               <TextInput
                 value={repeatPassword}
                 onChangeText={setRepeatPassword}
                 placeholder="Neues Passwort wiederholen"
-                placeholderTextColor="#475569"
+                placeholderTextColor={c.contentFaint}
                 secureTextEntry
                 autoCapitalize="none"
                 autoComplete="new-password"
                 textContentType="newPassword"
                 onSubmitEditing={handleChangePassword}
-                className="bg-slate-900 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm mb-3"
+                className="bg-surface border border-line rounded-2xl px-4 py-3.5 text-content text-sm mb-3"
               />
 
               {error ? (
-                <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 mb-3 flex-row items-start">
-                  <Ionicons name="alert-circle" size={15} color="#f43f5e" />
-                  <Text className="text-rose-400 text-[11px] leading-4 ml-2 flex-1">{error}</Text>
+                <View className="bg-danger/10 border border-danger/30 rounded-2xl p-3 mb-3 flex-row items-start">
+                  <Ionicons name="alert-circle" size={15} color={c.danger} />
+                  <Text className="text-danger text-[11px] leading-4 ml-2 flex-1">{error}</Text>
                 </View>
               ) : null}
 
@@ -153,15 +155,15 @@ export default function ChangePasswordScreen() {
                 onPress={handleChangePassword}
                 disabled={saving || unvollstaendig}
                 className={`rounded-2xl py-3.5 items-center ${
-                  saving || unvollstaendig ? "bg-slate-800" : "bg-cyan-500"
+                  saving || unvollstaendig ? "bg-surface-alt" : "bg-accent"
                 }`}
               >
                 {saving ? (
-                  <ActivityIndicator size="small" color="#0f172a" />
+                  <ActivityIndicator size="small" color={c.onAccent} />
                 ) : (
                   <Text
                     className={`text-xs font-black uppercase tracking-wider ${
-                      unvollstaendig ? "text-slate-600" : "text-slate-950"
+                      unvollstaendig ? "text-content-faint" : "text-on-accent"
                     }`}
                   >
                     Passwort ändern

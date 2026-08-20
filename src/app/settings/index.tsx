@@ -1,11 +1,13 @@
 import React, { useCallback, useState } from "react";
 import { View, ScrollView, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiService } from "@/services/api";
 import { useAuth } from "../_layout";
 import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
-import { SettingsSection, SettingsRow } from "@/components/SettingsList";
+import { SettingsSection, SettingsRow, SettingsChoice } from "@/components/SettingsList";
+import { useTheme, type ThemePreference } from "@/services/theme";
 import {
   LocationMode,
   DEFAULT_LOCATION_MODE,
@@ -18,9 +20,20 @@ const LOCATION_LABELS: Record<LocationMode, string> = {
   off: "Aus",
 };
 
+const THEME_OPTIONS: {
+  key: ThemePreference;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+}[] = [
+  { key: "system", label: "System", icon: "phone-portrait-outline" },
+  { key: "light", label: "Hell", icon: "sunny-outline" },
+  { key: "dark", label: "Dunkel", icon: "moon-outline" },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { preference, setPreference } = useTheme();
   const [locationMode, setLocationModeState] = useState<LocationMode>(DEFAULT_LOCATION_MODE);
   const [deleting, setDeleting] = useState(false);
 
@@ -83,7 +96,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-4 pt-5 pb-16"
@@ -127,7 +140,6 @@ export default function SettingsScreen() {
             />
             <SettingsRow
               icon="ban-outline"
-              iconColor="#94a3b8"
               label="Blockierte Nutzer"
               hint="Blockierungen ansehen und aufheben"
               onPress={() => {
@@ -169,15 +181,15 @@ export default function SettingsScreen() {
 
           <SettingsSection
             title="Darstellung"
-            footer="Themes und Anzeigeoptionen kommen in einem späteren Schritt."
+            footer="„System“ folgt der Einstellung deines Geräts und wechselt mit, wenn es abends auf dunkel schaltet."
           >
-            <SettingsRow
-              icon="color-palette-outline"
-              iconColor="#64748b"
-              label="Design"
-              hint="Aktuell nur dunkel"
-              value="Dunkel"
-              disabled
+            <SettingsChoice
+              options={THEME_OPTIONS}
+              value={preference}
+              onChange={(next) => {
+                triggerHaptic("light");
+                setPreference(next);
+              }}
               last
             />
           </SettingsSection>
@@ -186,7 +198,7 @@ export default function SettingsScreen() {
               machen — die Abmeldung kostet nur einen neuen Login, die Löschung
               alles. Sie stehen deshalb ganz unten und nicht zwischen den
               harmlosen Zeilen. */}
-          <View className="border-t border-slate-800 pt-7 mt-1">
+          <View className="border-t border-line pt-7 mt-1">
             <SettingsSection
               title="Gefahrenzone"
               footer="Das Löschen entfernt Statistiken, Freundschaften und Nachrichten unwiderruflich."
@@ -208,7 +220,7 @@ export default function SettingsScreen() {
             </SettingsSection>
           </View>
 
-          <Text className="text-slate-700 text-[10px] font-bold text-center">
+          <Text className="text-content-faint text-[10px] font-bold text-center">
             TrinkDuell · Bitte trink verantwortungsvoll
           </Text>
         </View>

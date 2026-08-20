@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiService, ModerationInbox, ReportStatus } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
+import { useThemeColors, type ThemeColors } from "@/services/theme";
 
 const REPORT_GRUENDE: Record<string, string> = {
   belaestigung: "Belästigung",
@@ -13,10 +14,11 @@ const REPORT_GRUENDE: Record<string, string> = {
   sonstiges: "Sonstiges",
 };
 
-const FILTER: { key: ReportStatus; label: string; farbe: string }[] = [
-  { key: "open", label: "Offen", farbe: "#fbbf24" },
-  { key: "resolved", label: "Erledigt", farbe: "#34d399" },
-  { key: "dismissed", label: "Verworfen", farbe: "#64748b" },
+// Nimmt die Farben als Argument: Modulebene, dort gibt es keinen Hook.
+const filterOptionen = (c: ThemeColors): { key: ReportStatus; label: string; farbe: string }[] => [
+  { key: "open", label: "Offen", farbe: c.warning },
+  { key: "resolved", label: "Erledigt", farbe: c.success },
+  { key: "dismissed", label: "Verworfen", farbe: c.contentFaint },
 ];
 
 /**
@@ -27,6 +29,7 @@ const FILTER: { key: ReportStatus; label: string; farbe: string }[] = [
  * die Routen prüfen unabhängig davon, ein manipulierter Client gewinnt nichts.
  */
 export default function ModerationScreen() {
+  const c = useThemeColors();
   const [inbox, setInbox] = useState<ModerationInbox | null>(null);
   const [filter, setFilter] = useState<ReportStatus>("open");
   const [loading, setLoading] = useState(true);
@@ -63,15 +66,15 @@ export default function ModerationScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       {/* Filter. Die Zahlen gelten für alle Meldungen, nicht für die
           gefilterte Liste — sonst würde der Zähler vom Filter abhängen. */}
       <View className="px-4 pt-4 pb-3">
-        <Text className="text-slate-500 text-[10px] font-semibold mb-3 px-1">
+        <Text className="text-content-faint text-[10px] font-semibold mb-3 px-1">
           Die Stores erwarten eine Reaktion binnen 24 Stunden.
         </Text>
         <View className="flex-row" style={{ gap: 8 }}>
-          {FILTER.map((f) => {
+          {filterOptionen(c).map((f) => {
             const aktiv = filter === f.key;
             const anzahl = inbox?.counts?.[f.key] ?? 0;
             return (
@@ -83,20 +86,20 @@ export default function ModerationScreen() {
                 }}
                 accessibilityLabel={`Filter ${f.label}`}
                 style={{
-                  backgroundColor: aktiv ? `${f.farbe}1A` : "#0f172a",
-                  borderColor: aktiv ? `${f.farbe}66` : "#1e293b",
+                  backgroundColor: aktiv ? `${f.farbe}1A` : c.surfaceAlt,
+                  borderColor: aktiv ? `${f.farbe}66` : c.line,
                 }}
                 className="flex-1 border rounded-xl py-2.5 items-center"
               >
                 <Text
                   className="text-[10px] font-black uppercase tracking-wider"
-                  style={{ color: aktiv ? f.farbe : "#64748b" }}
+                  style={{ color: aktiv ? f.farbe : c.contentFaint }}
                 >
                   {f.label}
                 </Text>
                 <Text
                   className="text-[9px] font-black mt-0.5"
-                  style={{ color: aktiv ? f.farbe : "#475569" }}
+                  style={{ color: aktiv ? f.farbe : c.contentFaint }}
                 >
                   {anzahl}
                 </Text>
@@ -113,26 +116,26 @@ export default function ModerationScreen() {
       >
         {loading ? (
           <View className="py-12 items-center">
-            <ActivityIndicator color="#fbbf24" />
+            <ActivityIndicator color={c.warning} />
           </View>
         ) : !inbox || inbox.reports.length === 0 ? (
           <View className="py-12 items-center">
-            <Ionicons name="checkmark-done-outline" size={26} color="#334155" />
-            <Text className="text-slate-600 text-[11px] font-bold mt-2">Nichts hier. Gut so.</Text>
+            <Ionicons name="checkmark-done-outline" size={26} color={c.lineStrong} />
+            <Text className="text-content-faint text-[11px] font-bold mt-2">Nichts hier. Gut so.</Text>
           </View>
         ) : (
           inbox.reports.map((r) => (
-            <View key={r.id} className="bg-slate-900 border border-white/5 rounded-2xl p-3.5 mb-2.5">
+            <View key={r.id} className="bg-surface border border-line rounded-2xl p-3.5 mb-2.5">
               <View className="flex-row items-center mb-1.5">
-                <Text className="text-white text-xs font-black flex-1 mr-2" numberOfLines={1}>
+                <Text className="text-content text-xs font-black flex-1 mr-2" numberOfLines={1}>
                   {r.reportedName}
                 </Text>
-                <Text className="text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                <Text className="text-warning text-[9px] font-black uppercase tracking-wider">
                   {REPORT_GRUENDE[r.reason] || r.reason}
                 </Text>
               </View>
 
-              <Text className="text-slate-500 text-[9px] font-bold mb-2">
+              <Text className="text-content-faint text-[9px] font-bold mb-2">
                 gemeldet von {r.reporterName} ·{" "}
                 {new Date(r.timestamp).toLocaleString("de-DE", {
                   day: "2-digit",
@@ -144,38 +147,38 @@ export default function ModerationScreen() {
               </Text>
 
               {r.details ? (
-                <Text className="text-slate-300 text-[11px] leading-4 mb-2">{r.details}</Text>
+                <Text className="text-content-muted text-[11px] leading-4 mb-2">{r.details}</Text>
               ) : null}
 
               {/* Der Auszug ist eine Kopie aus dem Meldezeitpunkt — das
                   Original kann längst gelöscht sein. */}
               {r.contentExcerpt ? (
-                <View className="bg-slate-950 border border-white/5 rounded-xl p-2.5 mb-2">
-                  <Text className="text-slate-400 text-[10px] leading-4 italic" numberOfLines={4}>
+                <View className="bg-surface-alt border border-line rounded-xl p-2.5 mb-2">
+                  <Text className="text-content-muted text-[10px] leading-4 italic" numberOfLines={4}>
                     „{r.contentExcerpt}“
                   </Text>
                 </View>
               ) : null}
 
               {busyId === r.id ? (
-                <ActivityIndicator size="small" color="#fbbf24" />
+                <ActivityIndicator size="small" color={c.warning} />
               ) : r.status === "open" ? (
                 <View className="flex-row" style={{ gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => handleStatus(r.id, "dismissed")}
                     accessibilityLabel={`Meldung gegen ${r.reportedName} verwerfen`}
-                    className="flex-1 bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center"
+                    className="flex-1 bg-bg border border-line rounded-xl py-2.5 items-center"
                   >
-                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                    <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider">
                       Verwerfen
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleStatus(r.id, "resolved")}
                     accessibilityLabel={`Meldung gegen ${r.reportedName} als erledigt markieren`}
-                    className="flex-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl py-2.5 items-center"
+                    className="flex-1 bg-success/10 border border-success/30 rounded-xl py-2.5 items-center"
                   >
-                    <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                    <Text className="text-success text-[10px] font-black uppercase tracking-wider">
                       Erledigt
                     </Text>
                   </TouchableOpacity>
@@ -184,9 +187,9 @@ export default function ModerationScreen() {
                 <TouchableOpacity
                   onPress={() => handleStatus(r.id, "open")}
                   accessibilityLabel={`Meldung gegen ${r.reportedName} wieder öffnen`}
-                  className="bg-slate-950 border border-white/10 rounded-xl py-2.5 items-center"
+                  className="bg-surface-alt border border-line rounded-xl py-2.5 items-center"
                 >
-                  <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                  <Text className="text-content-muted text-[10px] font-black uppercase tracking-wider">
                     Wieder öffnen
                   </Text>
                 </TouchableOpacity>

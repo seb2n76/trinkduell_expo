@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { API_URL } from "@/services/config";
 import { ScoreboardPodiumSkeleton, ScoreboardRowSkeleton } from "@/components/Skeleton";
+import { useThemeColors } from "@/services/theme";
 
 type PeriodType = "this_month" | "last_month" | "all";
 type SortCriteriaType = "count" | "alcohol";
@@ -30,6 +31,7 @@ interface LiveScoreboardEntry {
 }
 
 export default function ScoreboardScreen() {
+  const c = useThemeColors();
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<DrinkLog[]>([]);
   const [drinks, setDrinks] = useState<Drink[]>([]);
@@ -260,12 +262,12 @@ export default function ScoreboardScreen() {
 
   const getRankBadgeColor = (rank: string) => {
     switch (rank) {
-      case "Diamant": return "bg-cyan-400/10 border-cyan-400/20 text-cyan-400";
-      case "Platin": return "bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-500";
-      case "Gold": return "bg-yellow-400/10 border-yellow-400/20 text-yellow-400";
-      case "Silber": return "bg-slate-300/10 border-slate-300/20 text-slate-300";
-      case "Bronze": return "bg-amber-600/10 border-amber-600/20 text-amber-600";
-      default: return "bg-slate-500/10 border-slate-500/20 text-slate-400";
+      case "Diamant": return "bg-accent/10 border-accent/20 text-accent-ink";
+      case "Platin": return "bg-accent-2/10 border-accent-2/20 text-accent-2-ink";
+      case "Gold": return "bg-warning/10 border-warning/20 text-warning";
+      case "Silber": return "bg-surface-alt/10 border-line-strong/20 text-content-muted";
+      case "Bronze": return "bg-warning/10 border-warning/20 text-warning";
+      default: return "bg-surface-alt/10 border-line-strong/20 text-content-muted";
     }
   };
 
@@ -282,17 +284,17 @@ export default function ScoreboardScreen() {
 
   const getCategoryColorHex = (category: string): string => {
     switch (category) {
-      case "Bier": return "#22d3ee";
-      case "Wein": return "#c084fc";
-      case "Sekt": return "#f472b6";
-      case "Schnaps": return "#fb7185";
-      case "Mischgetränk": return "#fbbf24";
-      default: return "#34d399";
+      case "Bier": return c.accent;
+      case "Wein": return c.accent2;
+      case "Sekt": return c.accent2;
+      case "Schnaps": return c.danger;
+      case "Mischgetränk": return c.warning;
+      default: return c.success;
     }
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       <ScrollView 
         className="flex-1 px-5 pt-4" 
         showsVerticalScrollIndicator={false}
@@ -300,9 +302,9 @@ export default function ScoreboardScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadData(true)}
-            tintColor="#22d3ee"
-            colors={["#22d3ee"]}
-            progressBackgroundColor="#0f172a"
+            tintColor={c.accent}
+            colors={[c.accent]}
+            progressBackgroundColor={c.surface}
           />
         }
       >
@@ -310,7 +312,7 @@ export default function ScoreboardScreen() {
         {/* ==========================================
             1. PERIOD SELECTOR TABS
             ========================================== */}
-        <View className="flex-row bg-slate-900 border border-white/5 rounded-2xl p-1 mb-4">
+        <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-4">
           {(["this_month", "last_month", "all"] as PeriodType[]).map((p) => {
             const label = p === "this_month" ? "Dieser Monat" : p === "last_month" ? "Letzter Monat" : "Gesamt";
             const isActive = period === p;
@@ -319,10 +321,10 @@ export default function ScoreboardScreen() {
                 key={p}
                 onPress={() => handlePeriodChange(p)}
                 className={`flex-1 py-2.5 rounded-xl items-center ${
-                  isActive ? "bg-white/5 border border-white/10" : ""
+                  isActive ? "bg-surface border border-line" : ""
                 }`}
               >
-                <Text className={`text-xs font-black uppercase tracking-wider ${isActive ? "text-cyan-400" : "text-slate-500"}`}>
+                <Text className={`text-xs font-black uppercase tracking-wider ${isActive ? "text-accent-ink" : "text-content-faint"}`}>
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -334,16 +336,16 @@ export default function ScoreboardScreen() {
             2. SORT SELECTOR
             ========================================== */}
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest">Sortieren nach</Text>
-          <View className="flex-row bg-slate-900 border border-white/5 rounded-xl p-0.5">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest">Sortieren nach</Text>
+          <View className="flex-row bg-surface border border-line rounded-xl p-0.5">
             <TouchableOpacity
               onPress={() => handleSortChange("count")}
               className={`flex-row items-center px-3 py-1.5 rounded-lg space-x-1 ${
-                sortCriteria === "count" ? "bg-cyan-400/10 border border-cyan-400/20" : ""
+                sortCriteria === "count" ? "bg-accent/10 border border-accent/20" : ""
               }`}
             >
-              <Ionicons name="wine-outline" size={12} color={sortCriteria === "count" ? "#22d3ee" : "#64748b"} />
-              <Text className={`text-[10px] font-black uppercase ml-1 ${sortCriteria === "count" ? "text-cyan-400" : "text-slate-500"}`}>
+              <Ionicons name="wine-outline" size={12} color={sortCriteria === "count" ? c.accent : c.contentFaint} />
+              <Text className={`text-[10px] font-black uppercase ml-1 ${sortCriteria === "count" ? "text-accent-ink" : "text-content-faint"}`}>
                 Menge
               </Text>
             </TouchableOpacity>
@@ -351,11 +353,11 @@ export default function ScoreboardScreen() {
             <TouchableOpacity
               onPress={() => handleSortChange("alcohol")}
               className={`flex-row items-center px-3 py-1.5 rounded-lg space-x-1 ${
-                sortCriteria === "alcohol" ? "bg-rose-500/10 border border-rose-500/20" : ""
+                sortCriteria === "alcohol" ? "bg-danger/10 border border-danger/20" : ""
               }`}
             >
-              <Ionicons name="flask-outline" size={12} color={sortCriteria === "alcohol" ? "#f43f5e" : "#64748b"} />
-              <Text className={`text-[10px] font-black uppercase ml-1 ${sortCriteria === "alcohol" ? "text-rose-500" : "text-slate-500"}`}>
+              <Ionicons name="flask-outline" size={12} color={sortCriteria === "alcohol" ? c.danger : c.contentFaint} />
+              <Text className={`text-[10px] font-black uppercase ml-1 ${sortCriteria === "alcohol" ? "text-danger" : "text-content-faint"}`}>
                 Alkohol
               </Text>
             </TouchableOpacity>
@@ -366,7 +368,7 @@ export default function ScoreboardScreen() {
         {loading && processedUsers.length === 0 && (
           <View className="mt-2">
             <ScoreboardPodiumSkeleton />
-            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
               Ränge ab Platz 4
             </Text>
             <ScoreboardRowSkeleton />
@@ -378,12 +380,12 @@ export default function ScoreboardScreen() {
 
         {/* Empty state when no data exists */}
         {processedUsers.length === 0 && !loading && (
-          <View className="py-14 items-center justify-center bg-white/5 border border-white/5 rounded-3xl p-6 my-6">
-            <Ionicons name="trophy-outline" size={36} color="#64748b" style={{ marginBottom: 12 }} />
-            <Text className="text-white text-xs font-black uppercase tracking-wider text-center mb-1">
+          <View className="py-14 items-center justify-center bg-surface border border-line rounded-3xl p-6 my-6">
+            <Ionicons name="trophy-outline" size={36} color={c.contentFaint} style={{ marginBottom: 12 }} />
+            <Text className="text-content text-xs font-black uppercase tracking-wider text-center mb-1">
               Noch keine Einträge vorhanden
             </Text>
-            <Text className="text-slate-400 text-[11px] font-medium text-center leading-relaxed">
+            <Text className="text-content-muted text-[11px] font-medium text-center leading-relaxed">
               Sobald Getränke geloggt werden, erscheint hier das Scoreboard!
             </Text>
           </View>
@@ -400,33 +402,33 @@ export default function ScoreboardScreen() {
               <Animated.View layout={LinearTransition.springify().damping(15)} key={podiumUsers[1].id} className="items-center mx-1.5 w-[28%]">
                 <TouchableOpacity
                   onPress={() => handleToggleExpand(podiumUsers[1].id)}
-                  className="items-center w-full bg-white/5 border border-slate-300/30 rounded-2xl p-2.5 pt-6 relative"
+                  className="items-center w-full bg-surface border border-line-strong/30 rounded-2xl p-2.5 pt-6 relative"
                   style={{ minHeight: 135 }}
                 >
-                  <View className="absolute -top-6 bg-slate-900 border-2 border-slate-300 w-11 h-11 rounded-full items-center justify-center overflow-hidden">
+                  <View className="absolute -top-6 bg-surface border-2 border-line-strong w-11 h-11 rounded-full items-center justify-center overflow-hidden">
                     {podiumUsers[1].avatar ? (
                       <Image source={{ uri: podiumUsers[1].avatar }} className="w-full h-full" />
                     ) : (
-                      <Ionicons name="person" size={20} color="#94a3b8" />
+                      <Ionicons name="person" size={20} color={c.contentMuted} />
                     )}
                   </View>
-                  <View className="absolute top-2 right-2 bg-slate-300 px-1 py-0.5 rounded">
-                    <Text className="text-slate-950 text-[8px] font-black">#2</Text>
+                  <View className="absolute top-2 right-2 bg-surface-alt px-1 py-0.5 rounded">
+                    <Text className="text-content text-[8px] font-black">#2</Text>
                   </View>
-                  <Text className="text-white text-xs font-bold text-center mt-2 w-full" numberOfLines={1}>
+                  <Text className="text-content text-xs font-bold text-center mt-2 w-full" numberOfLines={1}>
                     {(podiumUsers[1].name || "Unbekannter Trinker").split(" ")[0]}
                   </Text>
-                  <Text className="text-slate-300 text-[10px] font-black mt-1">
+                  <Text className="text-content-muted text-[10px] font-black mt-1">
                     {sortCriteria === "count"
                       ? `${podiumUsers[1].periodCount} Drk`
                       : `${podiumUsers[1].periodAlcoholGrams.toFixed(2)}g`}
                   </Text>
-                  <View className="mt-2 bg-slate-300/10 border border-slate-300/20 px-1.5 py-0.5 rounded-full">
-                    <Text className="text-slate-300 text-[7px] font-black uppercase">
+                  <View className="mt-2 bg-surface-alt/10 border border-line-strong/20 px-1.5 py-0.5 rounded-full">
+                    <Text className="text-content-muted text-[7px] font-black uppercase">
                       Lvl {podiumUsers[1].level || 1} • {podiumUsers[1].rank}
                     </Text>
                   </View>
-                  <Text className="text-slate-500 text-[8px] font-bold mt-1.5 text-center" numberOfLines={1}>
+                  <Text className="text-content-faint text-[8px] font-bold mt-1.5 text-center" numberOfLines={1}>
                     {podiumUsers[1].title}
                   </Text>
                 </TouchableOpacity>
@@ -438,36 +440,39 @@ export default function ScoreboardScreen() {
               <Animated.View layout={LinearTransition.springify().damping(15)} key={podiumUsers[0].id} className="items-center mx-1.5 w-[33%]">
                 <TouchableOpacity
                   onPress={() => handleToggleExpand(podiumUsers[0].id)}
-                  className="items-center w-full bg-white/5 border-2 border-yellow-400 rounded-3xl p-3.5 pt-8 relative shadow-[0_0_15px_rgba(234,179,8,0.25)]"
+                  className="items-center w-full bg-surface border-2 border-warning rounded-3xl p-3.5 pt-8 relative shadow-[0_0_15px_rgba(234,179,8,0.25)]"
                   style={{ minHeight: 165 }}
                 >
                   <View className="absolute -top-11 z-10">
-                    <Ionicons name="trophy" size={22} color="#facc15" />
+                    <Ionicons name="trophy" size={22} color={c.warning} />
                   </View>
-                  <View className="absolute -top-7 bg-slate-900 border-2 border-yellow-400 w-13 h-13 rounded-full items-center justify-center overflow-hidden">
+                  <View className="absolute -top-7 bg-surface border-2 border-warning w-13 h-13 rounded-full items-center justify-center overflow-hidden">
                     {podiumUsers[0].avatar ? (
                       <Image source={{ uri: podiumUsers[0].avatar }} className="w-full h-full" />
                     ) : (
-                      <Ionicons name="person" size={24} color="#eab308" />
+                      <Ionicons name="person" size={24} color={c.warning} />
                     )}
                   </View>
-                  <View className="absolute top-2 right-2 bg-yellow-400 px-1.5 py-0.5 rounded">
-                    <Text className="text-slate-950 text-[8px] font-black">#1</Text>
+                  {/* Auf Goldgrund, nicht auf der Seitenflaeche: on-accent
+                      dreht sich mit dem Schema (dunkel auf hellem Gold,
+                      hell auf dunklem Amber) und bleibt so immer lesbar. */}
+                  <View className="absolute top-2 right-2 bg-warning px-1.5 py-0.5 rounded">
+                    <Text className="text-on-accent text-[8px] font-black">#1</Text>
                   </View>
-                  <Text className="text-white text-sm font-black text-center mt-2 w-full" numberOfLines={1}>
+                  <Text className="text-content text-sm font-black text-center mt-2 w-full" numberOfLines={1}>
                     {(podiumUsers[0].name || "Unbekannter Trinker").split(" ")[0]}
                   </Text>
-                  <Text className="text-yellow-400 text-xs font-black mt-1">
+                  <Text className="text-warning text-xs font-black mt-1">
                     {sortCriteria === "count"
                       ? `${podiumUsers[0].periodCount} Drk`
                       : `${podiumUsers[0].periodAlcoholGrams.toFixed(2)}g`}
                   </Text>
-                  <View className="mt-2 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded-full">
-                    <Text className="text-yellow-400 text-[8px] font-black uppercase">
+                  <View className="mt-2 bg-warning/10 border border-warning/20 px-2 py-0.5 rounded-full">
+                    <Text className="text-warning text-[8px] font-black uppercase">
                       Lvl {podiumUsers[0].level || 1} • {podiumUsers[0].rank}
                     </Text>
                   </View>
-                  <Text className="text-yellow-500/80 text-[8px] font-extrabold mt-1.5 text-center" numberOfLines={1}>
+                  <Text className="text-warning text-[8px] font-extrabold mt-1.5 text-center" numberOfLines={1}>
                     {podiumUsers[0].title}
                   </Text>
                 </TouchableOpacity>
@@ -479,33 +484,33 @@ export default function ScoreboardScreen() {
               <Animated.View layout={LinearTransition.springify().damping(15)} key={podiumUsers[2].id} className="items-center mx-1.5 w-[28%]">
                 <TouchableOpacity
                   onPress={() => handleToggleExpand(podiumUsers[2].id)}
-                  className="items-center w-full bg-white/5 border border-amber-600/30 rounded-2xl p-2.5 pt-6 relative"
+                  className="items-center w-full bg-surface border border-warning/30 rounded-2xl p-2.5 pt-6 relative"
                   style={{ minHeight: 135 }}
                 >
-                  <View className="absolute -top-6 bg-slate-900 border-2 border-amber-600 w-11 h-11 rounded-full items-center justify-center overflow-hidden">
+                  <View className="absolute -top-6 bg-surface border-2 border-warning w-11 h-11 rounded-full items-center justify-center overflow-hidden">
                     {podiumUsers[2].avatar ? (
                       <Image source={{ uri: podiumUsers[2].avatar }} className="w-full h-full" />
                     ) : (
-                      <Ionicons name="person" size={20} color="#d97706" />
+                      <Ionicons name="person" size={20} color={c.warning} />
                     )}
                   </View>
-                  <View className="absolute top-2 right-2 bg-amber-600 px-1 py-0.5 rounded">
-                    <Text className="text-slate-950 text-[8px] font-black">#3</Text>
+                  <View className="absolute top-2 right-2 bg-warning px-1 py-0.5 rounded">
+                    <Text className="text-on-accent text-[8px] font-black">#3</Text>
                   </View>
-                  <Text className="text-white text-xs font-bold text-center mt-2 w-full" numberOfLines={1}>
+                  <Text className="text-content text-xs font-bold text-center mt-2 w-full" numberOfLines={1}>
                     {(podiumUsers[2].name || "Unbekannter Trinker").split(" ")[0]}
                   </Text>
-                  <Text className="text-amber-600 text-[10px] font-black mt-1">
+                  <Text className="text-warning text-[10px] font-black mt-1">
                     {sortCriteria === "count"
                       ? `${podiumUsers[2].periodCount} Drk`
                       : `${podiumUsers[2].periodAlcoholGrams.toFixed(2)}g`}
                   </Text>
-                  <View className="mt-2 bg-amber-600/10 border border-amber-600/20 px-1.5 py-0.5 rounded-full">
-                    <Text className="text-amber-600 text-[7px] font-black uppercase">
+                  <View className="mt-2 bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-full">
+                    <Text className="text-warning text-[7px] font-black uppercase">
                       Lvl {podiumUsers[2].level || 1} • {podiumUsers[2].rank}
                     </Text>
                   </View>
-                  <Text className="text-slate-500 text-[8px] font-bold mt-1.5 text-center" numberOfLines={1}>
+                  <Text className="text-content-faint text-[8px] font-bold mt-1.5 text-center" numberOfLines={1}>
                     {podiumUsers[2].title}
                   </Text>
                 </TouchableOpacity>
@@ -520,20 +525,20 @@ export default function ScoreboardScreen() {
             ========================================== */}
         {listUsers.length > 0 && (
           <View className="mb-10">
-            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">Ränge ab Platz 4</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">Ränge ab Platz 4</Text>
             
             {listUsers.map((item, index) => {
               const isSelf = item.id === currentUser?.id;
               const isExpanded = expandedUserId === item.id;
               
-              let borderStyle = isSelf ? "border-cyan-400/50" : "border-white/10";
+              let borderStyle = isSelf ? "border-accent/50" : "border-line";
               const realRank = index + 4;
 
               return (
                 <Animated.View
                   layout={LinearTransition.springify().damping(15)}
                   key={item.id}
-                  className={`bg-white/5 border rounded-2xl p-4 mb-3 shadow-lg ${borderStyle}`}
+                  className={`bg-surface border rounded-2xl p-4 mb-3 shadow-lg ${borderStyle}`}
                 >
                   <TouchableOpacity
                     onPress={() => handleToggleExpand(item.id)}
@@ -542,30 +547,30 @@ export default function ScoreboardScreen() {
                   >
                     <View className="flex-row items-center space-x-3 flex-1">
                       <View className="w-6 items-center justify-center">
-                        <Text className="text-white/40 text-xs font-black">#{realRank}</Text>
+                        <Text className="text-content-faint text-xs font-black">#{realRank}</Text>
                       </View>
                       
                       {item.avatar ? (
-                        <Image source={{ uri: item.avatar }} className="w-9 h-9 rounded-full border border-white/10" />
+                        <Image source={{ uri: item.avatar }} className="w-9 h-9 rounded-full border border-line" />
                       ) : (
-                        <View className="w-9 h-9 rounded-full bg-slate-900 border border-white/10 items-center justify-center">
-                          <Ionicons name="person" size={16} color="#94a3b8" />
+                        <View className="w-9 h-9 rounded-full bg-surface border border-line items-center justify-center">
+                          <Ionicons name="person" size={16} color={c.contentMuted} />
                         </View>
                       )}
 
                       <View className="ml-2.5 flex-1">
                         <View className="flex-row items-center flex-wrap gap-1">
-                           <Text className="text-white text-xs font-black mr-1" numberOfLines={1}>
+                           <Text className="text-content text-xs font-black mr-1" numberOfLines={1}>
                              {item.name || "Unbekannter Trinker"}
                            </Text>
-                          <View className="bg-slate-900 border border-white/10 px-1.5 py-0.5 rounded">
-                            <Text className="text-cyan-400 text-[6px] font-black uppercase tracking-wider leading-none">Lvl {item.level || 1}</Text>
+                          <View className="bg-surface border border-line px-1.5 py-0.5 rounded">
+                            <Text className="text-accent-ink text-[6px] font-black uppercase tracking-wider leading-none">Lvl {item.level || 1}</Text>
                           </View>
                           <View className={`border px-1 py-0.5 rounded ${getRankBadgeColor(item.rank)}`}>
                             <Text className="text-[6px] font-black uppercase tracking-wider leading-none">{item.rank}</Text>
                           </View>
                         </View>
-                        <Text className="text-white/40 text-[9px] font-bold mt-0.5">{item.title}</Text>
+                        <Text className="text-content-faint text-[9px] font-bold mt-0.5">{item.title}</Text>
                       </View>
                     </View>
 
@@ -574,49 +579,49 @@ export default function ScoreboardScreen() {
                       <View className="items-end">
                         {sortCriteria === "count" ? (
                           <>
-                            <Text className="text-cyan-400 text-sm font-black">{item.periodCount}x</Text>
-                            <Text className="text-rose-500/80 text-[8px] font-bold">{item.periodAlcoholGrams.toFixed(2)}g Alk</Text>
+                            <Text className="text-accent-ink text-sm font-black">{item.periodCount}x</Text>
+                            <Text className="text-danger text-[8px] font-bold">{item.periodAlcoholGrams.toFixed(2)}g Alk</Text>
                           </>
                         ) : (
                           <>
-                            <Text className="text-rose-500 text-sm font-black">{item.periodAlcoholGrams.toFixed(2)}g</Text>
-                            <Text className="text-cyan-400/80 text-[8px] font-bold">{item.periodCount} Drk</Text>
+                            <Text className="text-danger text-sm font-black">{item.periodAlcoholGrams.toFixed(2)}g</Text>
+                            <Text className="text-accent-ink text-[8px] font-bold">{item.periodCount} Drk</Text>
                           </>
                         )}
                       </View>
-                      <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={14} color="#64748b" style={{ marginLeft: 4 }} />
+                      <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={14} color={c.contentFaint} style={{ marginLeft: 4 }} />
                     </View>
                   </TouchableOpacity>
 
                   {/* Expand breakdown details */}
                   {isExpanded && (
-                    <View className="mt-4 pt-3 border-t border-white/5">
-                      <Text className="text-white/50 text-[8px] font-black uppercase tracking-widest mb-2">Getränke-Aufteilung</Text>
-                      <View className="flex-row flex-wrap justify-between bg-slate-950/40 p-3 rounded-xl border border-white/5">
+                    <View className="mt-4 pt-3 border-t border-line">
+                      <Text className="text-content-muted text-[8px] font-black uppercase tracking-widest mb-2">Getränke-Aufteilung</Text>
+                      <View className="flex-row flex-wrap justify-between bg-surface-alt/40 p-3 rounded-xl border border-line">
                         {Object.entries(item.categoryTally).map(([cat, count]) => (
-                          <View key={cat} className="flex-row justify-between items-center w-[48%] py-1 border-b border-white/5">
+                          <View key={cat} className="flex-row justify-between items-center w-[48%] py-1 border-b border-line">
                             <View className="flex-row items-center">
                                <Ionicons name={getCategoryIcon(cat)} size={11} color={getCategoryColorHex(cat)} />
-                               <Text className="text-white/60 text-[9px] font-bold ml-1">{cat}</Text>
+                               <Text className="text-content-muted text-[9px] font-bold ml-1">{cat}</Text>
                             </View>
-                            <Text className="text-white text-[9px] font-black">{count}x</Text>
+                            <Text className="text-content text-[9px] font-black">{count}x</Text>
                           </View>
                         ))}
                         
-                        <View className="w-full flex-row justify-between items-center mt-3 pt-2 border-t border-white/10">
+                        <View className="w-full flex-row justify-between items-center mt-3 pt-2 border-t border-line">
                           <View className="flex-row items-center">
-                            <Ionicons name="scale-outline" size={11} color="#f43f5e" />
-                            <Text className="text-white/60 text-[9px] font-bold ml-1">Gesamtvolumen</Text>
+                            <Ionicons name="scale-outline" size={11} color={c.danger} />
+                            <Text className="text-content-muted text-[9px] font-bold ml-1">Gesamtvolumen</Text>
                           </View>
-                          <Text className="text-rose-400 text-[9px] font-black">{(item.periodVolume / 1000).toFixed(2)}L</Text>
+                          <Text className="text-danger text-[9px] font-black">{(item.periodVolume / 1000).toFixed(2)}L</Text>
                         </View>
 
                         <View className="w-full flex-row justify-between items-center mt-1">
                           <View className="flex-row items-center">
-                            <Ionicons name="flame-outline" size={11} color="#eab308" />
-                            <Text className="text-white/60 text-[9px] font-bold ml-1">Kalorien</Text>
+                            <Ionicons name="flame-outline" size={11} color={c.warning} />
+                            <Text className="text-content-muted text-[9px] font-bold ml-1">Kalorien</Text>
                           </View>
-                          <Text className="text-yellow-400 text-[9px] font-black">{item.periodCalories} kcal</Text>
+                          <Text className="text-warning text-[9px] font-black">{item.periodCalories} kcal</Text>
                         </View>
                       </View>
                     </View>
