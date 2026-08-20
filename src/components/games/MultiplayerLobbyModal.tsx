@@ -168,7 +168,7 @@ export function MultiplayerLobbyModal({
                     key={index}
                     className="bg-surface-alt border border-line w-12 h-14 rounded-2xl items-center justify-center mx-1.5 shadow-sm"
                   >
-                    <Text className="text-amber-400 text-3xl font-black font-mono">{char}</Text>
+                    <Text className="text-warning text-3xl font-black font-mono">{char}</Text>
                   </View>
                 ))}
               </View>
@@ -200,13 +200,13 @@ export function MultiplayerLobbyModal({
                         }}
                         className={`w-72 bg-surface rounded-3xl p-5 mr-3 shadow-md ${
                           isSelected
-                            ? "border-2 border-amber-400 bg-amber-400/5"
+                            ? "border-2 border-warning bg-warning/5"
                             : "border border-line"
                         }`}
                       >
                         <View className="flex-row items-center justify-between mb-2.5">
                           <View className="px-2.5 py-0.5 rounded-full bg-surface-alt border border-line">
-                            <Text className="text-amber-400 text-[8px] font-black uppercase">
+                            <Text className="text-warning text-[8px] font-black uppercase">
                               {game.genre}
                             </Text>
                           </View>
@@ -226,7 +226,7 @@ export function MultiplayerLobbyModal({
             ) : (
               <View className="bg-surface border border-line rounded-3xl p-5 mb-6 shadow-sm">
                 <View className="flex-row items-center mb-1.5">
-                  <Ionicons name="sparkles" size={16} color="#fbbf24" />
+                  <Ionicons name="sparkles" size={16} color={c.warning} />
                   <Text className="text-content text-xs font-black uppercase ml-2">
                     {selectedGame.title}
                   </Text>
@@ -250,7 +250,7 @@ export function MultiplayerLobbyModal({
               </View>
 
               {loading && !room ? (
-                <ActivityIndicator size="small" color="#fbbf24" />
+                <ActivityIndicator size="small" color={c.warning} />
               ) : (
                 <View className="gap-2.5">
                   {room?.players?.map((player: any, idx: number) => {
@@ -260,7 +260,7 @@ export function MultiplayerLobbyModal({
                         key={player.id || idx}
                         className={`flex-row items-center justify-between p-4 rounded-2xl border shadow-sm ${
                           isMe
-                            ? "bg-amber-400/10 border-amber-400/50"
+                            ? "bg-warning/10 border-warning/50"
                             : "bg-surface border-line"
                         }`}
                       >
@@ -278,14 +278,14 @@ export function MultiplayerLobbyModal({
                                 {player.name}
                               </Text>
                               {player.isHost && (
-                                <View className="bg-amber-400/20 border border-amber-400/40 px-1.5 py-0.5 rounded">
-                                  <Text className="text-amber-400 text-[8px] font-black uppercase">
+                                <View className="bg-warning/20 border border-warning/40 px-1.5 py-0.5 rounded">
+                                  <Text className="text-warning text-[8px] font-black uppercase">
                                     Host 👑
                                   </Text>
                                 </View>
                               )}
                               {isMe && (
-                                <Text className="text-amber-400 text-[9px] font-bold ml-1.5">
+                                <Text className="text-warning text-[9px] font-bold ml-1.5">
                                   (Du)
                                 </Text>
                               )}
@@ -312,14 +312,14 @@ export function MultiplayerLobbyModal({
                 activeOpacity={0.85}
                 onPress={handleStartGame}
                 disabled={starting || (room?.players?.length || 0) < selectedGame.minPlayers}
-                className="w-full bg-amber-400 py-4 rounded-2xl items-center justify-center flex-row shadow-lg active:scale-95 disabled:opacity-40"
+                className="w-full bg-warning py-4 rounded-2xl items-center justify-center flex-row shadow-lg active:scale-95 disabled:opacity-40"
               >
                 {starting ? (
-                  <ActivityIndicator size="small" color="#000000" />
+                  <ActivityIndicator size="small" color={c.onAccent} />
                 ) : (
                   <>
-                    <Ionicons name="play" size={18} color="#000000" />
-                    <Text className="text-black font-black text-xs uppercase tracking-wider ml-2">
+                    <Ionicons name="play" size={18} color={c.onAccent} />
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-2">
                       Story-Spiel starten
                     </Text>
                   </>
@@ -327,7 +327,7 @@ export function MultiplayerLobbyModal({
               </TouchableOpacity>
             ) : (
               <View className="flex-row items-center justify-center py-2">
-                <ActivityIndicator size="small" color="#fbbf24" className="mr-2.5" />
+                <ActivityIndicator size="small" color={c.warning} className="mr-2.5" />
                 <Text className="text-content-faint text-xs font-bold">
                   Warte auf Spielstart durch den Host...
                 </Text>
