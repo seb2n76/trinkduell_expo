@@ -53,6 +53,48 @@ export interface ActiveRule {
   act: number;
 }
 
+/**
+ * Eine persönliche Auflage mit Laufzeit („bis zum Ende des Aktes darfst du
+ * niemanden beim Vornamen nennen").
+ *
+ * Das stärkste Bindeglied zwischen zwei sonst unabhängigen Minispielen: der
+ * Fluch überlebt den Spielwechsel, also bleibt die Runde eine Runde und wird
+ * nicht zu einer Kette von Einzelspielen.
+ */
+export interface StatusEffect {
+  id: string;
+  playerId: string;
+  text: string;
+  /** Gilt bis einschließlich zu diesem Akt. */
+  untilAct: number;
+  kind: "fluch" | "segen";
+}
+
+/**
+ * Was die Runde über eine Person gelernt hat.
+ *
+ * Daraus entstehen Titel („3× gewählt: Der Verdächtige"), und Titel machen
+ * Karten adressierbar: „Der Verdächtige zieht diese Karte." Damit hört das
+ * Spiel auf, anonyme Prompts zu werfen, und fängt an, auf die konkrete Gruppe
+ * zu zeigen.
+ */
+export interface DossierEntry {
+  id: string;
+  playerId: string;
+  kind: string;
+  text: string;
+  act: number;
+}
+
+/** Titel, die aus dem Dossier entstehen. Schwelle = wie oft es passiert sein muss. */
+const TITLES: { kind: string; count: number; title: string }[] = [
+  { kind: "gewaehlt", count: 3, title: "Der Verdächtige" },
+  { kind: "zugegeben", count: 3, title: "Das offene Buch" },
+  { kind: "verweigert", count: 2, title: "Die Unbestechliche" },
+  { kind: "gewonnen", count: 3, title: "Der Glückspilz" },
+  { kind: "geplatzt", count: 2, title: "Die Zündschnur" },
+];
+
 interface NightState {
   active: boolean;
   players: SessionPlayer[];
@@ -62,6 +104,8 @@ interface NightState {
   waterRoundsUsed: number[];
   /** Wer ist dran. Reihum, damit niemand vergessen wird. */
   turnIndex: number;
+  effects: StatusEffect[];
+  dossier: DossierEntry[];
 }
 
 const EMPTY: NightState = {
@@ -71,6 +115,8 @@ const EMPTY: NightState = {
   activeRules: [],
   waterRoundsUsed: [],
   turnIndex: 0,
+  effects: [],
+  dossier: [],
 };
 
 function actForRounds(rounds: number): number {
@@ -106,6 +152,20 @@ interface NightSessionApi {
   countRound: () => void;
   /** Alle trinken ein Wasser, alle bekommen einen Joker. Einmal pro Akt. */
   waterRound: () => boolean;
+
+  /** Noch laufende Auflagen — abgelaufene sind schon herausgefiltert. */
+  effects: StatusEffect[];
+  effectsFor: (playerId: string) => StatusEffect[];
+  /** `actsLasting` = wie viele Akte die Auflage gilt (Standard: bis Aktende). */
+  addEffect: (playerId: string, text: string, kind?: "fluch" | "segen", actsLasting?: number) => void;
+  clearEffect: (id: string) => void;
+
+  /** Was die Runde über jemanden gelernt hat. */
+  dossier: DossierEntry[];
+  remember: (playerId: string, kind: string, text: string) => void;
+  /** Verdiente Titel je Spieler-Id. */
+  titles: Record<string, string[]>;
+  titleFor: (playerId: string) => string | null;
 }
 
 const NightSessionContext = createContext<NightSessionApi | null>(null);
@@ -146,6 +206,8 @@ export function NightSessionProvider({ children }: { children: React.ReactNode }
       activeRules: [],
       waterRoundsUsed: [],
       turnIndex: 0,
+      effects: [],
+      dossier: [],
       players: players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -247,6 +309,64 @@ export function NightSessionProvider({ children }: { children: React.ReactNode }
     );
   }, []);
 
+  const addEffect = useCallback(
+    (playerId: string, text: string, kind: "fluch" | "segen" = "fluch", actsLasting = 1) => {
+      setState((s) => ({
+        ...s,
+        effects: [
+          ...s.effects,
+          {
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            playerId,
+            text,
+            kind,
+            untilAct: actForRounds(s.rounds) + (actsLasting - 1),
+          },
+        ],
+      }));
+    },
+    []
+  );
+
+  const clearEffect = useCallback((id: string) => {
+    setState((s) => ({ ...s, effects: s.effects.filter((e) => e.id !== id) }));
+  }, []);
+
+  const remember = useCallback((playerId: string, kind: string, text: string) => {
+    setState((s) => ({
+      ...s,
+      dossier: [
+        ...s.dossier,
+        {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          playerId,
+          kind,
+          text,
+          act: actForRounds(s.rounds),
+        },
+      ],
+    }));
+  }, []);
+
+  // Abgelaufene Auflagen fallen hier heraus, statt beim Aktwechsel gelöscht zu
+  // werden: so bleibt der Zustand rein additiv und übersteht ein Neuladen.
+  const effects = useMemo(
+    () => state.effects.filter((e) => e.untilAct >= act),
+    [state.effects, act]
+  );
+
+  const titles = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const p of state.players) {
+      const meins = state.dossier.filter((d) => d.playerId === p.id);
+      const verdient = TITLES.filter(
+        (t) => meins.filter((d) => d.kind === t.kind).length >= t.count
+      ).map((t) => t.title);
+      if (verdient.length) out[p.id] = verdient;
+    }
+    return out;
+  }, [state.dossier, state.players]);
+
   const leader = useMemo(() => {
     if (state.players.length === 0) return null;
     return [...state.players].sort((a, b) => b.points - a.points)[0];
@@ -277,6 +397,14 @@ export function NightSessionProvider({ children }: { children: React.ReactNode }
     removeRule,
     countRound,
     waterRound,
+    effects,
+    effectsFor: (playerId: string) => effects.filter((e) => e.playerId === playerId),
+    addEffect,
+    clearEffect,
+    dossier: state.dossier,
+    remember,
+    titles,
+    titleFor: (playerId: string) => (titles[playerId] ? titles[playerId][0] : null),
   };
 
   return <NightSessionContext.Provider value={value}>{children}</NightSessionContext.Provider>;

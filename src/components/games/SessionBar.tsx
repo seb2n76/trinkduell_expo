@@ -20,7 +20,8 @@ export function SessionBar() {
 
   if (!session || !session.active) return null;
 
-  const { act, actLabel, multiplier, activeRules, leader, players, waterRoundAvailable } = session;
+  const { act, actLabel, multiplier, activeRules, leader, players, waterRoundAvailable, effects } =
+    session;
 
   return (
     <View className="mb-3">
@@ -44,11 +45,16 @@ export function SessionBar() {
             </View>
           )}
           {activeRules.length > 0 && (
-            <View className="flex-row items-center">
+            <View className="flex-row items-center mr-2">
               <Ionicons name="hammer-outline" size={12} color={c.contentFaint} />
               <Text className="text-content-faint text-[9px] font-black ml-1">
                 {activeRules.length} Regeln
               </Text>
+            </View>
+          )}
+          {effects.length > 0 && (
+            <View className="flex-row items-center">
+              <Text className="text-warning text-[9px] font-black">⛓️ {effects.length}</Text>
             </View>
           )}
         </View>
@@ -73,24 +79,46 @@ export function SessionBar() {
           <Text className="text-content-faint text-[9px] font-black uppercase tracking-widest mb-1.5">
             Punktestand
           </Text>
-          <View className="gap-1 mb-3">
+          <View className="gap-1.5 mb-3">
             {[...players]
               .sort((a, b) => b.points - a.points)
-              .map((p) => (
-                <View key={p.id} className="flex-row items-center justify-between">
-                  <Text className="text-content text-[11px] font-bold flex-1 mr-2" numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <View className="flex-row items-center">
-                    {/* Joker sichtbar machen. Wer weiß, dass er zwei hat,
-                        benutzt sie auch — statt sich zu etwas zu überwinden. */}
-                    <Text className="text-content-faint text-[10px] font-bold mr-2">
-                      {"🃏".repeat(p.jokers) || "—"}
-                    </Text>
-                    <Text className="text-content text-[11px] font-black">{p.points}</Text>
+              .map((p) => {
+                const titel = session.titleFor(p.id);
+                const meine = session.effectsFor(p.id);
+                return (
+                  <View key={p.id}>
+                    <View className="flex-row items-center justify-between">
+                      <Text
+                        className="text-content text-[11px] font-bold flex-1 mr-2"
+                        numberOfLines={1}
+                      >
+                        {p.name}
+                        {titel ? (
+                          <Text className="text-accent text-[10px] font-black"> · {titel}</Text>
+                        ) : null}
+                      </Text>
+                      <View className="flex-row items-center">
+                        {/* Joker sichtbar machen. Wer weiß, dass er zwei hat,
+                            benutzt sie auch — statt sich zu etwas zu überwinden. */}
+                        <Text className="text-content-faint text-[10px] font-bold mr-2">
+                          {"🃏".repeat(p.jokers) || "—"}
+                        </Text>
+                        <Text className="text-content text-[11px] font-black">{p.points}</Text>
+                      </View>
+                    </View>
+                    {meine.map((e) => (
+                      <Text
+                        key={e.id}
+                        className={`text-[10px] font-medium leading-relaxed mt-0.5 ${
+                          e.kind === "segen" ? "text-success" : "text-warning"
+                        }`}
+                      >
+                        {e.kind === "segen" ? "✨" : "⛓️"} {e.text}
+                      </Text>
+                    ))}
                   </View>
-                </View>
-              ))}
+                );
+              })}
           </View>
 
           {/* Aktive Regeln — der Grund, warum es nach 20 Minuten eskaliert */}
