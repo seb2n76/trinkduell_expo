@@ -328,8 +328,11 @@ test("Eine abgelaufene Frist loest von selbst auf (P1)", async (t) => {
     const vorher = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
     assert.equal(vorher.json.room.gameState.phase.kind, "choice");
 
-    // Niemand tut etwas — nur die Zeit vergeht.
-    await new Promise((resolve) => setTimeout(resolve, 1300));
+    // Niemand tut etwas — nur die Zeit vergeht. Der Puffer über der
+    // Ein-Sekunden-Frist ist bewusst grosszuegig: unter Last (paralleler
+    // Typpruefer, laufender Dev-Server) rutscht ein knapper Wert sonst
+    // gelegentlich durch und der Test wirkt kaputt, obwohl er es nicht ist.
+    await new Promise((resolve) => setTimeout(resolve, 1800));
 
     const nachher = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
     assert.equal(
@@ -341,7 +344,7 @@ test("Eine abgelaufene Frist loest von selbst auf (P1)", async (t) => {
 
   await t.test("mehrere verpasste Fristen holt der Server auf einmal nach", async () => {
     // Zwei volle Phasen lang pollt niemand — etwa weil alle Displays aus sind.
-    await new Promise((resolve) => setTimeout(resolve, 2600));
+    await new Promise((resolve) => setTimeout(resolve, 3200));
 
     const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
     assert.ok(
