@@ -8,6 +8,7 @@ const multer = require("multer");
 const { sendPushNotification } = require("./push");
 const { sendPasswordResetEmail } = require("./email");
 const storage = require("./storage");
+const gameRooms = require("./gameRooms");
 
 // Largest request body accepted anywhere. Avatars arrive as Base64 from the
 // image picker, which hands over the photo at quality 0.8 without resizing —
@@ -3451,6 +3452,164 @@ app.patch("/api/reports/:id", authenticate, requireModerator, async (req, res) =
 
   res.json({ success: true, id: report.id, status });
 });
+
+// ==========================================
+// Multi-Device Party & Story-RPG Game Rooms
+// ==========================================
+//
+// Diese Routen sind bewusst OHNE Anmeldung erreichbar: auf einer Party
+// sollen Gaeste ohne Konto mitspielen koennen. Der Ausweis ist deshalb ein
+// Spieler-Token, den der Server beim Erstellen bzw. Beitreten genau einmal
+// ausliefert.
+//
+// Ausdruecklich NICHT die playerId: die steht in jeder Raumantwort und ist
+// damit jedem Mitspieler bekannt. Wer sie als Nachweis akzeptiert, laesst
+// jeden Teilnehmer als jeder andere handeln — Geheimrolle auslesen, als Host
+// die Story weiterschalten, fremde Stimmen abgeben.
+
+/** Spieler-Token aus Body oder Query. */
+function roomToken(req) {
+  return (req.body && req.body.playerToken) || req.query.playerToken || null;
+}
+
+/** Angemeldete Nutzer-Id, falls ein gueltiges Token mitkommt — sonst null. */
+function optionalAuthenticate(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.substring(7);
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    return payload.sub;
+  } catch {
+    return null;
+  }
+}
+
+// Raum erstellen
+app.post("/api/game-rooms", async (req, res) => {
+  const { gameId, hostName, hostAvatar } = req.body || {};
+  // Nur die per JWT nachgewiesene Identitaet. Eine frei gesetzte hostId
+  // liesse jeden einen Raum im Namen eines beliebigen Nutzers eroeffnen.
+  const effectiveHostId = optionalAuthenticate(req) || undefined;
+
+  const created = gameRooms.createRoom({
+    gameId,
+    hostId: effectiveHostId,
+    hostName: (hostName || "Host").slice(0, 32),
+    hostAvatar: hostAvatar || null,
+  });
+
+  res.status(201).json({ success: true, ...created });
+});
+
+// Raum beitreten
+app.post("/api/game-rooms/:code/join", async (req, res) => {
+  const { code } = req.params;
+  const { playerName, playerAvatar } = req.body || {};
+
+  try {
+    const joined = gameRooms.joinRoom(code, {
+      // Nur zum Wiedereintritt gesetzt; neue Spieler bekommen einen frischen.
+      playerToken: roomToken(req),
+      playerName: (playerName || "Mitspieler").slice(0, 32),
+      playerAvatar: playerAvatar || null,
+    });
+    res.json({ success: true, ...joined });
+  } catch (err) {
+    if (err.message === "ROOM_NOT_FOUND") {
+      return res.status(404).json({ error: "Raum wurde nicht gefunden. Bitte Code prüfen." });
+    }
+    if (err.message === "GAME_ALREADY_STARTED") {
+      return res.status(400).json({ error: "Das Spiel in diesem Raum hat bereits begonnen." });
+    }
+    if (err.message === "ROOM_FULL") {
+      return res.status(400).json({ error: "Der Raum ist bereits voll (maximal 16 Spieler)." });
+    }
+    serverError(res, err, "joinRoom");
+  }
+});
+
+// Raum-Status abfragen (Sync / Polling)
+app.get("/api/game-rooms/:code", async (req, res) => {
+  const { code } = req.params;
+
+  const room = gameRooms.getRoom(code, roomToken(req));
+  if (!room) {
+    return res.status(404).json({ error: "Raum nicht gefunden oder abgelaufen." });
+  }
+
+  res.json({ success: true, room });
+});
+
+// Spiel starten (Host)
+app.post("/api/game-rooms/:code/start", async (req, res) => {
+  const { code } = req.params;
+  const { gameSetupData } = req.body || {};
+
+  try {
+    const room = gameRooms.startGame(code, roomToken(req), gameSetupData);
+    res.json({ success: true, room });
+  } catch (err) {
+    if (err.message === "ROOM_NOT_FOUND") {
+      return res.status(404).json({ error: "Raum nicht gefunden." });
+    }
+    if (err.message === "NOT_HOST") {
+      return res.status(403).json({ error: "Nur der Host kann das Spiel starten." });
+    }
+    if (err.message === "NOT_ENOUGH_PLAYERS") {
+      return res.status(400).json({ error: "Es werden mindestens 2 Spieler benötigt." });
+    }
+    serverError(res, err, "startGame");
+  }
+});
+
+// Aktion / Entscheidung / Vote einreichen
+app.post("/api/game-rooms/:code/action", async (req, res) => {
+  const { code } = req.params;
+  const { actionType, payload } = req.body || {};
+
+  try {
+    const room = gameRooms.submitAction(code, roomToken(req), { actionType, payload });
+    res.json({ success: true, room });
+  } catch (err) {
+    if (err.message === "ROOM_NOT_FOUND") {
+      return res.status(404).json({ error: "Raum nicht gefunden." });
+    }
+    if (err.message === "PLAYER_NOT_IN_ROOM") {
+      return res.status(403).json({ error: "Kein gültiger Spieler-Nachweis für diesen Raum." });
+    }
+    serverError(res, err, "submitAction");
+  }
+});
+
+// Nächstes Kapitel / Phase vorantreiben (Host)
+app.post("/api/game-rooms/:code/next", async (req, res) => {
+  const { code } = req.params;
+  const { nextStatus, nextChapterData, outcomeSummary } = req.body || {};
+
+  try {
+    const room = gameRooms.nextChapter(code, roomToken(req), { nextStatus, nextChapterData, outcomeSummary });
+    res.json({ success: true, room });
+  } catch (err) {
+    if (err.message === "ROOM_NOT_FOUND") {
+      return res.status(404).json({ error: "Raum nicht gefunden." });
+    }
+    if (err.message === "NOT_HOST") {
+      return res.status(403).json({ error: "Nur der Host kann die Story vorantreiben." });
+    }
+    serverError(res, err, "nextChapter");
+  }
+});
+
+// Raum verlassen
+app.post("/api/game-rooms/:code/leave", async (req, res) => {
+  const { code } = req.params;
+
+  const result = gameRooms.leaveRoom(code, roomToken(req));
+  res.json({ success: true, ...result });
+});
+
+
 
 
 

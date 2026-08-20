@@ -12,6 +12,7 @@ import {
   Easing as RNEasing,
   Image,
   Dimensions,
+  Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { apiService } from "@/services/api";
@@ -25,6 +26,10 @@ import { WhoWouldRather } from "@/components/games/WhoWouldRather";
 import { WordBomb } from "@/components/games/WordBomb";
 import { Busfahrer } from "@/components/games/Busfahrer";
 import { Avatar } from "@/components/Avatar";
+import { useThemeColors, useTheme } from "@/services/theme";
+import { JoinRoomModal } from "@/components/games/JoinRoomModal";
+import { MultiplayerLobbyModal } from "@/components/games/MultiplayerLobbyModal";
+import { StoryGameShell } from "@/components/games/StoryGameShell";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -161,6 +166,35 @@ interface GameCatalogEntry {
 
 const GAME_CATALOG: { category: string; games: GameCatalogEntry[] }[] = [
   {
+    category: "🎭 Multi-Device Story-RPG (Live mit Raum-Code)",
+    games: [
+      {
+        id: "story_court_treason",
+        title: "Der Verrat am Königshof",
+        description: "Game of Thrones trifft Social Deduction, geheime Rollen & Giftbecher.",
+        icon: "shield-checkmark-outline",
+        color: "#fbbf24",
+        badge: "Story-RPG",
+      },
+      {
+        id: "story_murder_express",
+        title: "Mord im Mitternachts-Express",
+        description: "1920er Noir-Krimi: Tunnel-Dunkelheit, Alibis & Kreuzverhör.",
+        icon: "search-outline",
+        color: "#38bdf8",
+        badge: "Story-RPG",
+      },
+      {
+        id: "story_haunted_manor",
+        title: "Escape the Haunted Manor",
+        description: "Co-Op Horror Survival: Gemeinsame HP, Flüche & Geister-Besessenheit.",
+        icon: "skull-outline",
+        color: "#c084fc",
+        badge: "Story-RPG",
+      },
+    ],
+  },
+  {
     category: "Reden & Lachen",
     games: [
       {
@@ -282,6 +316,8 @@ export interface SavedGameState {
 }
 
 export default function GamesScreen() {
+  const c = useThemeColors();
+  const { scheme } = useTheme();
   const [activeFullscreenGame, setActiveFullscreenGame] = useState<FullscreenGameId>(null);
   const [lobbyGameSelected, setLobbyGameSelected] = useState<LobbyGameId>(null);
   const [runningGame, setRunningGame] = useState<LobbyGameId>(null);
@@ -297,6 +333,11 @@ export default function GamesScreen() {
   const [players, setPlayers] = useState<GamePlayer[]>([]);
   const [guestNameInput, setGuestNameInput] = useState("");
   const [showFriendSelector, setShowFriendSelector] = useState(false);
+
+  // Multi-Device Story-RPG State
+  const [showJoinRoomModal, setShowJoinRoomModal] = useState(false);
+  const [activeStoryLobby, setActiveStoryLobby] = useState<{ roomCode: string; myPlayerId: string; myPlayerToken: string; isHost: boolean } | null>(null);
+  const [activeStoryGame, setActiveStoryGame] = useState<{ roomCode: string; myPlayerId: string; myPlayerToken: string; initialRoomData: any } | null>(null);
 
   // 1v1 Duels Creator state
   const [showCreateDuel, setShowCreateDuel] = useState(false);
@@ -605,12 +646,12 @@ export default function GamesScreen() {
         }}
         className="px-6"
       >
-        <View className="bg-slate-900 border border-purple-500/30 w-full max-w-[320px] rounded-3xl p-6 items-center shadow-2xl">
-          <Ionicons name="warning-outline" size={48} color="#a855f7" style={{ marginBottom: 16 }} />
-          <Text className="text-white text-base font-black uppercase tracking-wider text-center mb-2">
+        <View className="bg-surface border border-accent-2/30 w-full max-w-[320px] rounded-3xl p-6 items-center shadow-2xl">
+          <Ionicons name="warning-outline" size={48} color={c.accent2} style={{ marginBottom: 16 }} />
+          <Text className="text-content text-base font-black uppercase tracking-wider text-center mb-2">
             Spiel abbrechen?
           </Text>
-          <Text className="text-slate-400 text-xs font-medium text-center mb-6 leading-relaxed">
+          <Text className="text-content-muted text-xs font-medium text-center mb-6 leading-relaxed">
             Möchtest du das aktuelle Spiel wirklich beenden? Alle Spieler und der gesamte Spielstand werden gelöscht.
           </Text>
           <View className="flex-row space-x-3 w-full">
@@ -619,18 +660,18 @@ export default function GamesScreen() {
                 triggerHaptic("light");
                 setShowCancelConfirm(false);
               }}
-              className="flex-1 bg-slate-950 border border-white/5 py-3.5 rounded-2xl items-center"
+              className="flex-1 bg-bg border border-line py-3.5 rounded-2xl items-center"
             >
-              <Text className="text-slate-400 font-bold text-xs uppercase tracking-wider">Nein</Text>
+              <Text className="text-content-muted font-bold text-xs uppercase tracking-wider">Nein</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={async () => {
                 setShowCancelConfirm(false);
                 await performCancelGame();
               }}
-              className="flex-1 bg-purple-500 py-3.5 rounded-2xl items-center shadow active:scale-95"
+              className="flex-1 bg-accent-2 py-3.5 rounded-2xl items-center shadow active:scale-95"
             >
-              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Ja, abbrechen</Text>
+              <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Ja, abbrechen</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -910,8 +951,8 @@ export default function GamesScreen() {
 
   if (loading || !currentUser) {
     return (
-      <View className="flex-1 bg-slate-950 items-center justify-center">
-        <ActivityIndicator size="large" color="#22d3ee" />
+      <View className="flex-1 bg-bg items-center justify-center">
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -926,23 +967,23 @@ export default function GamesScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-950">
+    <View className="flex-1 bg-bg">
       {/* Lobby selector screen or Main Hub */}
       {lobbyGameSelected === null && activeFullscreenGame === null ? (
         <ScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false}>
-          <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 mt-2">
+          <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-1 mt-2">
             Bereit für die Runde?
           </Text>
-          <Text className="text-white text-xl font-black mb-6">Trinkspiele & Duelle 🎮</Text>
+          <Text className="text-content text-xl font-black mb-6">Trinkspiele & Duelle 🎮</Text>
 
           {/* Active Saved Game Banner */}
           {runningGame !== null && (
-            <View className="bg-slate-900 border border-purple-500/35 rounded-3xl p-5 mb-6 relative overflow-hidden shadow-lg">
-              <Text className="text-purple-400 text-[9px] font-black uppercase tracking-widest mb-1">
+            <View className="bg-surface border border-accent-2/35 rounded-3xl p-5 mb-6 relative overflow-hidden shadow-lg">
+              <Text className="text-accent-2-ink text-[9px] font-black uppercase tracking-widest mb-1">
                 Spiel läuft noch! 🎮
               </Text>
-              <Text className="text-white text-sm font-black mb-1">{activeSavedGameText()}</Text>
-              <Text className="text-slate-500 text-[9.5px] font-medium leading-relaxed mb-4">
+              <Text className="text-content text-sm font-black mb-1">{activeSavedGameText()}</Text>
+              <Text className="text-content-faint text-[9.5px] font-medium leading-relaxed mb-4">
                 Ein Spiel ist bereits aktiv. Möchtest du an derselben Stelle fortfahren oder abbrechen?
               </Text>
               <View className="flex-row space-x-3">
@@ -953,36 +994,130 @@ export default function GamesScreen() {
                       setActiveFullscreenGame(runningGame);
                     }
                   }}
-                  className="flex-1 bg-purple-500 py-3 rounded-2xl items-center shadow"
+                  className="flex-1 bg-accent-2 py-3 rounded-2xl items-center shadow"
                 >
-                  <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Fortsetzen</Text>
+                  <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Fortsetzen</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowCancelConfirm(true)}
-                  className="flex-1 bg-slate-950 border border-white/5 py-3 rounded-2xl items-center"
+                  className="flex-1 bg-bg border border-line py-3 rounded-2xl items-center"
                 >
-                  <Text className="text-slate-400 font-black text-xs uppercase tracking-wider">Abbrechen</Text>
+                  <Text className="text-content-muted font-black text-xs uppercase tracking-wider">Abbrechen</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
 
+          {/* Multi-Device Room Action Banner */}
+          <View className="bg-surface border border-accent/30 rounded-3xl p-5 mb-6 shadow-xl">
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 rounded-xl bg-accent/20 border border-accent/30 items-center justify-center mr-2.5">
+                  <Ionicons name="phone-portrait-outline" size={16} color={c.accent} />
+                </View>
+                <Text className="text-content text-sm font-black uppercase tracking-wide">
+                  Multi-Handy Partyspiele
+                </Text>
+              </View>
+              <View className="px-2 py-0.5 rounded-full bg-accent/20">
+                <Text className="text-accent text-[8px] font-black uppercase">Live Sync</Text>
+              </View>
+            </View>
+            <Text className="text-content-faint text-xs font-medium mb-4 leading-relaxed">
+              Spielt alle gleichzeitig auf euren eigenen Handys mit Raum-Code – mit geheimen Rollen & dynamischer Story!
+            </Text>
+
+            <View className="flex-row space-x-3 gap-2.5">
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={async () => {
+                  triggerHaptic("heavy");
+                  try {
+                    const hostName = currentUser?.name || "Host";
+                    const hostAvatar = currentUser?.avatar || null;
+                    const res = await apiService.createGameRoom("court_treason", hostName, hostAvatar);
+                    if (res && res.success) {
+                      setActiveStoryLobby({
+                        roomCode: res.code,
+                        myPlayerId: res.hostId,
+                        myPlayerToken: res.playerToken,
+                        isHost: true,
+                      });
+                    }
+                  } catch (err: any) {
+                    const msg = err.response?.data?.error || err.message || "Raum konnte nicht erstellt werden.";
+                    if (Platform.OS === "web") {
+                      window.alert(msg);
+                    } else {
+                      Alert.alert("Fehler", msg);
+                    }
+                  }
+                }}
+                className="flex-1 bg-accent py-3 rounded-2xl items-center flex-row justify-center shadow active:scale-95"
+              >
+                <Ionicons name="add-circle" size={16} color={c.onAccent} />
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-1.5">
+                  Lobby erstellen
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  triggerHaptic("medium");
+                  setShowJoinRoomModal(true);
+                }}
+                className="flex-1 bg-bg border border-line py-3 rounded-2xl items-center flex-row justify-center active:border-accent"
+              >
+                <Ionicons name="log-in-outline" size={16} color={c.content} />
+                <Text className="text-content font-black text-xs uppercase tracking-wider ml-1.5">
+                  Code eingeben
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {GAME_CATALOG.map((category) => (
             <View key={category.category} className="mb-2">
-              <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">
+              <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
                 {category.category}
               </Text>
               <View className="flex-row flex-wrap justify-between">
                 {category.games.map((game) => (
                   <TouchableOpacity
                     key={game.id}
-                    onPress={() => {
+                    onPress={async () => {
                       triggerHaptic("medium");
-                      if (game.id === "duels") setActiveFullscreenGame("duels");
-                      else setLobbyGameSelected(game.id as LobbyGameId);
+                      if (game.id.startsWith("story_")) {
+                        const storyGameId = game.id.replace("story_", "");
+                        try {
+                          const hostName = currentUser?.name || "Host";
+                          const hostAvatar = currentUser?.avatar || null;
+                          const res = await apiService.createGameRoom(storyGameId, hostName, hostAvatar);
+                          if (res && res.success) {
+                            setActiveStoryLobby({
+                              roomCode: res.code,
+                              myPlayerId: res.hostId,
+                              myPlayerToken: res.playerToken,
+                              isHost: true,
+                            });
+                          }
+                        } catch (err: any) {
+                          const msg = err.response?.data?.error || err.message || "Raum konnte nicht erstellt werden.";
+                          if (Platform.OS === "web") {
+                            window.alert(msg);
+                          } else {
+                            Alert.alert("Fehler", msg);
+                          }
+                        }
+                      } else if (game.id === "duels") {
+                        setActiveFullscreenGame("duels");
+                      } else {
+                        setLobbyGameSelected(game.id as LobbyGameId);
+                      }
                     }}
                     style={{ borderColor: game.color + "33" }}
-                    className="w-[47%] bg-white/5 border rounded-3xl p-4 mb-4 shadow-lg items-start justify-between min-h-[150px]"
+                    className="w-[47%] bg-surface border rounded-3xl p-4 mb-4 shadow-lg items-start justify-between min-h-[150px]"
                   >
                     <View
                       style={{ backgroundColor: game.color + "1a", borderColor: game.color + "33" }}
@@ -992,7 +1127,7 @@ export default function GamesScreen() {
                     </View>
                     <View>
                       <View className="flex-row items-center flex-wrap mb-1">
-                        <Text className="text-white text-xs font-black uppercase tracking-wider mr-1.5">
+                        <Text className="text-content text-xs font-black uppercase tracking-wider mr-1.5">
                           {game.title}
                         </Text>
                         {game.badge && (
@@ -1000,13 +1135,13 @@ export default function GamesScreen() {
                             style={{ backgroundColor: game.color + "22" }}
                             className="px-1.5 py-0.5 rounded"
                           >
-                            <Text style={{ color: game.color }} className="text-[7px] font-black uppercase">
+                            <Text style={{ color: scheme === "dark" ? game.color : c.content }} className="text-[7px] font-black uppercase">
                               {game.badge}
                             </Text>
                           </View>
                         )}
                       </View>
-                      <Text className="text-slate-500 text-[9px] font-semibold leading-normal">
+                      <Text className="text-content-faint text-[9px] font-semibold leading-normal">
                         {game.description}
                       </Text>
                     </View>
@@ -1023,7 +1158,7 @@ export default function GamesScreen() {
         /* ========================================================================= */
         /* PARTY LOBBY SCREEN (Setup players before launching the game)              */
         /* ========================================================================= */
-        <View className="flex-1 bg-slate-950 pt-14 px-5">
+        <View className="flex-1 bg-bg pt-14 px-5">
           <View className="flex-row items-center justify-between mb-6">
             <TouchableOpacity
               onPress={() => {
@@ -1032,40 +1167,40 @@ export default function GamesScreen() {
               }}
               className="flex-row items-center space-x-1 p-1"
             >
-              <Ionicons name="arrow-back" size={20} color="#a855f7" />
-              <Text className="text-purple-400 text-xs font-black uppercase ml-1">Zurück</Text>
+              <Ionicons name="arrow-back" size={20} color={c.accent2} />
+              <Text className="text-accent-2-ink text-xs font-black uppercase ml-1">Zurück</Text>
             </TouchableOpacity>
-            <Text className="text-white text-sm font-black uppercase tracking-wider">Party-Lobby 👥</Text>
+            <Text className="text-content text-sm font-black uppercase tracking-wider">Party-Lobby 👥</Text>
             <View className="w-16" />
           </View>
 
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-            <View className="bg-slate-900/60 border border-white/5 rounded-3xl p-5 shadow-xl mb-6">
-              <Text className="text-white text-xs font-black uppercase tracking-wider mb-1">
+            <View className="bg-surface/60 border border-line rounded-3xl p-5 shadow-xl mb-6">
+              <Text className="text-content text-xs font-black uppercase tracking-wider mb-1">
                 Lobby vorbereiten
               </Text>
-              <Text className="text-slate-500 text-[10px] font-semibold mb-4 leading-normal">
+              <Text className="text-content-faint text-[10px] font-semibold mb-4 leading-normal">
                 Füge registrierte Freunde oder temporäre Abendgäste der Runde hinzu.
               </Text>
 
               {/* Add Guest Text input */}
-              <View className="bg-slate-950/80 border border-white/5 rounded-2xl p-4 mb-4">
-                <Text className="text-slate-400 text-[9px] font-black uppercase mb-2">
+              <View className="bg-surface-alt/80 border border-line rounded-2xl p-4 mb-4">
+                <Text className="text-content-muted text-[9px] font-black uppercase mb-2">
                   Gast hinzufügen (Temporär)
                 </Text>
                 <View className="flex-row space-x-2">
                   <TextInput
                     placeholder="Name eingeben..."
-                    placeholderTextColor="#475569"
+                    placeholderTextColor={c.contentFaint}
                     value={guestNameInput}
                     onChangeText={setGuestNameInput}
-                    className="flex-1 bg-slate-900 border border-white/5 rounded-xl px-3 py-2.5 text-white text-xs font-bold"
+                    className="flex-1 bg-surface border border-line rounded-xl px-3 py-2.5 text-content text-xs font-bold"
                   />
                   <TouchableOpacity
                     onPress={addGuestPlayer}
-                    className="bg-purple-500 px-4 rounded-xl items-center justify-center"
+                    className="bg-accent-2 px-4 rounded-xl items-center justify-center"
                   >
-                    <Ionicons name="add" size={18} color="#020617" />
+                    <Ionicons name="add" size={18} color={c.onAccent} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1077,22 +1212,22 @@ export default function GamesScreen() {
                   setShowFriendSelector(true);
                   loadFriendsForLobby();
                 }}
-                className="bg-slate-950/80 border border-dashed border-purple-500/20 py-3.5 rounded-2xl flex-row items-center justify-center space-x-2 mb-6"
+                className="bg-surface-alt/80 border border-dashed border-accent-2/20 py-3.5 rounded-2xl flex-row items-center justify-center space-x-2 mb-6"
               >
-                <Ionicons name="people-outline" size={16} color="#a855f7" />
-                <Text className="text-purple-400 text-[10px] font-black uppercase tracking-wider">
+                <Ionicons name="people-outline" size={16} color={c.accent2} />
+                <Text className="text-accent-2-ink text-[10px] font-black uppercase tracking-wider">
                   Aus Freunden wählen
                 </Text>
               </TouchableOpacity>
 
               {/* Player list */}
-              <Text className="text-slate-400 text-[9px] font-black uppercase mb-3">
+              <Text className="text-content-muted text-[9px] font-black uppercase mb-3">
                 Spieler in der Runde ({players.length})
               </Text>
               {players.length === 0 ? (
-                <View className="py-8 bg-slate-950/40 border border-white/5 rounded-2xl items-center justify-center mb-6">
-                  <Ionicons name="people-outline" size={28} color="#475569" className="mb-2" />
-                  <Text className="text-slate-500 text-[10px] font-black tracking-wide uppercase text-center">
+                <View className="py-8 bg-surface-alt/40 border border-line rounded-2xl items-center justify-center mb-6">
+                  <Ionicons name="people-outline" size={28} color={c.contentFaint} className="mb-2" />
+                  <Text className="text-content-faint text-[10px] font-black tracking-wide uppercase text-center">
                     Noch keine Spieler eingetragen
                   </Text>
                 </View>
@@ -1101,30 +1236,30 @@ export default function GamesScreen() {
                   {players.map((p) => (
                     <View
                       key={p.id}
-                      className="bg-slate-950/60 border border-white/5 rounded-2xl p-3.5 flex-row justify-between items-center"
+                      className="bg-surface-alt/60 border border-line rounded-2xl p-3.5 flex-row justify-between items-center"
                     >
                       <View className="flex-row items-center space-x-3">
                         {p.avatar ? (
-                          <Image source={{ uri: p.avatar }} className="w-8 h-8 rounded-full border border-white/10" />
+                          <Image source={{ uri: p.avatar }} className="w-8 h-8 rounded-full border border-line" />
                         ) : (
-                          <View className="w-8 h-8 rounded-full bg-slate-900 border border-white/5 items-center justify-center">
-                            <Text className="text-white text-xs font-black">
+                          <View className="w-8 h-8 rounded-full bg-surface border border-line items-center justify-center">
+                            <Text className="text-content text-xs font-black">
                               {p.name.substring(0, 2).toUpperCase()}
                             </Text>
                           </View>
                         )}
                         <View>
-                          <Text className="text-white text-xs font-black">{p.name}</Text>
-                          <Text className="text-slate-500 text-[7.5px] font-extrabold uppercase tracking-wider mt-0.5">
+                          <Text className="text-content text-xs font-black">{p.name}</Text>
+                          <Text className="text-content-faint text-[7.5px] font-extrabold uppercase tracking-wider mt-0.5">
                             {p.isGuest ? "Temporärer Gast 👤" : "Registrierter User ⭐"}
                           </Text>
                         </View>
                       </View>
                       <TouchableOpacity
                         onPress={() => removePlayer(p.id)}
-                        className="bg-red-500/10 border border-red-500/20 p-2 rounded-xl"
+                        className="bg-danger/10 border border-danger/20 p-2 rounded-xl"
                       >
-                        <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                        <Ionicons name="trash-outline" size={14} color={c.danger} />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -1136,11 +1271,11 @@ export default function GamesScreen() {
                 onPress={startSelectedGame}
                 disabled={players.length < 2}
                 className={`w-full py-4 rounded-2xl items-center justify-center flex-row space-x-2 ${
-                  players.length < 2 ? "bg-slate-800 opacity-40" : "bg-purple-500 active:scale-95"
+                  players.length < 2 ? "bg-surface-alt opacity-40" : "bg-accent-2 active:scale-95"
                 }`}
               >
-                <Ionicons name="play" size={16} color="#020617" />
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider ml-1.5">
+                <Ionicons name="play" size={16} color={c.onAccent} />
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-1.5">
                   Spiel starten
                 </Text>
               </TouchableOpacity>
@@ -1150,21 +1285,21 @@ export default function GamesScreen() {
           {/* Modal Friend Selector */}
           <Modal visible={showFriendSelector} animationType="slide" transparent={true}>
             <View className="flex-1 bg-black/85 justify-end">
-              <View className="bg-slate-900 border-t border-white/10 rounded-t-3xl p-5 pb-8 max-h-[70%]">
+              <View className="bg-surface border-t border-line rounded-t-3xl p-5 pb-8 max-h-[70%]">
                 <View className="flex-row justify-between items-center mb-5">
-                  <Text className="text-white text-sm font-black uppercase tracking-wider">
+                  <Text className="text-content text-sm font-black uppercase tracking-wider">
                     Aus Freunden wählen
                   </Text>
                   <TouchableOpacity onPress={() => setShowFriendSelector(false)} className="p-1">
-                    <Ionicons name="close" size={24} color="#64748b" />
+                    <Ionicons name="close" size={24} color={c.contentFaint} />
                   </TouchableOpacity>
                 </View>
 
                 <ScrollView className="space-y-2 mb-4">
                   {friendsLoading ? (
-                    <ActivityIndicator size="large" color="#a855f7" className="py-6" />
+                    <ActivityIndicator size="large" color={c.accent2} className="py-6" />
                   ) : friendsList.length === 0 ? (
-                    <Text className="text-slate-500 text-xs italic text-center py-6">
+                    <Text className="text-content-faint text-xs italic text-center py-6">
                       Keine Freunde gefunden. Füge Freunde über dein Profil hinzu!
                     </Text>
                   ) : (
@@ -1177,28 +1312,28 @@ export default function GamesScreen() {
                           onPress={() => addFriendPlayer(friend)}
                           className={`p-3 rounded-2xl flex-row justify-between items-center mb-2 ${
                             alreadyInLobby
-                              ? "bg-slate-950/20 opacity-40 border border-white/5"
-                              : "bg-slate-950/60 border border-white/5"
+                              ? "bg-surface-alt/20 opacity-40 border border-line"
+                              : "bg-surface-alt/60 border border-line"
                           }`}
                         >
                           <View className="flex-row items-center space-x-3">
                             {friend.avatar ? (
-                              <Image source={{ uri: friend.avatar }} className="w-8 h-8 rounded-full border border-white/10" />
+                              <Image source={{ uri: friend.avatar }} className="w-8 h-8 rounded-full border border-line" />
                             ) : (
-                              <View className="w-8 h-8 rounded-full bg-slate-900 border border-white/5 items-center justify-center">
-                                <Text className="text-white text-xs font-black">
+                              <View className="w-8 h-8 rounded-full bg-surface border border-line items-center justify-center">
+                                <Text className="text-content text-xs font-black">
                                   {friend.name.substring(0, 2).toUpperCase()}
                                 </Text>
                               </View>
                             )}
                             <View>
-                              <Text className="text-white text-xs font-black">{friend.name}</Text>
-                              <Text className="text-cyan-400 text-[8px] font-bold mt-0.5">
+                              <Text className="text-content text-xs font-black">{friend.name}</Text>
+                              <Text className="text-accent-ink text-[8px] font-bold mt-0.5">
                                 Lv. {friend.currentLevel || friend.level || 1} - {friend.title || "Neuling"}
                               </Text>
                             </View>
                           </View>
-                          {!alreadyInLobby && <Ionicons name="chevron-forward" size={14} color="#a855f7" />}
+                          {!alreadyInLobby && <Ionicons name="chevron-forward" size={14} color={c.accent2} />}
                         </TouchableOpacity>
                       );
                     })
@@ -1216,13 +1351,13 @@ export default function GamesScreen() {
 
       {/* A. 1v1 DUELS OVERLAY */}
       <Modal visible={activeFullscreenGame === "duels"} animationType="slide" transparent={false}>
-        <View className="flex-1 bg-slate-950 pt-14 px-5">
+        <View className="flex-1 bg-bg pt-14 px-5">
           <View className="flex-row items-center justify-between mb-6">
             <TouchableOpacity onPress={() => setActiveFullscreenGame(null)} className="flex-row items-center space-x-1 p-1">
-              <Ionicons name="arrow-back" size={20} color="#22d3ee" />
-              <Text className="text-cyan-400 text-xs font-black uppercase ml-1">Verlassen</Text>
+              <Ionicons name="arrow-back" size={20} color={c.accent} />
+              <Text className="text-accent-ink text-xs font-black uppercase ml-1">Verlassen</Text>
             </TouchableOpacity>
-            <Text className="text-white text-sm font-black uppercase tracking-wider">1v1 Duelle</Text>
+            <Text className="text-content text-sm font-black uppercase tracking-wider">1v1 Duelle</Text>
             <View className="w-16" />
           </View>
 
@@ -1232,18 +1367,18 @@ export default function GamesScreen() {
                 triggerHaptic("light");
                 setShowCreateDuel(true);
               }}
-              className="bg-cyan-400 py-4.5 rounded-3xl items-center flex-row justify-center space-x-2 shadow-lg shadow-cyan-500/10 mb-6"
+              className="bg-accent py-4.5 rounded-3xl items-center flex-row justify-center space-x-2 shadow-lg mb-6"
             >
-              <Ionicons name="flash" size={18} color="#020617" />
-              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider ml-1.5">
+              <Ionicons name="flash" size={18} color={c.onAccent} />
+              <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-1.5">
                 Freund herausfordern
               </Text>
             </TouchableOpacity>
 
-            <Text className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">Laufende Duelle</Text>
+            <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">Laufende Duelle</Text>
             {duels.length === 0 ? (
-              <View className="bg-white/5 border border-white/5 rounded-3xl p-6 items-center mb-6">
-                <Text className="text-slate-500 text-xs italic">Aktuell keine aktiven Duelle vorhanden.</Text>
+              <View className="bg-surface border border-line rounded-3xl p-6 items-center mb-6">
+                <Text className="text-content-faint text-xs italic">Aktuell keine aktiven Duelle vorhanden.</Text>
               </View>
             ) : (
               duels.map((d) => {
@@ -1255,54 +1390,54 @@ export default function GamesScreen() {
                   : users.find((u) => u.id === d.creatorId) || currentUser;
 
                 return (
-                  <View key={d.id} className="bg-white/5 border border-white/10 p-5 rounded-3xl mb-4">
+                  <View key={d.id} className="bg-surface border border-line p-5 rounded-3xl mb-4">
                     <View className="flex-row justify-between items-center mb-3">
                       <View className="flex-row items-center space-x-2.5">
                         <Avatar
                           uri={opponentUser?.avatar}
                           name={opponentUser?.name}
                           size={36}
-                          className="border border-white/10"
+                          className="border border-line"
                         />
                         <View className="ml-2.5">
-                          <Text className="text-white text-xs font-black">{opponentUser?.name}</Text>
-                          <Text className="text-cyan-400 text-[8.5px] font-bold mt-0.5">
+                          <Text className="text-content text-xs font-black">{opponentUser?.name}</Text>
+                          <Text className="text-accent-ink text-[8.5px] font-bold mt-0.5">
                             Lv. {opponentUser?.currentLevel || opponentUser?.level || 1} - {opponentUser?.title || "Neuling"}
                           </Text>
-                          <Text className="text-slate-500 text-[8px] font-extrabold uppercase mt-0.5">
+                          <Text className="text-content-faint text-[8px] font-extrabold uppercase mt-0.5">
                             Status: {d.status === "pending" ? "Wartend" : "Aktiv ⏳"}
                           </Text>
                         </View>
                       </View>
-                      <View className="bg-slate-900 px-2.5 py-1 rounded-xl">
-                        <Text className="text-[8px] font-black text-cyan-400 uppercase">
+                      <View className="bg-surface px-2.5 py-1 rounded-xl">
+                        <Text className="text-[8px] font-black text-accent-ink uppercase">
                           Dauer: {d.duration} Min
                         </Text>
                       </View>
                     </View>
 
                     {d.status === "active" ? (
-                      <View className="bg-slate-950 p-4 rounded-2xl border border-white/5">
+                      <View className="bg-surface-alt p-4 rounded-2xl border border-line">
                         <View className="flex-row justify-between mb-2">
                           <View className="items-start flex-1 mr-2">
-                            <Text className="text-slate-500 text-[8px] font-black uppercase">Du</Text>
-                            <Text className="text-cyan-400 text-[9px] font-bold" numberOfLines={1}>
+                            <Text className="text-content-faint text-[8px] font-black uppercase">Du</Text>
+                            <Text className="text-accent-ink text-[9px] font-bold" numberOfLines={1}>
                               Lv. {currentUser?.currentLevel || currentUser?.level || 1} - {currentUser?.title ?? "Neuling"}
                             </Text>
                           </View>
                           <View className="items-end flex-1 ml-2">
-                            <Text className="text-slate-500 text-[8px] font-black uppercase">Gegner</Text>
-                            <Text className="text-rose-400 text-[9px] font-bold" numberOfLines={1}>
+                            <Text className="text-content-faint text-[8px] font-black uppercase">Gegner</Text>
+                            <Text className="text-danger text-[9px] font-bold" numberOfLines={1}>
                               Lv. {opponentUser?.currentLevel || opponentUser?.level || 1} - {opponentUser?.title}
                             </Text>
                           </View>
                         </View>
                         <View className="flex-row justify-between items-center mb-3">
-                          <Text className="text-cyan-400 text-lg font-black">{isCreator ? d.creatorPoints : d.opponentPoints} XP</Text>
-                          <Text className="text-white/30 text-xs">vs</Text>
-                          <Text className="text-rose-500 text-lg font-black">{isCreator ? d.opponentPoints : d.creatorPoints} XP</Text>
+                          <Text className="text-accent-ink text-lg font-black">{isCreator ? d.creatorPoints : d.opponentPoints} XP</Text>
+                          <Text className="text-content-muted text-xs">vs</Text>
+                          <Text className="text-danger text-lg font-black">{isCreator ? d.opponentPoints : d.creatorPoints} XP</Text>
                         </View>
-                        <Text className="text-[9px] text-slate-500 font-bold text-center">
+                        <Text className="text-[9px] text-content-faint font-bold text-center">
                           Verbleibende Zeit: {getRemainingTimeText(d.endTime)}
                         </Text>
                       </View>
@@ -1310,9 +1445,9 @@ export default function GamesScreen() {
                       isOpponent && (
                         <TouchableOpacity
                           onPress={() => handleAcceptDuel(d.id)}
-                          className="bg-purple-500 py-3 rounded-2xl items-center mt-2 shadow"
+                          className="bg-accent-2 py-3 rounded-2xl items-center mt-2 shadow"
                         >
-                          <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                          <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                             Duell annehmen ⚔️
                           </Text>
                         </TouchableOpacity>
@@ -1328,14 +1463,14 @@ export default function GamesScreen() {
 
       {/* B. HIGHER OR LOWER OVERLAY */}
       <Modal visible={activeFullscreenGame === "higherlower"} animationType="slide" transparent={false}>
-        <View className="flex-1 bg-slate-950 pt-14 px-5">
+        <View className="flex-1 bg-bg pt-14 px-5">
           {renderCancelConfirmOverlay()}
           <View className="flex-row items-center justify-between mb-6">
             <TouchableOpacity onPress={() => setShowCancelConfirm(true)} className="flex-row items-center space-x-1 p-1">
-              <Ionicons name="close-circle-outline" size={20} color="#fb923c" />
-              <Text className="text-orange-400 text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
+              <Ionicons name="close-circle-outline" size={20} color={c.warning} />
+              <Text className="text-warning text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
             </TouchableOpacity>
-            <Text className="text-white text-sm font-black uppercase tracking-wider">Höher oder Tiefer</Text>
+            <Text className="text-content text-sm font-black uppercase tracking-wider">Höher oder Tiefer</Text>
             <TouchableOpacity
               onPress={() => {
                 triggerHaptic("light");
@@ -1344,17 +1479,17 @@ export default function GamesScreen() {
               }}
               className="flex-row items-center space-x-1 p-1"
             >
-              <Ionicons name="home-outline" size={18} color="#64748b" />
-              <Text className="text-slate-500 text-[10px] font-black uppercase ml-1">Minimieren</Text>
+              <Ionicons name="home-outline" size={18} color={c.contentFaint} />
+              <Text className="text-content-faint text-[10px] font-black uppercase ml-1">Minimieren</Text>
             </TouchableOpacity>
           </View>
 
           <View className="flex-1 items-center justify-between pb-10">
             {/* Score indicator */}
             <View className="flex-row space-x-6 mt-4">
-              <View className="bg-slate-900 border border-white/5 px-6 py-3 rounded-2xl items-center">
-                <Text className="text-slate-500 text-[8px] font-black uppercase">Aktuelle Serie</Text>
-                <Text className="text-white text-base font-black mt-0.5">{hlScore} 🔥</Text>
+              <View className="bg-surface border border-line px-6 py-3 rounded-2xl items-center">
+                <Text className="text-content-faint text-[8px] font-black uppercase">Aktuelle Serie</Text>
+                <Text className="text-content text-base font-black mt-0.5">{hlScore} 🔥</Text>
               </View>
             </View>
 
@@ -1362,39 +1497,39 @@ export default function GamesScreen() {
             <View className="flex-row space-x-6 items-center my-6">
               {/* Current Card */}
               {hlCurrentCard && (
-                <View className="w-28 aspect-[5/7] bg-slate-900 border border-white/10 rounded-2xl p-4 justify-between items-center relative shadow-xl">
+                <View className="w-28 aspect-[5/7] bg-surface border border-line rounded-2xl p-4 justify-between items-center relative shadow-xl">
                   <View className="absolute top-2 left-3 flex-row items-center">
-                    <Text className={`text-sm font-black ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-red-500" : "text-white"}`}>
+                    <Text className={`text-sm font-black ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-danger" : "text-content"}`}>
                       {hlCurrentCard.label}
                     </Text>
-                    <Text className={`text-xs ml-0.5 ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-red-500" : "text-slate-400"}`}>
+                    <Text className={`text-xs ml-0.5 ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-danger" : "text-content-muted"}`}>
                       {hlCurrentCard.suit}
                     </Text>
                   </View>
                   <View className="flex-1 items-center justify-center mt-3">
-                    <Text className={`text-4xl ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-red-500" : "text-slate-300"}`}>
+                    <Text className={`text-4xl ${["♥", "♦"].includes(hlCurrentCard.suit) ? "text-danger" : "text-content-muted"}`}>
                       {hlCurrentCard.suit}
                     </Text>
                   </View>
                 </View>
               )}
 
-              <Text className="text-white/20 text-lg font-black">vs</Text>
+              <Text className="text-content-muted text-lg font-black">vs</Text>
 
               {/* Reveal Card / Hidden Card */}
-              <View className="w-28 aspect-[5/7] bg-slate-900 border border-white/10 rounded-2xl p-4 justify-between items-center relative overflow-hidden shadow-xl">
+              <View className="w-28 aspect-[5/7] bg-surface border border-line rounded-2xl p-4 justify-between items-center relative overflow-hidden shadow-xl">
                 {hlRevealCard ? (
                   <>
                     <View className="absolute top-2 left-3 flex-row items-center">
-                      <Text className={`text-sm font-black ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-red-500" : "text-white"}`}>
+                      <Text className={`text-sm font-black ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-danger" : "text-content"}`}>
                         {hlRevealCard.label}
                       </Text>
-                      <Text className={`text-xs ml-0.5 ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-red-500" : "text-slate-400"}`}>
+                      <Text className={`text-xs ml-0.5 ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-danger" : "text-content-muted"}`}>
                         {hlRevealCard.suit}
                       </Text>
                     </View>
                     <View className="flex-1 items-center justify-center mt-3">
-                      <Text className={`text-4xl ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-red-500" : "text-slate-300"}`}>
+                      <Text className={`text-4xl ${["♥", "♦"].includes(hlRevealCard.suit) ? "text-danger" : "text-content-muted"}`}>
                         {hlRevealCard.suit}
                       </Text>
                     </View>
@@ -1414,15 +1549,15 @@ export default function GamesScreen() {
                   <View className="flex-row space-x-3 mb-3">
                     <TouchableOpacity
                       onPress={() => playHigherLower("higher")}
-                      className="flex-1 bg-orange-400 py-3.5 rounded-2xl items-center active:scale-95 shadow-md shadow-orange-500/10"
+                      className="flex-1 bg-warning py-3.5 rounded-2xl items-center active:scale-95 shadow-md"
                     >
-                      <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">HÖHER ⬆️</Text>
+                      <Text className="text-on-accent font-black text-xs uppercase tracking-wider">HÖHER ⬆️</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => playHigherLower("lower")}
-                      className="flex-1 bg-slate-900 border border-white/5 py-3.5 rounded-2xl items-center active:scale-95"
+                      className="flex-1 bg-surface border border-line py-3.5 rounded-2xl items-center active:scale-95"
                     >
-                      <Text className="text-white font-black text-xs uppercase tracking-wider">TIEFER ⬇️</Text>
+                      <Text className="text-content font-black text-xs uppercase tracking-wider">TIEFER ⬇️</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -1430,12 +1565,12 @@ export default function GamesScreen() {
                     onPress={passHigherLower}
                     disabled={hlScore === 0}
                     className={`w-full py-3.5 rounded-2xl items-center border active:scale-95 ${
-                      hlScore === 0 ? "border-slate-800 opacity-30" : "border-emerald-500/40 bg-emerald-500/10"
+                      hlScore === 0 ? "border-line opacity-30" : "border-success/40 bg-success/10"
                     }`}
                   >
                     <Text
                       className={`font-black text-xs uppercase tracking-wider ${
-                        hlScore === 0 ? "text-slate-500" : "text-emerald-400"
+                        hlScore === 0 ? "text-content-faint" : "text-success"
                       }`}
                     >
                       Nächster Spieler ist dran 🤝
@@ -1446,26 +1581,26 @@ export default function GamesScreen() {
 
               {hlStatus === "correct" && (
                 <View className="w-full items-center">
-                  <Text className="text-emerald-400 text-xs font-black uppercase mb-3">Richtig geraten! 🎉</Text>
+                  <Text className="text-success text-xs font-black uppercase mb-3">Richtig geraten! 🎉</Text>
                   <TouchableOpacity
                     onPress={nextHigherLowerRound}
-                    className="w-full bg-orange-400 py-3.5 rounded-2xl items-center active:scale-95"
+                    className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95"
                   >
-                    <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Nächste Karte ➡️</Text>
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Nächste Karte ➡️</Text>
                   </TouchableOpacity>
                 </View>
               )}
 
               {hlStatus === "gameover" && (
                 <View className="w-full items-center">
-                  <Text className="text-rose-500 text-xs font-black uppercase mb-3">
+                  <Text className="text-danger text-xs font-black uppercase mb-3">
                     Falsch geraten! Straf-Schluck fällig! 💀
                   </Text>
                   <TouchableOpacity
                     onPress={handleHlWrongModalDismiss}
-                    className="w-full bg-rose-500 py-3.5 rounded-2xl items-center active:scale-95 shadow"
+                    className="w-full bg-danger py-3.5 rounded-2xl items-center active:scale-95 shadow"
                   >
-                    <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                       Weiter spielen 🍻
                     </Text>
                   </TouchableOpacity>
@@ -1474,14 +1609,14 @@ export default function GamesScreen() {
 
               {hlStatus === "passed" && (
                 <View className="w-full items-center">
-                  <Text className="text-emerald-400 text-xs font-black uppercase mb-3 text-center px-4">
+                  <Text className="text-success text-xs font-black uppercase mb-3 text-center px-4">
                     Nächster Spieler ist dran! Du gibst das Spiel sicher weiter.
                   </Text>
                   <TouchableOpacity
                     onPress={startHigherLower}
-                    className="w-full bg-slate-900 border border-white/5 py-3.5 rounded-2xl items-center active:scale-95"
+                    className="w-full bg-surface border border-line py-3.5 rounded-2xl items-center active:scale-95"
                   >
-                    <Text className="text-white font-black text-xs uppercase tracking-wider">
+                    <Text className="text-content font-black text-xs uppercase tracking-wider">
                       Neue Runde starten
                     </Text>
                   </TouchableOpacity>
@@ -1495,17 +1630,17 @@ export default function GamesScreen() {
       {/* RED GLOWING MODAL (Wrong guess in Higher/Lower) */}
       <Modal visible={showHlWrongModal} transparent={true} animationType="fade">
         <View className="flex-1 bg-black/90 justify-center items-center px-6">
-          <View className="bg-slate-900 border-2 border-rose-500/60 w-full max-w-[300px] rounded-3xl p-6 items-center shadow-2xl shadow-rose-500/10">
-            <Ionicons name="alert-circle" size={56} color="#f43f5e" className="mb-4" />
-            <Text className="text-rose-500 text-lg font-black uppercase tracking-wider text-center mb-2">
+          <View className="bg-surface border-2 border-danger/60 w-full max-w-[300px] rounded-3xl p-6 items-center shadow-2xl">
+            <Ionicons name="alert-circle" size={56} color={c.danger} className="mb-4" />
+            <Text className="text-danger text-lg font-black uppercase tracking-wider text-center mb-2">
               Falsch geraten!
             </Text>
-            <Text className="text-white text-xs font-black text-center mb-6 px-2">Du musst trinken! 🍻</Text>
+            <Text className="text-content text-xs font-black text-center mb-6 px-2">Du musst trinken! 🍻</Text>
             <TouchableOpacity
               onPress={handleHlWrongModalDismiss}
-              className="w-full bg-rose-500 py-3.5 rounded-2xl items-center justify-center active:scale-95 shadow"
+              className="w-full bg-danger py-3.5 rounded-2xl items-center justify-center active:scale-95 shadow"
             >
-              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Schließen</Text>
+              <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Schließen</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1513,14 +1648,14 @@ export default function GamesScreen() {
 
       {/* C. SKULL CARD GAME OVERLAY */}
       <Modal visible={activeFullscreenGame === "cards"} animationType="slide" transparent={false}>
-        <View className="flex-1 bg-slate-950 pt-14 px-5">
+        <View className="flex-1 bg-bg pt-14 px-5">
           {renderCancelConfirmOverlay()}
           <View className="flex-row items-center justify-between mb-6">
             <TouchableOpacity onPress={() => setShowCancelConfirm(true)} className="flex-row items-center space-x-1 p-1">
-              <Ionicons name="close-circle-outline" size={20} color="#34d399" />
-              <Text className="text-emerald-400 text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
+              <Ionicons name="close-circle-outline" size={20} color={c.success} />
+              <Text className="text-success text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
             </TouchableOpacity>
-            <Text className="text-white text-sm font-black uppercase tracking-wider">Skull Kartenspiel</Text>
+            <Text className="text-content text-sm font-black uppercase tracking-wider">Skull Kartenspiel</Text>
             <TouchableOpacity
               onPress={() => {
                 triggerHaptic("light");
@@ -1529,17 +1664,17 @@ export default function GamesScreen() {
               }}
               className="flex-row items-center space-x-1 p-1"
             >
-              <Ionicons name="home-outline" size={18} color="#64748b" />
-              <Text className="text-slate-500 text-[10px] font-black uppercase ml-1">Minimieren</Text>
+              <Ionicons name="home-outline" size={18} color={c.contentFaint} />
+              <Text className="text-content-faint text-[10px] font-black uppercase ml-1">Minimieren</Text>
             </TouchableOpacity>
           </View>
 
           {/* Mode Switcher */}
-          <View className="flex-row bg-slate-900 border border-white/5 rounded-2xl p-1 mb-6">
+          <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-6">
             {[
-              { key: "normal", label: "Normal 🍻", color: "text-emerald-400" },
-              { key: "hardcore", label: "Hardcore 🔥", color: "text-red-400" },
-              { key: "spicy", label: "18+ Spicy 🔞", color: "text-pink-400" },
+              { key: "normal", label: "Normal 🍻", color: "text-success" },
+              { key: "hardcore", label: "Hardcore 🔥", color: "text-danger" },
+              { key: "spicy", label: "18+ Spicy 🔞", color: "text-accent-2-ink" },
             ].map((m) => (
               <TouchableOpacity
                 key={m.key}
@@ -1549,7 +1684,7 @@ export default function GamesScreen() {
                   setSkullStatus("setup");
                 }}
                 className={`flex-1 py-2 items-center rounded-xl ${
-                  skullMode === m.key ? "bg-white/5 border border-white/10" : ""
+                  skullMode === m.key ? "bg-surface border border-line" : ""
                 }`}
               >
                 <Text className={`text-[9px] font-black uppercase tracking-wider ${m.color}`}>
@@ -1561,17 +1696,17 @@ export default function GamesScreen() {
 
           {skullStatus === "setup" ? (
             <View className="flex-1 items-center justify-center pb-20">
-              <Ionicons name="albums-outline" size={80} color="#34d399" className="mb-4" />
-              <Text className="text-white text-base font-black uppercase mb-2">Skull (King&apos;s Cup) 💀</Text>
-              <Text className="text-slate-500 text-xs text-center px-8 mb-6 leading-relaxed">
+              <Ionicons name="albums-outline" size={80} color={c.success} className="mb-4" />
+              <Text className="text-content text-base font-black uppercase mb-2">Skull (King&apos;s Cup) 💀</Text>
+              <Text className="text-content-faint text-xs text-center px-8 mb-6 leading-relaxed">
                 Jede gezogene Karte hat eine spezielle Aufgabe. Konfiguriere deinen Modus oben und klicke zum Mischen
                 und Starten des Decks!
               </Text>
               <TouchableOpacity
                 onPress={startSkullGame}
-                className="bg-emerald-500 py-4 px-10 rounded-3xl active:scale-95 shadow-lg shadow-emerald-500/10"
+                className="bg-success py-4 px-10 rounded-3xl active:scale-95 shadow-lg"
               >
-                <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Mischen & Starten 🔄</Text>
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Mischen & Starten 🔄</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1579,12 +1714,12 @@ export default function GamesScreen() {
               {/* Card layout */}
               <TouchableOpacity
                 onPress={drawSkullCard}
-                className={`w-64 aspect-[5/7] bg-slate-900 rounded-3xl p-5 justify-between border-2 shadow-2xl items-center relative ${
+                className={`w-64 aspect-[5/7] bg-surface rounded-3xl p-5 justify-between border-2 shadow-2xl items-center relative ${
                   skullMode === "hardcore"
-                    ? "border-red-500/40 shadow-red-500/5"
+                    ? "border-danger/40 shadow-red-500/5"
                     : skullMode === "spicy"
-                    ? "border-pink-500/40 shadow-pink-500/5"
-                    : "border-emerald-500/40 shadow-emerald-500/5"
+                    ? "border-danger/40"
+                    : "border-success/40"
                 }`}
               >
                 {currentSkullCard ? (
@@ -1592,14 +1727,14 @@ export default function GamesScreen() {
                     <View className="absolute top-4 left-5 flex-row items-center">
                       <Text
                         className={`text-xl font-black ${
-                          ["♥", "♦"].includes(currentSkullCard.suit) ? "text-red-500" : "text-white"
+                          ["♥", "♦"].includes(currentSkullCard.suit) ? "text-danger" : "text-content"
                         }`}
                       >
                         {currentSkullCard.label}
                       </Text>
                       <Text
                         className={`text-base ml-0.5 ${
-                          ["♥", "♦"].includes(currentSkullCard.suit) ? "text-red-500" : "text-slate-400"
+                          ["♥", "♦"].includes(currentSkullCard.suit) ? "text-danger" : "text-content-muted"
                         }`}
                       >
                         {currentSkullCard.suit}
@@ -1609,20 +1744,20 @@ export default function GamesScreen() {
                       <Text
                         className={`text-lg font-black uppercase text-center ${
                           skullMode === "hardcore"
-                            ? "text-red-400"
+                            ? "text-danger"
                             : skullMode === "spicy"
-                            ? "text-pink-400"
-                            : "text-emerald-400"
+                            ? "text-danger"
+                            : "text-success"
                         }`}
                       >
                         {getSkullRule(currentSkullCard).name}
                       </Text>
-                      <Text className="text-white text-[10px] font-bold text-center mt-2 px-1 leading-normal">
+                      <Text className="text-content text-[10px] font-bold text-center mt-2 px-1 leading-normal">
                         {getSkullRule(currentSkullCard).desc}
                       </Text>
                     </View>
-                    <View className="w-full border-t border-white/5 pt-2 items-center">
-                      <Text className="text-[8px] font-black text-amber-500 tracking-wider uppercase">
+                    <View className="w-full border-t border-line pt-2 items-center">
+                      <Text className="text-[8px] font-black text-warning tracking-wider uppercase">
                         Trink-Regel Aktiv! 🍻
                       </Text>
                     </View>
@@ -1632,10 +1767,10 @@ export default function GamesScreen() {
                     <Ionicons
                       name="beer"
                       size={56}
-                      color={skullMode === "hardcore" ? "#f87171" : skullMode === "spicy" ? "#f472b6" : "#34d399"}
+                      color={skullMode === "hardcore" ? "#f87171" : skullMode === "spicy" ? c.accent2 : c.success}
                       className="mb-2"
                     />
-                    <Text className="text-white text-xs font-black uppercase tracking-wider text-center">
+                    <Text className="text-content text-xs font-black uppercase tracking-wider text-center">
                       Tippe zum Ziehen!
                     </Text>
                   </View>
@@ -1644,23 +1779,23 @@ export default function GamesScreen() {
 
               {/* Deck Info & Action keys */}
               <View className="w-full px-5 items-center mt-6">
-                <Text className="text-slate-500 text-[9px] font-extrabold uppercase tracking-widest mb-3">
+                <Text className="text-content-faint text-[9px] font-extrabold uppercase tracking-widest mb-3">
                   Karten übrig: {skullDeck.length} / 52
                 </Text>
 
                 <View className="flex-row space-x-3 w-full">
                   <TouchableOpacity
                     onPress={startSkullGame}
-                    className="flex-1 bg-slate-900 border border-white/5 py-3.5 rounded-2xl items-center"
+                    className="flex-1 bg-surface border border-line py-3.5 rounded-2xl items-center"
                   >
-                    <Text className="text-slate-400 font-black text-xs">Mischen 🔄</Text>
+                    <Text className="text-content-muted font-black text-xs">Mischen 🔄</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={drawSkullCard}
-                    className="flex-1 bg-emerald-500 py-3.5 rounded-2xl items-center active:scale-95"
+                    className="flex-1 bg-success py-3.5 rounded-2xl items-center active:scale-95"
                   >
-                    <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Ziehen ➡️</Text>
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Ziehen ➡️</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1671,14 +1806,14 @@ export default function GamesScreen() {
 
       {/* D. TRUTH OR DARE OVERLAY */}
       <Modal visible={activeFullscreenGame === "truth"} animationType="slide" transparent={false}>
-        <View className="flex-1 bg-slate-950 pt-14 px-5">
+        <View className="flex-1 bg-bg pt-14 px-5">
           {renderCancelConfirmOverlay()}
           <View className="flex-row items-center justify-between mb-6">
             <TouchableOpacity onPress={() => setShowCancelConfirm(true)} className="flex-row items-center space-x-1 p-1">
-              <Ionicons name="close-circle-outline" size={20} color="#a855f7" />
-              <Text className="text-purple-400 text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
+              <Ionicons name="close-circle-outline" size={20} color={c.accent2} />
+              <Text className="text-accent-2-ink text-xs font-black uppercase ml-1">Spiel abbrechen</Text>
             </TouchableOpacity>
-            <Text className="text-white text-sm font-black uppercase tracking-wider">Wahrheit oder Pflicht</Text>
+            <Text className="text-content text-sm font-black uppercase tracking-wider">Wahrheit oder Pflicht</Text>
             <TouchableOpacity
               onPress={() => {
                 triggerHaptic("light");
@@ -1687,22 +1822,22 @@ export default function GamesScreen() {
               }}
               className="flex-row items-center space-x-1 p-1"
             >
-              <Ionicons name="home-outline" size={18} color="#64748b" />
-              <Text className="text-slate-500 text-[10px] font-black uppercase ml-1">Minimieren</Text>
+              <Ionicons name="home-outline" size={18} color={c.contentFaint} />
+              <Text className="text-content-faint text-[10px] font-black uppercase ml-1">Minimieren</Text>
             </TouchableOpacity>
           </View>
 
           {/* Active Game */}
           <View className="flex-1 items-center justify-between pb-10">
             {/* Spinner wheel representation */}
-            <View className="w-60 h-60 rounded-full border border-purple-500/10 bg-slate-900/30 items-center justify-center relative my-4">
+            <View className="w-60 h-60 rounded-full border border-accent-2/10 bg-surface/30 items-center justify-center relative my-4">
               <RNAnimated.View
                 style={{ transform: [{ rotate: spinAngle }] }}
                 className="w-12 h-36 items-center justify-center z-20"
               >
-                <View className="w-3.5 h-14 bg-purple-500 rounded-t-full shadow-lg shadow-purple-500/50" />
-                <View className="w-7 h-7 rounded-full bg-slate-950 border border-purple-400 -my-2.5" />
-                <View className="w-3.5 h-14 bg-slate-800 rounded-b-full" />
+                <View className="w-3.5 h-14 bg-accent-2 rounded-t-full shadow-lg" />
+                <View className="w-7 h-7 rounded-full bg-surface-alt border border-accent-2 -my-2.5" />
+                <View className="w-3.5 h-14 bg-surface-alt rounded-b-full" />
               </RNAnimated.View>
 
               {/* Layout players dynamically in a circle */}
@@ -1728,10 +1863,10 @@ export default function GamesScreen() {
                         style={
                           isSelected
                             ? {
-                                borderColor: "#a855f7",
+                                borderColor: c.accent2,
                                 borderWidth: 2,
                                 borderRadius: 9999,
-                                shadowColor: "#a855f7",
+                                shadowColor: c.accent2,
                                 shadowOffset: { width: 0, height: 0 },
                                 shadowOpacity: 0.8,
                                 shadowRadius: 10,
@@ -1743,11 +1878,11 @@ export default function GamesScreen() {
                                 borderRadius: 9999,
                               }
                         }
-                        className="bg-slate-900/95 px-3 py-1.5 rounded-full"
+                        className="bg-surface/95 px-3 py-1.5 rounded-full"
                       >
                         <Text
                           className={`text-[10px] font-black text-center ${
-                            isSelected ? "text-purple-400 font-extrabold" : "text-white/60"
+                            isSelected ? "text-accent-2-ink font-extrabold" : "text-content-muted"
                           }`}
                           numberOfLines={1}
                         >
@@ -1764,16 +1899,16 @@ export default function GamesScreen() {
             <TouchableOpacity
               onPress={spinBottle}
               disabled={isSpinning}
-              className="bg-purple-500 py-3.5 px-8 rounded-2xl shadow active:scale-95 disabled:opacity-40"
+              className="bg-accent-2 py-3.5 px-8 rounded-2xl shadow active:scale-95 disabled:opacity-40"
             >
-              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Flasche drehen 🌀</Text>
+              <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Flasche drehen 🌀</Text>
             </TouchableOpacity>
 
             {/* Task display card */}
             {selectedPlayer && (
-              <View className="bg-slate-900 border border-purple-500/20 p-5 rounded-3xl w-full items-center my-4 shadow-xl">
-                <Text className="text-slate-500 text-[8px] font-black uppercase">Ausgewählter Spieler</Text>
-                <Text className="text-purple-400 text-base font-black mt-0.5 mb-3">{selectedPlayer.name} 👉</Text>
+              <View className="bg-surface border border-accent-2/20 p-5 rounded-3xl w-full items-center my-4 shadow-xl">
+                <Text className="text-content-faint text-[8px] font-black uppercase">Ausgewählter Spieler</Text>
+                <Text className="text-accent-2-ink text-base font-black mt-0.5 mb-3">{selectedPlayer.name} 👉</Text>
 
                 {todType === null ? (
                   <View className="flex-row space-x-3 w-full">
@@ -1782,26 +1917,26 @@ export default function GamesScreen() {
                         triggerHaptic("light");
                         setTodType("truth");
                       }}
-                      className="flex-1 bg-cyan-500/10 border border-cyan-400/35 py-2.5 rounded-xl items-center"
+                      className="flex-1 bg-accent/10 border border-accent/35 py-2.5 rounded-xl items-center"
                     >
-                      <Text className="text-cyan-400 font-black text-[10px] uppercase">Wahrheit 🤔</Text>
+                      <Text className="text-accent-ink font-black text-[10px] uppercase">Wahrheit 🤔</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
                         triggerHaptic("light");
                         setTodType("dare");
                       }}
-                      className="flex-1 bg-fuchsia-500/10 border border-fuchsia-400/35 py-2.5 rounded-xl items-center"
+                      className="flex-1 bg-accent-2/10 border border-accent-2/35 py-2.5 rounded-xl items-center"
                     >
-                      <Text className="text-fuchsia-400 font-black text-[10px] uppercase">Pflicht 😈</Text>
+                      <Text className="text-accent-2-ink font-black text-[10px] uppercase">Pflicht 😈</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <View className="w-full items-center">
-                    <Text className="text-slate-500 text-[8px] font-black uppercase mb-1">
+                    <Text className="text-content-faint text-[8px] font-black uppercase mb-1">
                       {todType === "truth" ? "Die Frage:" : "Die Pflichtaufgabe:"}
                     </Text>
-                    <Text className="text-white text-xs font-bold text-center leading-relaxed mb-5">
+                    <Text className="text-content text-xs font-bold text-center leading-relaxed mb-5">
                       {todType === "truth" ? TRUTHS[todIndex] : DARES[todIndex]}
                     </Text>
 
@@ -1812,9 +1947,9 @@ export default function GamesScreen() {
                           setSelectedPlayer(null);
                           setTodType(null);
                         }}
-                        className="flex-1 bg-slate-950 border border-white/5 py-3 rounded-xl items-center"
+                        className="flex-1 bg-bg border border-line py-3 rounded-xl items-center"
                       >
-                        <Text className="text-slate-400 font-bold text-xs">Erledigt</Text>
+                        <Text className="text-content-muted font-bold text-xs">Erledigt</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -1824,9 +1959,9 @@ export default function GamesScreen() {
                           setSelectedPlayer(null);
                           setTodType(null);
                         }}
-                        className="flex-1 bg-purple-500 py-3 rounded-xl items-center shadow active:scale-95"
+                        className="flex-1 bg-accent-2 py-3 rounded-xl items-center shadow active:scale-95"
                       >
-                        <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">
+                        <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                           Gekniffen 🍻
                         </Text>
                       </TouchableOpacity>
@@ -1851,33 +1986,33 @@ export default function GamesScreen() {
         onRequestClose={() => setShowCreateDuel(false)}
       >
         <View className="flex-1 bg-black/85 justify-center items-center px-6">
-          <View className="bg-slate-900 border border-white/10 w-full max-w-[320px] rounded-3xl p-5 shadow-2xl">
-            <Text className="text-white text-sm font-black uppercase tracking-wider mb-4 text-center">
+          <View className="bg-surface border border-line w-full max-w-[320px] rounded-3xl p-5 shadow-2xl">
+            <Text className="text-content text-sm font-black uppercase tracking-wider mb-4 text-center">
               Duell starten ⚔️
             </Text>
 
-            <Text className="text-slate-500 text-[8px] font-black uppercase mb-1.5">Gegner auswählen</Text>
+            <Text className="text-content-faint text-[8px] font-black uppercase mb-1.5">Gegner auswählen</Text>
             <ScrollView className="max-h-[160px] mb-4">
               {users.map((u) => (
                 <TouchableOpacity
                   key={u.id}
                   onPress={() => setSelectedOpponentId(u.id)}
                   className={`p-3 rounded-xl mb-2 flex-row justify-between items-center ${
-                    selectedOpponentId === u.id ? "bg-cyan-400/10 border border-cyan-400/30" : "bg-slate-950/40"
+                    selectedOpponentId === u.id ? "bg-accent/10 border border-accent/30" : "bg-surface-alt/40"
                   }`}
                 >
                   <View className="flex-1 mr-2">
-                    <Text className="text-white text-xs font-bold">{u.name}</Text>
-                    <Text className="text-cyan-400 text-[8px] font-medium mt-0.5">
+                    <Text className="text-content text-xs font-bold">{u.name}</Text>
+                    <Text className="text-accent-ink text-[8px] font-medium mt-0.5">
                       Lv. {u.currentLevel || u.level || 1} - {u.title || "Neuling"}
                     </Text>
                   </View>
-                  {selectedOpponentId === u.id && <Ionicons name="checkmark" size={14} color="#22d3ee" />}
+                  {selectedOpponentId === u.id && <Ionicons name="checkmark" size={14} color={c.accent} />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <Text className="text-slate-500 text-[8px] font-black uppercase mb-1.5">Duell-Dauer (Minuten)</Text>
+            <Text className="text-content-faint text-[8px] font-black uppercase mb-1.5">Duell-Dauer (Minuten)</Text>
             <View className="flex-row space-x-2 mb-6">
               {["30", "60", "120", "240"].map((mins) => {
                 const isActive = duelDuration === mins;
@@ -1886,10 +2021,10 @@ export default function GamesScreen() {
                     key={mins}
                     onPress={() => setDuelDuration(mins)}
                     className={`flex-1 py-2 rounded-xl border items-center ${
-                      isActive ? "bg-cyan-400/15 border-cyan-400" : "bg-slate-950/60 border-white/5"
+                      isActive ? "bg-accent/15 border-accent" : "bg-surface-alt/60 border-line"
                     }`}
                   >
-                    <Text className={`text-[10px] font-bold ${isActive ? "text-cyan-400" : "text-slate-400"}`}>
+                    <Text className={`text-[10px] font-bold ${isActive ? "text-accent-ink" : "text-content-muted"}`}>
                       {mins} Min
                     </Text>
                   </TouchableOpacity>
@@ -1900,12 +2035,12 @@ export default function GamesScreen() {
             <View className="flex-row space-x-3">
               <TouchableOpacity
                 onPress={() => setShowCreateDuel(false)}
-                className="flex-1 bg-slate-950 border border-white/5 py-3 rounded-2xl items-center"
+                className="flex-1 bg-bg border border-line py-3 rounded-2xl items-center"
               >
-                <Text className="text-slate-400 font-black text-xs">Abbrechen</Text>
+                <Text className="text-content-muted font-black text-xs">Abbrechen</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateDuel} className="flex-1 bg-cyan-400 py-3 rounded-2xl items-center shadow">
-                <Text className="text-slate-950 font-black text-xs">Senden</Text>
+              <TouchableOpacity onPress={handleCreateDuel} className="flex-1 bg-accent py-3 rounded-2xl items-center shadow">
+                <Text className="text-on-accent font-black text-xs">Senden</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1963,6 +2098,53 @@ export default function GamesScreen() {
         />
         {renderCancelConfirmOverlay()}
       </Modal>
+
+      {/* Multi-Device Story-RPG Modals */}
+      <JoinRoomModal
+        visible={showJoinRoomModal}
+        defaultPlayerName={currentUser?.name || ""}
+        defaultPlayerAvatar={currentUser?.avatar || null}
+        onClose={() => setShowJoinRoomModal(false)}
+        onJoined={(roomData) => {
+          setActiveStoryLobby({
+            roomCode: roomData.code,
+            myPlayerId: roomData.playerId,
+            myPlayerToken: roomData.playerToken,
+            isHost: false,
+          });
+        }}
+      />
+
+      {activeStoryLobby && (
+        <MultiplayerLobbyModal
+          visible={true}
+          roomCode={activeStoryLobby.roomCode}
+          myPlayerId={activeStoryLobby.myPlayerId}
+          myPlayerToken={activeStoryLobby.myPlayerToken}
+          isHost={activeStoryLobby.isHost}
+          onClose={() => setActiveStoryLobby(null)}
+          onGameStarted={(roomData) => {
+            setActiveStoryGame({
+              roomCode: activeStoryLobby.roomCode,
+              myPlayerId: activeStoryLobby.myPlayerId,
+              myPlayerToken: activeStoryLobby.myPlayerToken,
+              initialRoomData: roomData,
+            });
+            setActiveStoryLobby(null);
+          }}
+        />
+      )}
+
+      {activeStoryGame && (
+        <StoryGameShell
+          visible={true}
+          roomCode={activeStoryGame.roomCode}
+          myPlayerId={activeStoryGame.myPlayerId}
+          myPlayerToken={activeStoryGame.myPlayerToken}
+          initialRoomData={activeStoryGame.initialRoomData}
+          onExit={() => setActiveStoryGame(null)}
+        />
+      )}
 
       {renderCancelConfirmOverlay()}
     </View>

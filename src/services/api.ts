@@ -775,6 +775,68 @@ export const apiService = {
       () => db.createGroupQuest(groupId, title, type, targetValue, durationHours)
     ),
 
+  // Multi-Device Game Rooms & Story-RPG
+  //
+  // Ausweis ist der playerToken, den der Server beim Erstellen bzw. Beitreten
+  // einmalig ausliefert — nicht die playerId. Die steht in jeder Raumantwort
+  // und ist damit allen Mitspielern bekannt.
+  createGameRoom: async (gameId: string, hostName: string, hostAvatar?: string | null): Promise<{ success: boolean; code: string; hostId: string; playerToken: string; room: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; code: string; hostId: string; playerToken: string; room: any }>("/game-rooms", {
+      gameId,
+      hostName,
+      hostAvatar,
+    });
+    return res.data;
+  },
+
+  /** `playerToken` nur beim Wiedereintritt setzen; neue Spieler bekommen einen neuen. */
+  joinGameRoom: async (code: string, playerName: string, playerAvatar?: string | null, playerToken?: string): Promise<{ success: boolean; code: string; playerId: string; playerToken: string; room: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; code: string; playerId: string; playerToken: string; room: any }>(`/game-rooms/${code}/join`, {
+      playerName,
+      playerAvatar,
+      playerToken,
+    });
+    return res.data;
+  },
+
+  getGameRoom: async (code: string, playerToken?: string): Promise<{ success: boolean; room: any }> => {
+    const params = playerToken ? `?playerToken=${encodeURIComponent(playerToken)}` : "";
+    const res = await axiosInstance.get<{ success: boolean; room: any }>(`/game-rooms/${code}${params}`);
+    return res.data;
+  },
+
+  startGameRoom: async (code: string, playerToken: string, gameSetupData: any): Promise<{ success: boolean; room: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; room: any }>(`/game-rooms/${code}/start`, {
+      playerToken,
+      gameSetupData,
+    });
+    return res.data;
+  },
+
+  submitGameRoomAction: async (code: string, playerToken: string, actionType: string, payload: any): Promise<{ success: boolean; room: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; room: any }>(`/game-rooms/${code}/action`, {
+      playerToken,
+      actionType,
+      payload,
+    });
+    return res.data;
+  },
+
+  nextGameRoomChapter: async (code: string, playerToken: string, params: { nextStatus?: string; nextChapterData?: any; outcomeSummary?: string }): Promise<{ success: boolean; room: any }> => {
+    const res = await axiosInstance.post<{ success: boolean; room: any }>(`/game-rooms/${code}/next`, {
+      playerToken,
+      ...params,
+    });
+    return res.data;
+  },
+
+  leaveGameRoom: async (code: string, playerToken: string): Promise<{ success: boolean }> => {
+    const res = await axiosInstance.post<{ success: boolean }>(`/game-rooms/${code}/leave`, {
+      playerToken,
+    });
+    return res.data;
+  },
+
   levelUp: (): Promise<db.User> =>
     executeApiCall(
       () => axiosInstance.post<db.User>("/users/level-up").then(res => res),
