@@ -327,19 +327,19 @@ export default function AdminConsoleScreen() {
                 }}
                 className={`flex-row items-center px-3.5 py-2 mr-2 rounded-2xl border ${
                   isActive
-                    ? "bg-amber-400/20 border-amber-400/60"
+                    ? "bg-warning/20 border-warning/60"
                     : "bg-surface-alt/40 border-line"
                 }`}
               >
                 <Ionicons
                   name={tab.icon as any}
                   size={14}
-                  color={isActive ? "#fbbf24" : c.contentFaint}
+                  color={isActive ? c.warning : c.contentFaint}
                   style={{ marginRight: 6 }}
                 />
                 <Text
                   className={`text-xs font-black uppercase tracking-wider ${
-                    isActive ? "text-amber-400" : "text-content-faint"
+                    isActive ? "text-warning" : "text-content-faint"
                   }`}
                 >
                   {tab.label}
@@ -354,7 +354,7 @@ export default function AdminConsoleScreen() {
         className="flex-1 px-4 pt-4"
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fbbf24" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.warning} />
         }
       >
         {/* ========================================================================= */}
@@ -363,7 +363,7 @@ export default function AdminConsoleScreen() {
         {activeTab === "dashboard" && (
           <View className="pb-12">
             {loading ? (
-              <ActivityIndicator size="large" color="#fbbf24" style={{ marginTop: 40 }} />
+              <ActivityIndicator size="large" color={c.warning} style={{ marginTop: 40 }} />
             ) : dashboardData ? (
               <>
                 {/* 2x2 KPI Grid */}
@@ -380,7 +380,7 @@ export default function AdminConsoleScreen() {
                       {dashboardData.stats.usersCount}
                     </Text>
                     {dashboardData.stats.bannedUsersCount > 0 && (
-                      <Text className="text-rose-500 text-[10px] font-bold mt-1">
+                      <Text className="text-danger text-[10px] font-bold mt-1">
                         {dashboardData.stats.bannedUsersCount} gesperrt
                       </Text>
                     )}
@@ -392,7 +392,7 @@ export default function AdminConsoleScreen() {
                       <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider">
                         Volumen getrunken
                       </Text>
-                      <Ionicons name="beer" size={16} color="#fbbf24" />
+                      <Ionicons name="beer" size={16} color={c.warning} />
                     </View>
                     <Text className="text-content text-2xl font-black">
                       {(dashboardData.stats.totalVolumeMl / 1000).toFixed(1)} L
@@ -413,7 +413,7 @@ export default function AdminConsoleScreen() {
                     <Text
                       className={`text-2xl font-black ${
                         dashboardData.stats.openReportsCount > 0
-                          ? "text-rose-500"
+                          ? "text-danger"
                           : "text-content"
                       }`}
                     >
@@ -445,7 +445,7 @@ export default function AdminConsoleScreen() {
                 <View className="bg-surface border border-line rounded-3xl p-5 mb-6 shadow-sm">
                   <View className="flex-row items-center justify-between mb-3">
                     <View className="flex-row items-center space-x-2">
-                      <Ionicons name="game-controller" size={18} color="#fbbf24" />
+                      <Ionicons name="game-controller" size={18} color={c.warning} />
                       <Text className="text-content text-sm font-black tracking-wide ml-2">
                         Live Party-Räume & Story-RPGs ({activeRooms.length})
                       </Text>
@@ -464,8 +464,8 @@ export default function AdminConsoleScreen() {
                       >
                         <View className="flex-1">
                           <View className="flex-row items-center space-x-2 mb-1">
-                            <View className="bg-amber-400/20 px-2 py-0.5 rounded-md">
-                              <Text className="text-amber-400 text-xs font-black font-mono">
+                            <View className="bg-warning/20 px-2 py-0.5 rounded-md">
+                              <Text className="text-warning text-xs font-black font-mono">
                                 {room.code}
                               </Text>
                             </View>
@@ -480,9 +480,9 @@ export default function AdminConsoleScreen() {
                         </View>
                         <TouchableOpacity
                           onPress={() => handleDeleteRoom(room.code)}
-                          className="bg-rose-500/20 border border-rose-500/40 px-3 py-1.5 rounded-xl ml-2 active:scale-95"
+                          className="bg-danger/20 border border-danger/40 px-3 py-1.5 rounded-xl ml-2 active:scale-95"
                         >
-                          <Text className="text-rose-400 text-[10px] font-black uppercase tracking-wider">
+                          <Text className="text-danger text-[10px] font-black uppercase tracking-wider">
                             Schließen
                           </Text>
                         </TouchableOpacity>
@@ -556,13 +556,13 @@ export default function AdminConsoleScreen() {
                 onPress={() => setUserFilter("all")}
                 className={`px-3 py-1.5 rounded-xl border ${
                   userFilter === "all"
-                    ? "bg-amber-400/20 border-amber-400/60"
+                    ? "bg-warning/20 border-warning/60"
                     : "bg-surface border-line"
                 }`}
               >
                 <Text
                   className={`text-[10px] font-black uppercase tracking-wider ${
-                    userFilter === "all" ? "text-amber-400" : "text-content-faint"
+                    userFilter === "all" ? "text-warning" : "text-content-faint"
                   }`}
                 >
                   Alle ({users.length})
@@ -572,13 +572,13 @@ export default function AdminConsoleScreen() {
                 onPress={() => setUserFilter("banned")}
                 className={`px-3 py-1.5 rounded-xl border ml-2 ${
                   userFilter === "banned"
-                    ? "bg-rose-500/20 border-rose-500/60"
+                    ? "bg-danger/20 border-danger/60"
                     : "bg-surface border-line"
                 }`}
               >
                 <Text
                   className={`text-[10px] font-black uppercase tracking-wider ${
-                    userFilter === "banned" ? "text-rose-400" : "text-content-faint"
+                    userFilter === "banned" ? "text-danger" : "text-content-faint"
                   }`}
                 >
                   Gesperrt
@@ -587,7 +587,7 @@ export default function AdminConsoleScreen() {
             </View>
 
             {loading ? (
-              <ActivityIndicator size="large" color="#fbbf24" style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color={c.warning} style={{ marginTop: 20 }} />
             ) : users.length === 0 ? (
               <Text className="text-content-muted text-center py-8 text-xs font-medium">
                 Keine passenden Nutzer gefunden.
@@ -597,7 +597,7 @@ export default function AdminConsoleScreen() {
                 <View
                   key={u.id}
                   className={`bg-surface border rounded-3xl p-4 mb-3 shadow-sm ${
-                    u.banned ? "border-rose-500/40 bg-rose-500/5" : "border-line"
+                    u.banned ? "border-danger/40 bg-danger/5" : "border-line"
                   }`}
                 >
                   <View className="flex-row items-center justify-between mb-2">
@@ -607,15 +607,15 @@ export default function AdminConsoleScreen() {
                         <View className="flex-row items-center space-x-1.5">
                           <Text className="text-content text-sm font-black">{u.name}</Text>
                           {u.isModerator && (
-                            <View className="bg-amber-400/20 border border-amber-400/40 px-1.5 py-0.5 rounded ml-1">
-                              <Text className="text-amber-400 text-[7px] font-black uppercase">
+                            <View className="bg-warning/20 border border-warning/40 px-1.5 py-0.5 rounded ml-1">
+                              <Text className="text-warning text-[7px] font-black uppercase">
                                 Admin
                               </Text>
                             </View>
                           )}
                           {u.banned && (
-                            <View className="bg-rose-500/20 border border-rose-500/40 px-1.5 py-0.5 rounded ml-1">
-                              <Text className="text-rose-400 text-[7px] font-black uppercase">
+                            <View className="bg-danger/20 border border-danger/40 px-1.5 py-0.5 rounded ml-1">
+                              <Text className="text-danger text-[7px] font-black uppercase">
                                 Gesperrt
                               </Text>
                             </View>
@@ -665,12 +665,12 @@ export default function AdminConsoleScreen() {
                       className={`px-3 py-1.5 rounded-xl border active:scale-95 ${
                         u.banned
                           ? "bg-success/20 border-success/40"
-                          : "bg-rose-500/20 border-rose-500/40"
+                          : "bg-danger/20 border-danger/40"
                       }`}
                     >
                       <Text
                         className={`text-[10px] font-black uppercase tracking-wider ${
-                          u.banned ? "text-success" : "text-rose-400"
+                          u.banned ? "text-success" : "text-danger"
                         }`}
                       >
                         {u.banned ? "Entsperren" : "Sperren"}
@@ -699,13 +699,13 @@ export default function AdminConsoleScreen() {
                     onPress={() => setReportFilter(st)}
                     className={`px-3.5 py-1.5 rounded-xl border mr-2 ${
                       isSelected
-                        ? "bg-amber-400/20 border-amber-400/60"
+                        ? "bg-warning/20 border-warning/60"
                         : "bg-surface border-line"
                     }`}
                   >
                     <Text
                       className={`text-[10px] font-black uppercase tracking-wider ${
-                        isSelected ? "text-amber-400" : "text-content-faint"
+                        isSelected ? "text-warning" : "text-content-faint"
                       }`}
                     >
                       {label} ({reportCounts[st]})
@@ -716,7 +716,7 @@ export default function AdminConsoleScreen() {
             </View>
 
             {loading ? (
-              <ActivityIndicator size="large" color="#fbbf24" style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color={c.warning} style={{ marginTop: 20 }} />
             ) : reports.length === 0 ? (
               <Text className="text-content-muted text-center py-8 text-xs font-medium">
                 Keine Meldungen in diesem Filter vorhanden.
@@ -769,9 +769,9 @@ export default function AdminConsoleScreen() {
                     {r.contentType === "post" && r.status === "open" && (
                       <TouchableOpacity
                         onPress={() => handleDeleteReportedPost(r)}
-                        className="bg-rose-500/20 border border-rose-500/40 px-3 py-1.5 rounded-xl active:scale-95"
+                        className="bg-danger/20 border border-danger/40 px-3 py-1.5 rounded-xl active:scale-95"
                       >
-                        <Text className="text-rose-400 text-[10px] font-black uppercase">
+                        <Text className="text-danger text-[10px] font-black uppercase">
                           🗑️ Beitrag löschen
                         </Text>
                       </TouchableOpacity>
@@ -822,7 +822,7 @@ export default function AdminConsoleScreen() {
             </View>
 
             {loading ? (
-              <ActivityIndicator size="large" color="#fbbf24" style={{ marginTop: 20 }} />
+              <ActivityIndicator size="large" color={c.warning} style={{ marginTop: 20 }} />
             ) : filteredDrinks.length === 0 ? (
               <Text className="text-content-muted text-center py-8 text-xs font-medium">
                 Keine Getränke gefunden.
@@ -833,7 +833,7 @@ export default function AdminConsoleScreen() {
                   key={d.id}
                   onPress={() => openEditDrink(d)}
                   className={`bg-surface border rounded-3xl p-4 mb-2.5 flex-row items-center justify-between ${
-                    d.hidden ? "border-rose-500/40 opacity-70" : "border-line"
+                    d.hidden ? "border-danger/40 opacity-70" : "border-line"
                   }`}
                 >
                   <View className="flex-1">
@@ -847,8 +847,8 @@ export default function AdminConsoleScreen() {
                         </View>
                       )}
                       {d.hidden && (
-                        <View className="bg-rose-500/20 px-1.5 py-0.5 rounded ml-1.5">
-                          <Text className="text-rose-400 text-[8px] font-black uppercase">
+                        <View className="bg-danger/20 px-1.5 py-0.5 rounded ml-1.5">
+                          <Text className="text-danger text-[8px] font-black uppercase">
                             Ausgeblendet
                           </Text>
                         </View>
@@ -858,7 +858,7 @@ export default function AdminConsoleScreen() {
                       {d.volume} ml · {d.abv}% Alk · {d.calories || 0} kcal · Kat: {d.category}
                     </Text>
                   </View>
-                  <Ionicons name="create-outline" size={16} color="#fbbf24" />
+                  <Ionicons name="create-outline" size={16} color={c.warning} />
                 </TouchableOpacity>
               ))
             )}
@@ -896,15 +896,15 @@ export default function AdminConsoleScreen() {
                   <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider mb-2">
                     Vorschau im Feed:
                   </Text>
-                  <View className="bg-surface border border-amber-400/50 bg-amber-500/5 p-4 rounded-3xl shadow-lg flex-row space-x-3">
-                    <View className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/40 items-center justify-center">
-                      <Ionicons name="trophy" size={20} color="#fbbf24" />
+                  <View className="bg-surface border border-warning/50 bg-warning/5 p-4 rounded-3xl shadow-lg flex-row space-x-3">
+                    <View className="w-10 h-10 rounded-2xl bg-warning/20 border border-warning/40 items-center justify-center">
+                      <Ionicons name="trophy" size={20} color={c.warning} />
                     </View>
                     <View className="flex-1 ml-2">
                       <View className="flex-row items-center justify-between mb-1">
                         <Text className="text-content text-xs font-black">Party-Highlight</Text>
-                        <View className="border border-amber-400/40 bg-amber-400/20 px-1.5 py-0.5 rounded">
-                          <Text className="text-amber-400 text-[7px] font-black uppercase">
+                        <View className="border border-warning/40 bg-warning/20 px-1.5 py-0.5 rounded">
+                          <Text className="text-warning text-[7px] font-black uppercase">
                             [Highlight 🏆]
                           </Text>
                         </View>
@@ -920,12 +920,12 @@ export default function AdminConsoleScreen() {
               <TouchableOpacity
                 onPress={handleSendBroadcast}
                 disabled={isSubmitting || !broadcastMessage.trim()}
-                className="w-full bg-amber-400 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+                className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
               >
                 {isSubmitting ? (
-                  <ActivityIndicator color="#000000" />
+                  <ActivityIndicator color={c.onAccent} />
                 ) : (
-                  <Text className="text-black font-black text-xs uppercase tracking-wider">
+                  <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                     Jetzt an alle senden
                   </Text>
                 )}
@@ -1009,7 +1009,7 @@ export default function AdminConsoleScreen() {
               <Ionicons
                 name={editDrinkHidden ? "checkbox" : "square-outline"}
                 size={18}
-                color={editDrinkHidden ? "#fbbf24" : c.contentFaint}
+                color={editDrinkHidden ? c.warning : c.contentFaint}
               />
               <Text className="text-content text-xs font-bold ml-2">
                 Getränk im öffentlichen Katalog ausblenden
@@ -1019,12 +1019,12 @@ export default function AdminConsoleScreen() {
             <TouchableOpacity
               onPress={handleSaveDrink}
               disabled={isSubmitting}
-              className="w-full bg-amber-400 py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
+              className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95 disabled:opacity-40"
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#000000" />
+                <ActivityIndicator color={c.onAccent} />
               ) : (
-                <Text className="text-black font-black text-xs uppercase tracking-wider">
+                <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
                   Änderungen speichern
                 </Text>
               )}

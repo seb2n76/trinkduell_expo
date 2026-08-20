@@ -88,6 +88,28 @@ test("Admin-Konsole", async (t) => {
       const authAttempt = await call("GET", "/users/me", undefined, cheater.token);
       assert.equal(authAttempt.status, 403, "Bestehende Tokens gebannter Accounts werden abgewiesen");
 
+      // Ohne das richtige Passwort darf die Sperre NICHT erkennbar sein.
+      //
+      // Der Login antwortet auf "gibt es nicht" und "falsches Passwort"
+      // bewusst gleich. Die Sperr-Prüfung lief anfangs VOR dem
+      // Passwortvergleich und beantwortete ein gesperrtes Konto mit 403 —
+      // damit liess sich ohne jedes Passwort durchprobieren, welche Namen
+      // existieren und gesperrt sind.
+      const falschesPw = await call("POST", "/auth/login", {
+        emailOrUsername: cheater.name,
+        password: "definitivFalsch",
+      });
+      const unbekannt = await call("POST", "/auth/login", {
+        emailOrUsername: "GibtEsGarNicht",
+        password: "definitivFalsch",
+      });
+      assert.equal(
+        falschesPw.status,
+        unbekannt.status,
+        "Gesperrt + falsches Passwort muss aussehen wie ein unbekanntes Konto"
+      );
+      assert.equal(falschesPw.json.error, unbekannt.json.error, "Auch der Text muss gleich sein");
+
       // Filter nach gebannten Nutzern
       const bannedList = await call("GET", "/admin/users?filter=banned", undefined, admin.token);
       assert.equal(bannedList.status, 200);

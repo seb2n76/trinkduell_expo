@@ -645,14 +645,23 @@ app.post(
     return res.status(401).json({ error: "Ungültige Anmeldedaten!" });
   }
 
-  if (matchedUser.banned) {
-    return res.status(403).json({ error: "Dein Account wurde gesperrt. Wende dich an den Support." });
-  }
-
   // Compare password with bcrypt hash
   const isPasswordValid = await bcrypt.compare(password, matchedUser.password);
   if (!isPasswordValid) {
     return res.status(401).json({ error: "Ungültige Anmeldedaten!" });
+  }
+
+  // Die Sperre wird ERST nach dem Passwort geprüft, nicht davor.
+  //
+  // Vorher antwortete ein gesperrter Account mit 403, ein unbekannter oder
+  // ein falsch geratenes Passwort mit 401 — ohne dass der Fragende das
+  // Passwort kennen musste. Damit liess sich durchprobieren, welche
+  // Benutzernamen existieren UND gesperrt sind. Der Login gibt sonst
+  // bewusst für „gibt es nicht" und „falsches Passwort" dieselbe Antwort;
+  // diese Prüfung fiel aus der Reihe. Wer das richtige Passwort hat, gehört
+  // zum Konto und darf den Grund erfahren.
+  if (matchedUser.banned) {
+    return res.status(403).json({ error: "Dein Account wurde gesperrt. Wende dich an den Support." });
   }
 
   // A successful login clears this account's failure budget, so someone who
