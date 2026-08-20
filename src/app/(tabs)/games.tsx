@@ -31,6 +31,8 @@ import { JoinRoomModal } from "@/components/games/JoinRoomModal";
 import { MultiplayerLobbyModal } from "@/components/games/MultiplayerLobbyModal";
 import { StoryGameShell } from "@/components/games/StoryGameShell";
 import { ALL_TRUTHS, ALL_DARES } from "@/games/content";
+import { NightSessionProvider, useNightSession } from "@/games/session";
+import { SessionBar } from "@/components/games/SessionBar";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -286,8 +288,9 @@ export interface SavedGameState {
   todType: "truth" | "dare" | null;
   todIndex: number;
 
-  hlStatus: "setup" | "playing" | "correct" | "gameover" | "passed";
+  hlStatus: "setup" | "playing" | "predicting" | "correct" | "gameover" | "passed";
   hlScore: number;
+  hlPot: number;
   hlDeck: Card[];
   hlCurrentCard: Card | null;
   hlRevealCard: Card | null;
@@ -299,8 +302,15 @@ export interface SavedGameState {
   currentSkullCard: Card | null;
 }
 
-export default function GamesScreen() {
+/**
+ * Der Spielebildschirm. Steckt in einem NightSessionProvider (siehe unten),
+ * damit alle Spiele und ihre Vollbild-Modals denselben Sessionzustand sehen —
+ * Punkte, Akt, aktive Regeln und Joker laufen über den Spielwechsel hinweg
+ * weiter, statt bei jedem Spiel neu bei null anzufangen.
+ */
+function GamesScreenContent() {
   const c = useThemeColors();
+  const session = useNightSession();
   const { scheme } = useTheme();
   const [activeFullscreenGame, setActiveFullscreenGame] = useState<FullscreenGameId>(null);
   const [lobbyGameSelected, setLobbyGameSelected] = useState<LobbyGameId>(null);
@@ -345,7 +355,15 @@ export default function GamesScreen() {
   const [hlDeck, setHlDeck] = useState<Card[]>([]);
   const [hlCurrentCard, setHlCurrentCard] = useState<Card | null>(null);
   const [hlScore, setHlScore] = useState(0);
-  const [hlStatus, setHlStatus] = useState<"setup" | "playing" | "correct" | "gameover" | "passed">("setup");
+  // Einsatz der laufenden Serie. Verdoppelt sich mit jeder richtigen Ansage
+  // und ist bei einem Fehler komplett weg.
+  const [hlPot, setHlPot] = useState(0);
+  // Was zuletzt gesichert wurde — nur für die Anzeige nach dem Aussteigen.
+  const [hlBanked, setHlBanked] = useState(0);
+  // Angesagt, aber noch nicht aufgelöst — solange tippen die Zuschauer.
+  const [hlPendingGuess, setHlPendingGuess] = useState<"higher" | "lower" | "equal" | null>(null);
+  const [hlBelievers, setHlBelievers] = useState<string[]>([]);
+  const [hlStatus, setHlStatus] = useState<"setup" | "playing" | "predicting" | "correct" | "gameover" | "passed">("setup");
   const [hlGuess, setHlGuess] = useState<"higher" | "lower" | "equal" | null>(null);
   const [hlRevealCard, setHlRevealCard] = useState<Card | null>(null);
   const [showHlWrongModal, setShowHlWrongModal] = useState(false);
@@ -396,6 +414,7 @@ export default function GamesScreen() {
 
         setHlStatus(state.hlStatus || "setup");
         setHlScore(state.hlScore || 0);
+        setHlPot(state.hlPot || 0);
         setHlDeck(state.hlDeck || []);
         setHlCurrentCard(state.hlCurrentCard || null);
         setHlRevealCard(state.hlRevealCard || null);
@@ -516,6 +535,7 @@ export default function GamesScreen() {
           todIndex,
           hlStatus,
           hlScore,
+          hlPot,
           hlDeck,
           hlCurrentCard,
           hlRevealCard,
@@ -542,6 +562,7 @@ export default function GamesScreen() {
     todIndex,
     hlStatus,
     hlScore,
+    hlPot,
     hlDeck,
     hlCurrentCard,
     hlRevealCard,
@@ -599,6 +620,7 @@ export default function GamesScreen() {
 
     setHlStatus("setup");
     setHlScore(0);
+    setHlPot(0);
     setHlDeck([]);
     setHlCurrentCard(null);
     setHlRevealCard(null);
@@ -609,6 +631,9 @@ export default function GamesScreen() {
     setSkullMode("normal");
     setSkullDeck([]);
     setCurrentSkullCard(null);
+
+    // Mit dem Abbruch endet auch die Nacht: Punkte, Akt, Regeln und Joker.
+    session?.end();
 
     await AsyncStorage.removeItem("trinkduell_party_game_state");
   };
@@ -729,6 +754,14 @@ export default function GamesScreen() {
     }
     triggerHaptic("success");
 
+    // „Die Nacht" beginnt beim ersten Spiel und läuft über alle weiteren
+    // hinweg weiter — Punkte, Regeln und Joker überleben den Spielwechsel.
+    // Eine schon laufende Session wird NICHT zurückgesetzt: der Wechsel von
+    // einem Spiel ins nächste ist der Normalfall, nicht ein Neuanfang.
+    if (session && !session.active) {
+      session.begin(players);
+    }
+
     if (lobbyGameSelected === "higherlower") {
       startHigherLower();
     } else if (lobbyGameSelected === "cards") {
@@ -824,6 +857,7 @@ export default function GamesScreen() {
     setHlCurrentCard(firstCard);
     setHlRevealCard(null);
     setHlScore(0);
+    setHlPot(0);
     setHlStatus("playing");
     setShowHlWrongModal(false);
 
@@ -831,9 +865,29 @@ export default function GamesScreen() {
     setActiveFullscreenGame("higherlower");
   };
 
+  /**
+   * Ansage des aktiven Spielers.
+   *
+   * Ab drei Personen kommt vor der Auflösung eine Tippdurchgang: die
+   * Zuschauer sagen, ob sie daran glauben. Ohne das schaut bei jedem Zug die
+   * halbe Runde nur zu — und passives Zuschauen ist der Punkt, an dem Gruppen
+   * aussteigen. Zu zweit wäre der Schritt nur Umstand, deshalb entfällt er.
+   */
   const playHigherLower = (guess: "higher" | "lower" | "equal") => {
     if (!hlCurrentCard) return;
     triggerHaptic("light");
+
+    if (session?.active && session.players.length >= 3) {
+      setHlPendingGuess(guess);
+      setHlBelievers([]);
+      setHlStatus("predicting");
+      return;
+    }
+    resolveHlGuess(guess);
+  };
+
+  const resolveHlGuess = (guess: "higher" | "lower" | "equal") => {
+    if (!hlCurrentCard) return;
 
     let deckCopy = [...hlDeck];
     if (deckCopy.length === 0) {
@@ -852,7 +906,24 @@ export default function GamesScreen() {
     if (guess === "lower" && nextVal < prevVal) correct = true;
     if (guess === "equal" && nextVal === prevVal) correct = true;
 
+    // Tipps abrechnen: wer richtig lag, bekommt Punkte. Zuschauen wird damit
+    // zur Handlung statt zur Wartezeit.
+    if (session?.active && hlPendingGuess) {
+      const aktiv = session.currentPlayer?.id;
+      for (const p of session.players) {
+        if (p.id === aktiv) continue;
+        const glaubte = hlBelievers.includes(p.id);
+        if (glaubte === correct) session.award(p.id, 5);
+      }
+    }
+    setHlPendingGuess(null);
+    setHlBelievers([]);
+
     if (correct) {
+      // Push your luck: jede richtige Ansage verdoppelt den Einsatz. Der
+      // Reiz entsteht nicht aus dem Raten, sondern aus der Frage, wann man
+      // aufhört — vorher war jede Runde gleich viel wert, nämlich nichts.
+      setHlPot((p) => (p === 0 ? 10 : p * 2));
       setHlStatus("correct");
     } else {
       setHlStatus("gameover");
@@ -872,15 +943,30 @@ export default function GamesScreen() {
     }
   };
 
+  /** Aussteigen und den Einsatz sichern. */
   const passHigherLower = () => {
     triggerHaptic("success");
+    if (session && hlPot > 0) {
+      const spieler = session.currentPlayer;
+      if (spieler) setHlBanked(session.award(spieler.id, hlPot));
+    }
+    session?.countRound();
+    session?.nextTurn();
+    setHlPot(0);
+    setHlScore(0);
+    setHlPot(0);
     setHlStatus("passed");
   };
 
   const handleHlWrongModalDismiss = () => {
     triggerHaptic("light");
     setShowHlWrongModal(false);
-    // Proceed seamlessly with the next card
+    // Verloren: der Einsatz ist weg, der Nächste ist dran.
+    setHlPot(0);
+    setHlScore(0);
+    setHlPot(0);
+    session?.countRound();
+    session?.nextTurn();
     if (hlRevealCard) {
       setHlCurrentCard(hlRevealCard);
       setHlRevealCard(null);
@@ -910,6 +996,19 @@ export default function GamesScreen() {
     setSkullDeck(deckCopy);
     setCurrentSkullCard(drawn);
     setSkullStatus("drawn");
+
+    // Die gezogene Regel bleibt für den Rest der Nacht in Kraft.
+    //
+    // Vorher wurde jede der 40 Regelkarten vorgelesen und sofort vergessen —
+    // deshalb fühlte sich die fünfzehnte Karte an wie die erste. Beim Vorbild
+    // (Kings Cup) stapeln sich die Regeln, und genau daher kommt die
+    // Spieldauer: nach zwanzig Minuten gelten sechs Regeln gleichzeitig,
+    // jeder verstößt ständig gegen irgendeine, und das eskaliert von selbst.
+    const rule = getSkullRule(drawn);
+    if (rule.name) {
+      session?.addRule({ source: "Skull", name: rule.name, desc: rule.desc });
+    }
+    session?.countRound();
   };
 
   const getSkullRule = (card: Card | null): SkullRule => {
@@ -1468,13 +1567,41 @@ export default function GamesScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Höher/Tiefer und Skull rendern ihre eigene Hülle statt GameShell —
+              die Session-Leiste muss hier deshalb von Hand stehen. */}
+          <SessionBar />
+
           <View className="flex-1 items-center justify-between pb-10">
             {/* Score indicator */}
-            <View className="flex-row space-x-6 mt-4">
-              <View className="bg-surface border border-line px-6 py-3 rounded-2xl items-center">
+            <View className="flex-row mt-4" style={{ gap: 12 }}>
+              <View className="bg-surface border border-line px-5 py-3 rounded-2xl items-center">
                 <Text className="text-content-faint text-[8px] font-black uppercase">Aktuelle Serie</Text>
                 <Text className="text-content text-base font-black mt-0.5">{hlScore} 🔥</Text>
               </View>
+              {/* Der Einsatz gehört gross und daneben: die ganze Spannung
+                  haengt an der Frage, ob man ihn noch riskiert. */}
+              <View
+                className={`px-5 py-3 rounded-2xl items-center border ${
+                  hlPot > 0 ? "bg-warning/10 border-warning/40" : "bg-surface border-line"
+                }`}
+              >
+                <Text className="text-content-faint text-[8px] font-black uppercase">Im Topf</Text>
+                <Text
+                  className={`text-base font-black mt-0.5 ${
+                    hlPot > 0 ? "text-warning" : "text-content-faint"
+                  }`}
+                >
+                  {hlPot}
+                </Text>
+              </View>
+              {session?.currentPlayer && (
+                <View className="bg-surface border border-line px-5 py-3 rounded-2xl items-center">
+                  <Text className="text-content-faint text-[8px] font-black uppercase">Am Zug</Text>
+                  <Text className="text-content text-base font-black mt-0.5" numberOfLines={1}>
+                    {session.currentPlayer.name}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Cards Viewport */}
@@ -1547,17 +1674,75 @@ export default function GamesScreen() {
 
                   <TouchableOpacity
                     onPress={passHigherLower}
-                    disabled={hlScore === 0}
+                    disabled={hlPot === 0}
                     className={`w-full py-3.5 rounded-2xl items-center border active:scale-95 ${
-                      hlScore === 0 ? "border-line opacity-30" : "border-success/40 bg-success/10"
+                      hlPot === 0 ? "border-line opacity-30" : "border-success/40 bg-success/10"
                     }`}
                   >
                     <Text
                       className={`font-black text-xs uppercase tracking-wider ${
-                        hlScore === 0 ? "text-content-faint" : "text-success"
+                        hlPot === 0 ? "text-content-faint" : "text-success"
                       }`}
                     >
-                      Nächster Spieler ist dran 🤝
+                      {hlPot === 0 ? "Erst etwas gewinnen" : `${hlPot} Punkte sichern 🤝`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Tipprunde: die Zuschauer legen sich fest, bevor die Karte
+                  fällt. Wer nicht dran ist, hat damit trotzdem etwas zu tun
+                  und etwas zu verlieren. */}
+              {hlStatus === "predicting" && (
+                <View className="w-full items-center">
+                  <Text className="text-content text-sm font-black mb-1 text-center">
+                    {session?.currentPlayer?.name} sagt{" "}
+                    {hlPendingGuess === "higher" ? "HÖHER ⬆️" : hlPendingGuess === "lower" ? "TIEFER ⬇️" : "GLEICH"}
+                  </Text>
+                  <Text className="text-content-faint text-[11px] font-bold mb-3 text-center">
+                    Wer glaubt daran? Antippen. Richtig getippt gibt Punkte.
+                  </Text>
+
+                  <View className="w-full flex-row flex-wrap justify-center mb-4" style={{ gap: 8 }}>
+                    {(session?.players || [])
+                      .filter((p) => p.id !== session?.currentPlayer?.id)
+                      .map((p) => {
+                        const glaubt = hlBelievers.includes(p.id);
+                        return (
+                          <TouchableOpacity
+                            key={p.id}
+                            onPress={() => {
+                              triggerHaptic("light");
+                              setHlBelievers((b) =>
+                                b.includes(p.id) ? b.filter((id) => id !== p.id) : [...b, p.id]
+                              );
+                            }}
+                            className={`px-3 py-2 rounded-xl border ${
+                              glaubt ? "bg-success/15 border-success/50" : "bg-surface border-line"
+                            }`}
+                          >
+                            <Text
+                              className={`text-[11px] font-black ${
+                                glaubt ? "text-success" : "text-content-muted"
+                              }`}
+                            >
+                              {glaubt ? "✓ " : ""}
+                              {p.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      triggerHaptic("medium");
+                      if (hlPendingGuess) resolveHlGuess(hlPendingGuess);
+                    }}
+                    className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95 shadow-md"
+                  >
+                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
+                      Karte umdrehen 🃏
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1565,13 +1750,28 @@ export default function GamesScreen() {
 
               {hlStatus === "correct" && (
                 <View className="w-full items-center">
-                  <Text className="text-success text-xs font-black uppercase mb-3">Richtig geraten! 🎉</Text>
-                  <TouchableOpacity
-                    onPress={nextHigherLowerRound}
-                    className="w-full bg-warning py-3.5 rounded-2xl items-center active:scale-95"
-                  >
-                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider">Nächste Karte ➡️</Text>
-                  </TouchableOpacity>
+                  <Text className="text-success text-xs font-black uppercase mb-1">Richtig geraten! 🎉</Text>
+                  <Text className="text-content-faint text-[11px] font-bold mb-3 text-center">
+                    {hlPot} Punkte im Topf — weitermachen verdoppelt, ein Fehler kostet alles.
+                  </Text>
+                  <View className="flex-row w-full" style={{ gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={passHigherLower}
+                      className="flex-1 border border-success/40 bg-success/10 py-3.5 rounded-2xl items-center active:scale-95"
+                    >
+                      <Text className="text-success font-black text-xs uppercase tracking-wider">
+                        Sichern
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={nextHigherLowerRound}
+                      className="flex-1 bg-warning py-3.5 rounded-2xl items-center active:scale-95"
+                    >
+                      <Text className="text-on-accent font-black text-xs uppercase tracking-wider">
+                        Weiter ({hlPot * 2})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
 
@@ -1593,8 +1793,13 @@ export default function GamesScreen() {
 
               {hlStatus === "passed" && (
                 <View className="w-full items-center">
-                  <Text className="text-success text-xs font-black uppercase mb-3 text-center px-4">
-                    Nächster Spieler ist dran! Du gibst das Spiel sicher weiter.
+                  <Text className="text-success text-xs font-black uppercase mb-1 text-center px-4">
+                    {hlBanked > 0 ? `${hlBanked} Punkte gesichert!` : "Sicher weitergegeben."}
+                  </Text>
+                  <Text className="text-content-faint text-[11px] font-bold mb-3 text-center px-4">
+                    {session?.currentPlayer
+                      ? `${session.currentPlayer.name} ist dran.`
+                      : "Nächster Spieler ist dran."}
                   </Text>
                   <TouchableOpacity
                     onPress={startHigherLower}
@@ -1652,6 +1857,8 @@ export default function GamesScreen() {
               <Text className="text-content-faint text-[10px] font-black uppercase ml-1">Minimieren</Text>
             </TouchableOpacity>
           </View>
+
+          <SessionBar />
 
           {/* Mode Switcher */}
           <View className="flex-row bg-surface border border-line rounded-2xl p-1 mb-6">
@@ -2132,5 +2339,13 @@ export default function GamesScreen() {
 
       {renderCancelConfirmOverlay()}
     </View>
+  );
+}
+
+export default function GamesScreen() {
+  return (
+    <NightSessionProvider>
+      <GamesScreenContent />
+    </NightSessionProvider>
   );
 }

@@ -72,6 +72,31 @@ export interface CurrentChapter {
   voting: { prompt: string } | null;
 }
 
+/**
+ * Aktuelle Phase mit absoluter Frist.
+ *
+ * `deadlineAt` ist ein Zeitstempel der SERVERUHR. Der Client bildet aus
+ * `StoryRoom.serverTime` seinen Versatz und rechnet den Countdown daraus —
+ * niemals gegen die eigene Uhr, sonst laufen acht Geräte auseinander.
+ */
+export interface PhaseInfo {
+  kind: "choice" | "reveal" | "vote";
+  startedAt: number;
+  deadlineAt: number;
+  seconds: number;
+}
+
+/** Was jemand gewählt hat. Erst in der Auflösungsphase gefüllt. */
+export interface ChoiceReveal {
+  playerId: string;
+  playerName: string;
+  /** null = hat die Frist verstreichen lassen. */
+  choiceId: string | null;
+  label: string | null;
+  outcomeText: string | null;
+  targetName: string | null;
+}
+
 export interface FinaleResult {
   outcomeKey: string;
   winnerTeam: string;
@@ -94,6 +119,8 @@ export interface StoryRoom {
     currentChapter: CurrentChapter | null;
     variables: Record<string, number>;
     healthPoints?: number;
+    phase: PhaseInfo | null;
+    reveals: ChoiceReveal[] | null;
     myChoice: { choiceId: string; outcomeText: string; targetPlayerId: string | null } | null;
     choiceCount: number;
     voteCount: number;

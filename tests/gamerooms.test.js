@@ -205,15 +205,7 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     assert.equal(host.sipsTaken, 0, "Der gefälschte Trink-Eintrag darf nicht gezählt haben");
   });
 
-  await t.test("verarbeitet Aktionen, Trink-Events und Voting", async () => {
-    const voteRes = await call("POST", `/game-rooms/${createdCode}/action`, {
-      playerToken: joinedToken,
-      actionType: "vote",
-      payload: { targetPlayerId: hostPlayerId },
-    });
-    assert.equal(voteRes.status, 200);
-    assert.equal(voteRes.json.room.gameState.voteCount, 1);
-
+  await t.test("Trink-Events werden gezaehlt", async () => {
     const drinkRes = await call("POST", `/game-rooms/${createdCode}/action`, {
       playerToken: hostToken,
       actionType: "drink",
@@ -224,21 +216,46 @@ test("Multi-Device Game Rooms & Story Engine", async (t) => {
     assert.equal(updatedHost.sipsTaken, 2);
   });
 
-  await t.test("nur der Host kann Kapitel vorantreiben", async () => {
+  // ── Abgestimmt wird nur in der Abstimmungsphase ─────────────────────────
+  //
+  // Seit die Kapitel in Phasen mit Frist laufen, ist eine Stimme in Akt I
+  // sinnlos: dort wird entschieden, nicht angeklagt. Frueher nahm der Server
+  // sie trotzdem entgegen und schleppte sie bis ins Finale mit.
+  await t.test("eine Stimme ausserhalb der Abstimmungsphase wird abgewiesen", async () => {
+    const zuFrueh = await call("POST", `/game-rooms/${createdCode}/action`, {
+      playerToken: joinedToken,
+      actionType: "vote",
+      payload: { targetPlayerId: hostPlayerId },
+    });
+    assert.equal(zuFrueh.status, 409);
+  });
+
+  await t.test("nur der Host kann die Phase ueberspringen", async () => {
     const failRes = await call("POST", `/game-rooms/${createdCode}/next`, {
       playerToken: joinedToken,
-      nextStatus: "story_chapter",
     });
     assert.equal(failRes.status, 403);
 
     const nextRes = await call("POST", `/game-rooms/${createdCode}/next`, {
       playerToken: hostToken,
-      nextStatus: "story_chapter",
-      nextChapterData: { title: "Kapitel 1", text: "Die Burg erwacht..." },
-      outcomeSummary: "Kapitel 1 gestartet",
     });
     assert.equal(nextRes.status, 200);
-    assert.equal(nextRes.json.room.status, "story_chapter");
+    assert.equal(nextRes.json.room.gameState.phase.kind, "reveal");
+  });
+
+  await t.test("in Akt III zaehlt die Stimme dann", async () => {
+    // Bis zur Abstimmung durchschalten: reveal -> Akt II -> reveal -> Akt III.
+    for (let i = 0; i < 3; i++) {
+      await call("POST", `/game-rooms/${createdCode}/next`, { playerToken: hostToken });
+    }
+
+    const voteRes = await call("POST", `/game-rooms/${createdCode}/action`, {
+      playerToken: joinedToken,
+      actionType: "vote",
+      payload: { targetPlayerId: hostPlayerId },
+    });
+    assert.equal(voteRes.status, 200);
+    assert.equal(voteRes.json.room.gameState.voteCount, 1);
   });
 
   await t.test("Wiedereintritt gelingt nur mit dem eigenen Token", async () => {

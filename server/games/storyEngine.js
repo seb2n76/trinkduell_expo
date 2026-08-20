@@ -235,6 +235,41 @@ function buildChapter(story, index, players) {
   };
 }
 
+// ─── Phasen und ihre Fristen ────────────────────────────────────────────────
+//
+// Jedes Kapitel läuft in Phasen mit einer absoluten Frist. Das ist der Ersatz
+// für den früheren "Nächstes Kapitel"-Knopf des Hosts, bei dem alle anderen
+// nur "Warte auf die Entscheidung des Hosts..." sahen — passives Warten ist
+// die Hauptabbruchursache in einer angetrunkenen Runde.
+//
+// Sekunden, nicht Millisekunden: die Werte stehen so auch in den Story-JSONs.
+const DEFAULT_DEADLINE_SEC = {
+  choice: 60,
+  // Kurz halten. Die Auflösung ist der Moment, auf den alle warten — aber
+  // nach 15 Sekunden Vorlesen redet die Gruppe ohnehin weiter.
+  reveal: 15,
+  vote: 75,
+};
+
+/** Welche Phase ein Kapitel eröffnet: Auswahl, Abstimmung oder nur Text. */
+function openingPhaseKind(chapter) {
+  if (!chapter) return null;
+  if (chapter.prompt) return "choice";
+  if (chapter.voting) return "vote";
+  return "reveal";
+}
+
+// Setzt ALLE Fristen auf diesen Wert. Gedacht für die Testsuite, die sonst
+// eine Minute warten müsste, um einen Fristablauf zu prüfen. Im Betrieb nicht
+// gesetzt — und wenn doch, ist es ein bewusster Eingriff.
+const DEADLINE_OVERRIDE_SEC = Number(process.env.TRINKDUELL_PHASE_SEC) || 0;
+
+function deadlineSecFor(chapter, kind) {
+  if (DEADLINE_OVERRIDE_SEC > 0) return DEADLINE_OVERRIDE_SEC;
+  const fromChapter = chapter && chapter.deadlineSec && chapter.deadlineSec[kind];
+  return fromChapter || DEFAULT_DEADLINE_SEC[kind] || 60;
+}
+
 function chapterAt(story, index) {
   return story.chapters[index] || null;
 }
@@ -408,6 +443,8 @@ module.exports = {
   assignRoles,
   buildChapter,
   chapterAt,
+  openingPhaseKind,
+  deadlineSecFor,
   isLastChapter,
   initialVariables,
   applyChoice,

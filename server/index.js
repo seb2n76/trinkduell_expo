@@ -3833,6 +3833,9 @@ app.post("/api/game-rooms/:code/action", async (req, res) => {
     if (err.message === "ALREADY_CHOSE") {
       return res.status(409).json({ error: "In diesem Kapitel hast du schon entschieden." });
     }
+    if (err.message === "PHASE_CLOSED") {
+      return res.status(409).json({ error: "Diese Phase ist vorbei." });
+    }
     if (err.message === "UNKNOWN_CHOICE" || err.message === "NO_PROMPT_IN_CHAPTER") {
       return res.status(400).json({ error: "Diese Auswahl gibt es im aktuellen Kapitel nicht." });
     }

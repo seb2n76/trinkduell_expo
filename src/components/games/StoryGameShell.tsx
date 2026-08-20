@@ -13,7 +13,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
 import { apiService } from "@/services/api";
 import { getStoryGame } from "@/games/stories";
-import { ChapterChoice, StoryGameId, StoryRoom } from "@/games/storyEngine/types";
+import { ChapterChoice, PhaseInfo, StoryGameId, StoryRoom } from "@/games/storyEngine/types";
 import { ProofPhotoButton } from "./ProofPhotoButton";
 
 interface StoryGameShellProps {
@@ -58,6 +58,17 @@ export function StoryGameShell({
   // trotzdem Unsinn.
   const claimAttempted = useRef(false);
 
+  // Versatz zwischen dieser Geraeteuhr und der Serveruhr. Die Fristen kommen
+  // als absolute Serverzeit; ohne diesen Abgleich zeigt jedes Handy einen
+  // anderen Countdown, und in einer Gruppe faellt genau das sofort auf.
+  const serverOffset = useRef(0);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!visible) return;
+    const tick = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(tick);
+  }, [visible]);
+
   const gameId = (room?.gameId || "court_treason") as StoryGameId;
   const meta = getStoryGame(gameId);
 
@@ -68,12 +79,24 @@ export function StoryGameShell({
   const finale = room?.gameState?.finale || null;
   const myChoice = room?.gameState?.myChoice || null;
   const healthPoints = room?.gameState?.healthPoints;
+  const phase: PhaseInfo | null = room?.gameState?.phase || null;
+  const reveals = room?.gameState?.reveals || null;
+
+  const msLeft = phase ? Math.max(0, phase.deadlineAt - (now + serverOffset.current)) : 0;
+  const secondsLeft = Math.ceil(msLeft / 1000);
+  const phaseProgress = phase ? Math.max(0, Math.min(1, msLeft / (phase.seconds * 1000))) : 0;
+  const isChoicePhase = phase?.kind === "choice";
+  const isRevealPhase = phase?.kind === "reveal";
+  const isVotePhase = phase?.kind === "vote";
 
   const fetchRoomState = useCallback(async () => {
     if (!roomCode) return;
     try {
       const res = await apiService.getGameRoom(roomCode, myPlayerToken);
       if (res && res.success && res.room) {
+        if (res.room.serverTime) {
+          serverOffset.current = res.room.serverTime - Date.now();
+        }
         setRoom(res.room);
       }
     } catch (err) {
@@ -197,6 +220,38 @@ export function StoryGameShell({
               <ProofPhotoButton context={meta.title} />
             </View>
           </View>
+
+          {/* Phasenuhr. Ersetzt das frühere "Warte auf die Entscheidung des
+              Hosts..." — alle entscheiden gleichzeitig, der Server löst
+              gebündelt auf, sobald alle durch sind oder die Frist abläuft. */}
+          {phase && !isFinale && (
+            <View className="mb-3">
+              <View className="flex-row items-center justify-between mb-1.5">
+                <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest">
+                  {isChoicePhase
+                    ? "Alle entscheiden gleichzeitig"
+                    : isRevealPhase
+                      ? "Auflösung"
+                      : "Abstimmung läuft"}
+                </Text>
+                <Text
+                  className={`text-[10px] font-black ${
+                    secondsLeft <= 5 ? "text-danger" : "text-content-faint"
+                  }`}
+                >
+                  {secondsLeft}s
+                </Text>
+              </View>
+              <View className="h-1.5 bg-surface rounded-full overflow-hidden">
+                <View
+                  style={{ width: `${phaseProgress * 100}%` }}
+                  className={`h-full rounded-full ${
+                    secondsLeft <= 5 ? "bg-danger" : "bg-accent"
+                  }`}
+                />
+              </View>
+            </View>
+          )}
 
           {/* Team-HP — bewegt sich jetzt wirklich, weil der Server rechnet. */}
           {healthPoints !== undefined && (
@@ -383,8 +438,49 @@ export function StoryGameShell({
                   </View>
                 )}
 
+                {/* Auflösung: alle Entscheidungen auf einmal. Der Moment, auf
+                    den die Runde wartet — vorher gab es ihn gar nicht, weil
+                    jeder seine Wahl nur für sich sah. */}
+                {isRevealPhase && reveals && (
+                  <View className="bg-surface border-2 border-accent/50 rounded-3xl p-5 mb-4 shadow-lg">
+                    <Text className="text-accent text-[10px] font-black uppercase tracking-widest mb-3">
+                      So hat die Runde entschieden
+                    </Text>
+                    <View className="gap-2.5">
+                      {reveals.map((r) => (
+                        <View key={r.playerId} className="bg-bg border border-line rounded-2xl p-3">
+                          <View className="flex-row items-center justify-between mb-1">
+                            <Text className="text-content text-xs font-black">{r.playerName}</Text>
+                            {r.targetName && (
+                              <View className="bg-warning/20 px-2 py-0.5 rounded-md">
+                                <Text className="text-warning text-[9px] font-black">
+                                  → {r.targetName}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          {r.choiceId ? (
+                            <>
+                              <Text className="text-content-muted text-[11px] font-bold mb-1">
+                                {r.label}
+                              </Text>
+                              <Text className="text-content-faint text-[11px] font-medium leading-relaxed">
+                                {r.outcomeText}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text className="text-content-faint text-[11px] italic font-medium">
+                              Hat sich nicht entschieden.
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
                 {/* Auswahl des Kapitels */}
-                {chapter?.prompt && !myChoice && !pendingChoice && (
+                {isChoicePhase && chapter?.prompt && !myChoice && !pendingChoice && (
                   <View className="bg-surface border border-line rounded-3xl p-5 mb-4 shadow-lg">
                     <Text className="text-content text-xs font-black uppercase tracking-wide mb-1">
                       {chapter.prompt.title}
@@ -417,14 +513,14 @@ export function StoryGameShell({
                 )}
 
                 {/* Wer ist schon durch? Ohne zu verraten, womit. */}
-                {chapter?.prompt && (
+                {isChoicePhase && chapter?.prompt && (
                   <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest text-center mb-4">
                     {chosenCount} von {totalPlayers} haben entschieden
                   </Text>
                 )}
 
                 {/* Abstimmung */}
-                {chapter?.voting && (
+                {isVotePhase && chapter?.voting && (
                   <View className="bg-surface border-2 border-warning/40 rounded-3xl p-5 mb-4 shadow-xl">
                     <View className="flex-row items-center mb-1">
                       <Ionicons name="finger-print" size={16} color={c.warning} />
@@ -482,37 +578,58 @@ export function StoryGameShell({
             )}
           </ScrollView>
 
-          {/* Host-Leiste */}
+          {/* Fußleiste.
+              Der Host taktet die Runde nicht mehr — das macht die Frist. Sein
+              Knopf ist nur noch die Notbremse, wenn die Gruppe schneller fertig
+              ist als die Uhr oder jemand weggegangen ist und blockiert. */}
           <View className="py-4 border-t border-line">
-            {isHost ? (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={isFinale ? handleExit : handleNext}
-                disabled={busy}
-                className="w-full bg-accent py-4 rounded-2xl items-center justify-center flex-row shadow-lg disabled:opacity-40"
-              >
-                {busy ? (
-                  <ActivityIndicator size="small" color={c.onAccent} />
-                ) : (
-                  <>
-                    <Ionicons
-                      name={isFinale ? "checkmark-done" : "arrow-forward"}
-                      size={18}
-                      color={c.onAccent}
-                    />
-                    <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-2">
-                      {isFinale ? "Spiel beenden" : "Nächstes Kapitel ➔"}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            {isFinale ? (
+              isHost ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleExit}
+                  className="w-full bg-accent py-4 rounded-2xl items-center justify-center flex-row shadow-lg"
+                >
+                  <Ionicons name="checkmark-done" size={18} color={c.onAccent} />
+                  <Text className="text-on-accent font-black text-xs uppercase tracking-wider ml-2">
+                    Spiel beenden
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View className="items-center py-2">
+                  <Text className="text-content-faint text-[11px] font-bold">
+                    Das Spiel ist beendet!
+                  </Text>
+                </View>
+              )
             ) : (
-              <View className="items-center py-2">
-                <Text className="text-content-faint text-[11px] font-bold">
-                  {isFinale
-                    ? "Das Spiel ist beendet!"
-                    : "Warte auf die Entscheidung des Hosts..."}
+              <View className="items-center">
+                <Text className="text-content-faint text-[11px] font-bold text-center">
+                  {myChoice && isChoicePhase
+                    ? "Entschieden. Es geht weiter, sobald alle durch sind."
+                    : isRevealPhase
+                      ? "Gleich geht es weiter …"
+                      : "Es läuft — keiner wartet auf keinen."}
                 </Text>
+                {isHost && (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleNext}
+                    disabled={busy}
+                    className="mt-2 px-4 py-2 rounded-xl border border-line flex-row items-center disabled:opacity-40"
+                  >
+                    {busy ? (
+                      <ActivityIndicator size="small" color={c.contentFaint} />
+                    ) : (
+                      <>
+                        <Ionicons name="play-skip-forward" size={14} color={c.contentFaint} />
+                        <Text className="text-content-faint font-black text-[10px] uppercase tracking-wider ml-1.5">
+                          Phase überspringen
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

@@ -41,6 +41,16 @@ async function raumMitDreiSpielern(call, gameId, hostAuthToken) {
   };
 }
 
+/**
+ * Ein Kapitel weiter. Seit die Phasen auf Fristen laufen, ist ein /next-Aufruf
+ * EIN Phasenwechsel — von der Auswahl in die Auflösung, und von dort ins
+ * nächste Kapitel. Der Host benutzt das als Notbremse, die Tests als Abkürzung.
+ */
+async function naechstesKapitel(call, code, hostToken) {
+  await call("POST", `/game-rooms/${code}/next`, { playerToken: hostToken });
+  await call("POST", `/game-rooms/${code}/next`, { playerToken: hostToken });
+}
+
 /** Wer ist der Verraeter? Nur aus der jeweils EIGENEN Sicht ablesbar. */
 async function findeVerraeter(call, code, spieler) {
   for (const s of spieler) {
@@ -131,13 +141,19 @@ test("Story-Engine: Entscheidungen haben Folgen (B1)", async (t) => {
     assert.equal(res.status, 400);
   });
 
-  await t.test("der Host kann den Kapiteltext nicht diktieren", async () => {
-    const res = await call("POST", `/game-rooms/${code}/next`, {
+  await t.test("der Host ueberspringt Phasen, diktiert aber keinen Text", async () => {
+    const aufloesung = await call("POST", `/game-rooms/${code}/next`, {
       playerToken: host.token,
       nextChapterData: { title: "Akt der Willkuer", text: "Der Host gewinnt." },
     });
+    assert.equal(aufloesung.status, 200);
+    assert.equal(
+      aufloesung.json.room.gameState.phase.kind,
+      "reveal",
+      "Erst die Auflösung, dann das nächste Kapitel"
+    );
 
-    assert.equal(res.status, 200);
+    const res = await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
     const kapitel = res.json.room.gameState.currentChapter;
     assert.notEqual(kapitel.title, "Akt der Willkuer");
     assert.equal(kapitel.act, 2, "Der Server nimmt das naechste Kapitel der Definition");
@@ -174,21 +190,23 @@ test("Story-Engine: das Finale rechnet der Server (B1)", async (t) => {
 
   await t.test("ueberfuehrt der Rat den Moerder, gewinnen die Passagiere", async () => {
     // Bis zum Abstimmungskapitel durchschalten.
-    await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
-    await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
+    await naechstesKapitel(call, code, host.token);
+    await naechstesKapitel(call, code, host.token);
 
     const abstimmung = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
     assert.ok(abstimmung.json.room.gameState.currentChapter.voting, "Akt III stimmt ab");
+    assert.equal(abstimmung.json.room.gameState.phase.kind, "vote");
 
+    let ende = null;
     for (const s of spieler) {
-      await call("POST", `/game-rooms/${code}/action`, {
+      ende = await call("POST", `/game-rooms/${code}/action`, {
         playerToken: s.token,
         actionType: "vote",
         payload: { targetPlayerId: verraeter.id },
       });
     }
 
-    const ende = await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
+    // Kein Host-Klick mehr: mit der letzten Stimme loest der Server auf.
     assert.equal(ende.json.room.status, "finale");
 
     const finale = ende.json.room.gameState.finale;
@@ -207,6 +225,116 @@ test("Story-Engine: das Finale rechnet der Server (B1)", async (t) => {
     for (const p of sicht.json.room.players) {
       assert.ok(p.role, `${p.name} muss jetzt sichtbar sein`);
     }
+  });
+});
+
+test("Simultane Auflösung: niemand wartet auf den Host (P1)", async (t) => {
+  const server = await startTestServer();
+  t.after(() => server.stop());
+  const { call } = server;
+
+  const { code, spieler } = await raumMitDreiSpielern(call, "haunted_manor");
+  const [host, bea, cem] = spieler;
+  await call("POST", `/game-rooms/${code}/start`, { playerToken: host.token });
+
+  await t.test("jede Phase hat eine absolute Frist und eine Serveruhr dazu", async () => {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    const { phase, } = sicht.json.room.gameState;
+
+    assert.equal(phase.kind, "choice");
+    assert.ok(phase.deadlineAt > sicht.json.room.serverTime, "Die Frist liegt in der Zukunft");
+    assert.ok(phase.seconds > 0);
+    // Ohne serverTime müsste jedes Gerät gegen seine eigene Uhr rechnen — bei
+    // acht Handys laufen die Countdowns dann sichtbar auseinander.
+    assert.ok(sicht.json.room.serverTime > 0, "Der Client kann seinen Versatz bestimmen");
+  });
+
+  await t.test("fremde Entscheidungen bleiben bis zur Auflösung verdeckt", async () => {
+    await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: host.token,
+      actionType: "choice",
+      payload: { choiceId: "read_spell" },
+    });
+
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${bea.token}`);
+    assert.equal(sicht.json.room.gameState.reveals, null, "Noch nichts aufgedeckt");
+    assert.equal(sicht.json.room.gameState.choiceCount, 1);
+  });
+
+  await t.test("mit der letzten Eingabe loest der Server sofort auf", async () => {
+    await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: bea.token,
+      actionType: "choice",
+      payload: { choiceId: "drink_shield" },
+    });
+
+    // Cem ist der Letzte — danach darf niemand mehr auf einen Knopf warten.
+    const letzte = await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: cem.token,
+      actionType: "choice",
+      payload: { choiceId: "panic_run" },
+    });
+
+    assert.equal(letzte.json.room.gameState.phase.kind, "reveal");
+  });
+
+  await t.test("die Auflösung zeigt allen, wer was gewaehlt hat", async () => {
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${bea.token}`);
+    const reveals = sicht.json.room.gameState.reveals;
+
+    assert.equal(reveals.length, 3);
+    const nachName = Object.fromEntries(reveals.map((r) => [r.playerName, r]));
+    assert.equal(nachName["Gastgeberin"].choiceId, "read_spell");
+    assert.equal(nachName["Bea"].choiceId, "drink_shield");
+    assert.equal(nachName["Cem"].choiceId, "panic_run");
+    assert.ok(nachName["Cem"].label, "Mit Beschriftung, sonst steht da nur eine id");
+    assert.ok(nachName["Cem"].outcomeText);
+  });
+
+  await t.test("nach der Frist laesst sich nicht mehr nachwaehlen", async () => {
+    const res = await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: host.token,
+      actionType: "choice",
+      payload: { choiceId: "drink_shield" },
+    });
+    assert.equal(res.status, 409, "Sonst sammelt man nach der Auflösung noch Punkte ein");
+  });
+});
+
+test("Eine abgelaufene Frist loest von selbst auf (P1)", async (t) => {
+  // Alle Phasen auf eine Sekunde. Sonst müsste dieser Test eine Minute warten.
+  const server = await startTestServer({ env: { TRINKDUELL_PHASE_SEC: "1" } });
+  t.after(() => server.stop());
+  const { call } = server;
+
+  const { code, spieler } = await raumMitDreiSpielern(call, "haunted_manor");
+  const host = spieler[0];
+  await call("POST", `/game-rooms/${code}/start`, { playerToken: host.token });
+
+  await t.test("ohne jede Eingabe geht es weiter", async () => {
+    const vorher = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    assert.equal(vorher.json.room.gameState.phase.kind, "choice");
+
+    // Niemand tut etwas — nur die Zeit vergeht.
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+
+    const nachher = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    assert.equal(
+      nachher.json.room.gameState.phase.kind,
+      "reveal",
+      "Die Runde haengt nicht an einem Spieler, der weggegangen ist"
+    );
+  });
+
+  await t.test("mehrere verpasste Fristen holt der Server auf einmal nach", async () => {
+    // Zwei volle Phasen lang pollt niemand — etwa weil alle Displays aus sind.
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+
+    const sicht = await call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
+    assert.ok(
+      sicht.json.room.currentChapterIndex >= 1,
+      "Der Server arbeitet alle faelligen Fristen ab, nicht nur die erste"
+    );
   });
 });
 
@@ -255,9 +383,8 @@ test("Spielräume überleben einen Serverneustart (B2)", async (t) => {
   });
 
   await t.test("das Spiel laeuft normal weiter", async () => {
-    const res = await zweiterLauf.call("POST", `/game-rooms/${code}/next`, {
-      playerToken: host.token,
-    });
+    await naechstesKapitel(zweiterLauf.call, code, host.token);
+    const res = await zweiterLauf.call("GET", `/game-rooms/${code}?playerToken=${host.token}`);
     assert.equal(res.status, 200);
     assert.equal(res.json.room.gameState.currentChapter.act, 2);
   });
@@ -278,9 +405,16 @@ test("Spiel-XP überleben die Neuberechnung (B3)", async (t) => {
     actionType: "choice",
     payload: { choiceId: "inspect_scene" }, // +15
   });
-  await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
-  await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
-  await call("POST", `/game-rooms/${code}/next`, { playerToken: host.token });
+  await naechstesKapitel(call, code, host.token);
+  await naechstesKapitel(call, code, host.token);
+  // Akt III: mit der letzten Stimme steht das Finale.
+  for (const s of spieler) {
+    await call("POST", `/game-rooms/${code}/action`, {
+      playerToken: s.token,
+      actionType: "vote",
+      payload: { targetPlayerId: spieler[1].id },
+    });
+  }
 
   await t.test("vor dem Abrechnen steht der Punktestand auf null", async () => {
     const me = await call("GET", "/users/me", undefined, konto.token);

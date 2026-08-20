@@ -158,8 +158,155 @@ function freshGameState() {
     actions: {}, // playerId -> actionData
     choices: {}, // playerId -> { choiceId, outcomeText } fuer das AKTUELLE Kapitel
     variables: {}, // Story-Variablen, z. B. healthPoints
+    // Aktuelle Phase mit absoluter Frist. Siehe openPhase().
+    phase: null,
+    // Wird beim Wechsel in die Auflösungsphase gefüllt: was alle gewählt haben.
+    reveals: null,
     finale: null,
   };
+}
+
+// ─── Phasen ──────────────────────────────────────────────────────────────────
+//
+// Eine Runde läuft nicht mehr auf Zuruf des Hosts weiter, sondern in Phasen
+// mit einer absoluten Frist: alle entscheiden gleichzeitig, danach löst der
+// Server gebündelt auf. Vorher hatte nur der Host einen Weiter-Knopf und alle
+// anderen sahen "Warte auf die Entscheidung des Hosts..." — genau das passive
+// Warten, an dem Gruppen aussteigen.
+//
+// Die Frist ist ein absoluter Zeitstempel, kein Countdown im Client. Jede
+// Antwort trägt zusätzlich `serverTime`, damit die Geräte ihre Uhr dagegen
+// abgleichen können. Acht Handys mit eigenen Timern laufen sonst auseinander.
+
+function openPhase(room, kind) {
+  const story = storyEngine.getStory(room.gameId);
+  const chapterDef = story ? storyEngine.chapterAt(story, room.currentChapterIndex) : null;
+  const seconds = storyEngine.deadlineSecFor(chapterDef, kind);
+
+  room.gameState.phase = {
+    kind,
+    startedAt: Date.now(),
+    deadlineAt: Date.now() + seconds * 1000,
+    seconds,
+  };
+}
+
+/** Haben alle, die dran sind, ihre Eingabe gemacht? */
+function everyoneSubmitted(room, kind) {
+  const ids = room.players.map((p) => p.id);
+  if (ids.length === 0) return false;
+  if (kind === "choice") {
+    return ids.every((id) => room.gameState.choices[id]);
+  }
+  if (kind === "vote") {
+    return ids.every((id) => room.gameState.votes[id]);
+  }
+  // Die Auflösung läuft immer auf Zeit — sie wartet auf niemanden.
+  return false;
+}
+
+/** Was hat wer gewählt? Erst in der Auflösungsphase öffentlich. */
+function buildReveals(room) {
+  const story = storyEngine.getStory(room.gameId);
+  const chapterDef = story ? storyEngine.chapterAt(story, room.currentChapterIndex) : null;
+  const choiceDefs = (chapterDef && chapterDef.prompt && chapterDef.prompt.choices) || [];
+
+  return room.players.map((p) => {
+    const choice = room.gameState.choices[p.id];
+    const def = choice ? choiceDefs.find((c) => c.id === choice.choiceId) : null;
+    const target = choice && choice.targetPlayerId
+      ? room.players.find((t) => t.id === choice.targetPlayerId)
+      : null;
+    return {
+      playerId: p.id,
+      playerName: p.name,
+      // null heißt: hat die Frist verstreichen lassen.
+      choiceId: choice ? choice.choiceId : null,
+      label: def ? def.label : null,
+      outcomeText: choice ? choice.outcomeText : null,
+      targetName: target ? target.name : null,
+    };
+  });
+}
+
+function enterFinale(room, story) {
+  room.gameState.finale = storyEngine.evaluateFinale(
+    story,
+    room.players,
+    room.gameState.votes,
+    room.gameState.variables
+  );
+  room.status = "finale";
+  room.gameState.phase = null;
+  room.gameState.storyLog.push(room.gameState.finale.title);
+}
+
+/** Ein Phasenwechsel. Gibt false zurück, wenn es nichts mehr zu wechseln gibt. */
+function advancePhase(room) {
+  const story = storyEngine.getStory(room.gameId);
+  if (!story || room.status === "finale") return false;
+
+  const kind = room.gameState.phase ? room.gameState.phase.kind : null;
+
+  if (kind === "choice") {
+    room.gameState.reveals = buildReveals(room);
+    openPhase(room, "reveal");
+    return true;
+  }
+
+  if (kind === "vote") {
+    enterFinale(room, story);
+    return true;
+  }
+
+  // Auflösung vorbei: nächstes Kapitel, oder Schluss.
+  if (storyEngine.isLastChapter(story, room.currentChapterIndex)) {
+    enterFinale(room, story);
+    return true;
+  }
+
+  room.currentChapterIndex += 1;
+  room.gameState.currentChapter = storyEngine.buildChapter(
+    story,
+    room.currentChapterIndex,
+    room.players
+  );
+  room.status = "story_chapter";
+  room.gameState.storyLog.push(room.gameState.currentChapter.title);
+  // Entscheidungen und Stimmen gelten immer nur fuer EIN Kapitel.
+  room.gameState.choices = {};
+  room.gameState.votes = {};
+  room.gameState.reveals = null;
+  for (const p of room.players) p.submittedAction = null;
+
+  const chapterDef = storyEngine.chapterAt(story, room.currentChapterIndex);
+  openPhase(room, storyEngine.openingPhaseKind(chapterDef));
+  return true;
+}
+
+/**
+ * Faellige Phasen abarbeiten. Wird auf jedem Lesepfad aufgerufen — es gibt
+ * bewusst KEINEN Timer im Prozess: ein Neustart wuerde ihn verlieren, und
+ * genau das war der Grund, warum Raeume frueher mitten im Spiel verschwanden.
+ * Bei 2,5-Sekunden-Polling faellt der Versatz niemandem auf.
+ *
+ * Die Schleife faengt den Fall ab, dass laengere Zeit niemand gepollt hat und
+ * dadurch mehrere Fristen auf einmal abgelaufen sind.
+ */
+function resolveDuePhases(room) {
+  let changed = false;
+  for (let guard = 0; guard < 12; guard++) {
+    const phase = room.gameState.phase;
+    if (!phase || room.status === "finale") break;
+
+    const fällig = Date.now() >= phase.deadlineAt || everyoneSubmitted(room, phase.kind);
+    if (!fällig) break;
+
+    if (!advancePhase(room)) break;
+    changed = true;
+  }
+  if (changed) room.revision += 1;
+  return changed;
 }
 
 /**
@@ -281,6 +428,10 @@ function getRoom(code, playerToken) {
     return null;
   }
   room.lastActivity = Date.now();
+  // Abgelaufene Fristen hier abarbeiten. Der Lesepfad ist der einzige, der
+  // zuverlaessig alle 2,5 Sekunden laeuft — ein Timer im Prozess wuerde einen
+  // Neustart nicht ueberleben.
+  if (resolveDuePhases(room)) persist(room);
   // Ohne gueltigen Token bekommt man die Zuschauersicht: kein "ich", also
   // auch keine Geheimrolle. Vorher reichte die playerId eines Mitspielers,
   // um dessen Rolle auszulesen — und die steht in jeder Raumantwort.
@@ -336,6 +487,7 @@ function startGame(code, playerToken, gameSetupData) {
 
     room.gameState.currentChapter = storyEngine.buildChapter(story, 0, room.players);
     room.status = "story_chapter";
+    openPhase(room, storyEngine.openingPhaseKind(storyEngine.chapterAt(story, 0)));
   } else if (Array.isArray(gameSetupData?.playerRoles)) {
     for (const assignment of gameSetupData.playerRoles) {
       const p = room.players.find((pl) => pl.id === assignment.playerId);
@@ -376,6 +528,11 @@ function submitAction(code, playerToken, { actionType, payload }) {
     if (!story) {
       throw new Error("NO_STORY_FOR_GAME");
     }
+    // Nur waehrend der Auswahlphase. Ohne diese Pruefung koennte jemand nach
+    // der Auflösung nachtraeglich noch Punkte einsammeln.
+    if (!room.gameState.phase || room.gameState.phase.kind !== "choice") {
+      throw new Error("PHASE_CLOSED");
+    }
     // Genau eine Entscheidung pro Kapitel. Ohne diese Sperre koennte jeder
     // dieselbe Option beliebig oft schicken und sich Punkte anhaeufen.
     if (room.gameState.choices[playerId]) {
@@ -397,6 +554,10 @@ function submitAction(code, playerToken, { actionType, payload }) {
       targetPlayerId: result.targetPlayerId,
     };
   } else if (actionType === "vote" && payload?.targetPlayerId) {
+    const story = storyEngine.getStory(room.gameId);
+    if (story && (!room.gameState.phase || room.gameState.phase.kind !== "vote")) {
+      throw new Error("PHASE_CLOSED");
+    }
     // Eine Stimme pro Spieler; Umentscheiden ist erlaubt, Stapeln nicht.
     room.gameState.votes[playerId] = payload.targetPlayerId;
   } else if (actionType === "drink") {
@@ -406,15 +567,22 @@ function submitAction(code, playerToken, { actionType, payload }) {
   }
 
   room.revision += 1;
+  // Sobald der Letzte abgegeben hat, loest der Server sofort auf — niemand
+  // wartet auf eine Frist, die ohnehin niemanden mehr betrifft.
+  resolveDuePhases(room);
   persist(room);
   return sanitizeRoomForPlayer(room, playerId);
 }
 
 /**
- * Naechste Phase (nur Host).
+ * Phase ueberspringen (nur Host).
  *
- * Der Host loest den Wechsel aus, berechnet ihn aber nicht: welches Kapitel
- * folgt, was drinsteht und wie das Finale ausgeht, entscheidet der Server.
+ * Seit die Phasen auf Fristen laufen, ist das nur noch die Notbremse: die
+ * Gruppe ist schneller fertig als die Uhr, oder jemand ist weg und blockiert
+ * die Runde. Der Host loest damit lediglich AUS — welches Kapitel folgt, was
+ * drinsteht und wie das Finale ausgeht, entscheidet weiterhin der Server.
+ *
+ * Fuer Spiele ohne hinterlegte Story bleibt es die regulaere Weiterschaltung.
  */
 function nextChapter(code, playerToken, { nextStatus, nextChapterData, outcomeSummary } = {}) {
   const normalizedCode = (code || "").trim().toUpperCase();
@@ -434,28 +602,7 @@ function nextChapter(code, playerToken, { nextStatus, nextChapterData, outcomeSu
     if (room.status === "finale") {
       return sanitizeRoomForPlayer(room, requester.id);
     }
-
-    const nextIndex = room.currentChapterIndex + 1;
-
-    if (storyEngine.isLastChapter(story, room.currentChapterIndex)) {
-      room.gameState.finale = storyEngine.evaluateFinale(
-        story,
-        room.players,
-        room.gameState.votes,
-        room.gameState.variables
-      );
-      room.status = "finale";
-      room.gameState.storyLog.push(room.gameState.finale.title);
-    } else {
-      room.currentChapterIndex = nextIndex;
-      room.gameState.currentChapter = storyEngine.buildChapter(story, nextIndex, room.players);
-      room.status = "story_chapter";
-      room.gameState.storyLog.push(room.gameState.currentChapter.title);
-      // Entscheidungen und Stimmen gelten immer nur fuer EIN Kapitel.
-      room.gameState.choices = {};
-      room.gameState.votes = {};
-      for (const p of room.players) p.submittedAction = null;
-    }
+    advancePhase(room);
   } else {
     // Spiele ohne hinterlegte Story: der Host gibt die Phase weiterhin vor.
     if (nextStatus) room.status = nextStatus;
@@ -554,6 +701,13 @@ function sanitizeRoomForPlayer(room, requestingPlayerId) {
       variables: room.gameState.variables,
       // Bestandsschutz fuer die bestehende HP-Leiste im Client.
       healthPoints: room.gameState.variables.healthPoints,
+      // Aktuelle Phase samt absoluter Frist. Der Client rechnet seinen
+      // Countdown daraus und gegen `serverTime` — nie gegen die eigene Uhr.
+      phase: room.gameState.phase,
+      // Wer was gewaehlt hat, wird erst in der Auflösung oeffentlich.
+      reveals: room.gameState.phase && room.gameState.phase.kind === "reveal"
+        ? room.gameState.reveals
+        : null,
       // Eigene Entscheidung ja, fremde nein.
       myChoice,
       choiceCount: Object.keys(room.gameState.choices).length,
