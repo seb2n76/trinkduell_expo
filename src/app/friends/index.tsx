@@ -23,7 +23,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
 import { useThemeColors } from "@/services/theme";
-import { KeyboardSafe } from "@/components/KeyboardSafe";
+import { KeyboardSafe, KeyboardSheet } from "@/components/KeyboardSafe";
 
 type TabKey = "friends" | "groups" | "events";
 
@@ -863,7 +863,7 @@ export default function FriendsScreen() {
           Store-Pflicht für Apps mit nutzergenerierten Inhalten — und sie zählen
           nur, wenn sie dort erreichbar sind, wo die Inhalte stehen. */}
       <Modal visible={!!actionTargetUser} animationType="fade" transparent>
-        <View className="flex-1 bg-black/70 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/70 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
             <View className="flex-row items-center mb-6">
               <Avatar
@@ -916,12 +916,12 @@ export default function FriendsScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
 
       {/* Melden */}
       <Modal visible={!!reportTargetUser} animationType="slide" transparent>
-        <View className="flex-1 bg-black/70 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/70 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
             <Text className="text-content text-base font-black mb-1">
               {reportTargetUser?.name} melden
@@ -986,7 +986,7 @@ export default function FriendsScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
 
       {/* Gruppe erstellen */}
@@ -996,7 +996,7 @@ export default function FriendsScreen() {
         animationType="slide"
         onRequestClose={() => setShowCreateGroup(false)}
       >
-        <View className="flex-1 bg-black/85 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/85 justify-end">
           <View className="bg-surface-alt border-t border-accent-2/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-5">
               <Text className="text-content text-base font-black uppercase tracking-wider">
@@ -1070,7 +1070,7 @@ export default function FriendsScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
 
       {/* Event starten */}
@@ -1080,7 +1080,7 @@ export default function FriendsScreen() {
         animationType="slide"
         onRequestClose={() => setShowCreateEvent(false)}
       >
-        <View className="flex-1 bg-black/85 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/85 justify-end">
           <View className="bg-surface-alt border-t border-warning/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-2">
               <Text className="text-content text-base font-black uppercase tracking-wider">
@@ -1199,7 +1199,7 @@ export default function FriendsScreen() {
               </>
             )}
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
 
       {/* Beitreten per Code */}
@@ -1209,7 +1209,7 @@ export default function FriendsScreen() {
         animationType="slide"
         onRequestClose={() => setCodeModalMode(null)}
       >
-        <View className="flex-1 bg-black/85 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/85 justify-end">
           <View className="bg-surface-alt border-t border-accent-2/30 rounded-t-3xl p-6 pb-8">
             <View className="flex-row justify-between items-center mb-2">
               <Text className="text-content text-base font-black uppercase tracking-wider">
@@ -1274,7 +1274,7 @@ export default function FriendsScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
     </View>
     </KeyboardSafe>

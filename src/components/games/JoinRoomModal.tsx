@@ -10,7 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
-import { KeyboardSafe } from "@/components/KeyboardSafe";
+import { KeyboardSheet } from "@/components/KeyboardSafe";
 import { apiService } from "@/services/api";
 
 interface JoinRoomModalProps {
@@ -68,10 +68,9 @@ export function JoinRoomModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      {/* Der Dialog sitzt mittig — ohne diesen Rahmen schiebt die Tastatur
-          das Eingabefeld fuer den Raum-Code unter den Bildschirmrand. */}
-      <KeyboardSafe>
-      <View className="flex-1 bg-black/80 justify-center items-center px-4">
+      {/* Der Dialog sitzt mittig. KeyboardSheet setzt unten den Abstand der
+          Tastatur, dadurch zentriert er sich im Rest und bleibt sichtbar. */}
+      <KeyboardSheet className="flex-1 bg-black/80 justify-center items-center px-4">
         <View className="w-full max-w-sm bg-surface border border-line p-6 rounded-3xl shadow-2xl">
           {/* Header */}
           <View className="flex-row items-center justify-between mb-4">
@@ -154,8 +153,7 @@ export function JoinRoomModal({
             )}
           </TouchableOpacity>
         </View>
-      </View>
-      </KeyboardSafe>
+      </KeyboardSheet>
     </Modal>
   );
 }

@@ -1,5 +1,5 @@
-import React from "react";
-import { KeyboardAvoidingView, Platform, ViewStyle } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Keyboard, KeyboardAvoidingView, Platform, View, ViewStyle } from "react-native";
 
 /**
  * Schiebt den Inhalt hoch, wenn die Tastatur aufgeht.
@@ -36,6 +36,56 @@ export function KeyboardSafe({
     >
       {children}
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Rahmen für Dialoge, die am unteren Bildschirmrand sitzen („Blätter").
+ *
+ * Warum nicht einfach KeyboardSafe darüber?
+ * Ein <Modal> rendert auf Android in einem EIGENEN Fenster. Ein
+ * KeyboardAvoidingView, das außerhalb des Modals steht, erreicht dessen Inhalt
+ * gar nicht — das Blatt blieb deshalb unter der Tastatur liegen, obwohl der
+ * Bildschirm darunter längst geschützt war. Und ein KeyboardAvoidingView
+ * INNERHALB eines Modals verhält sich auf Android je nach Fenstermodus
+ * unterschiedlich.
+ *
+ * Deshalb hier der direkte Weg: die Tastaturhöhe abhören und als Abstand nach
+ * unten setzen. Das Blatt rutscht damit genau auf die Tastatur — das Eingabe-
+ * feld sitzt unmittelbar darüber, statt darunter zu verschwinden.
+ *
+ * Lieber etwas zu viel Abstand als zu wenig: sitzt das Blatt ein paar Pixel zu
+ * hoch, sieht man es. Sitzt es zu tief, ist es weg.
+ */
+export function KeyboardSheet({
+  children,
+  className = "flex-1 bg-black/85 justify-end",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [tastaturHoehe, setTastaturHoehe] = useState(0);
+
+  useEffect(() => {
+    // iOS meldet vor der Animation, Android erst danach — wer auf iOS
+    // "DidShow" nimmt, sieht das Blatt sichtbar nachspringen.
+    const zeigen = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const verbergen = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const auf = Keyboard.addListener(zeigen, (e) =>
+      setTastaturHoehe(e?.endCoordinates?.height ?? 0)
+    );
+    const zu = Keyboard.addListener(verbergen, () => setTastaturHoehe(0));
+    return () => {
+      auf.remove();
+      zu.remove();
+    };
+  }, []);
+
+  return (
+    <View className={className} style={{ paddingBottom: tastaturHoehe }}>
+      {children}
+    </View>
   );
 }
 

@@ -25,7 +25,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useThemeColors } from "@/services/theme";
 import { Avatar } from "@/components/Avatar";
-import { KeyboardSafe } from "@/components/KeyboardSafe";
+import { KeyboardSafe, KeyboardSheet } from "@/components/KeyboardSafe";
 
 type AdminTab = "dashboard" | "users" | "reports" | "drinks" | "broadcast";
 
@@ -978,7 +978,7 @@ export default function AdminConsoleScreen() {
 
       {/* Drink Edit Modal */}
       <Modal visible={!!selectedDrink} animationType="slide" transparent>
-        <View className="flex-1 bg-black/75 justify-end">
+        <KeyboardSheet className="flex-1 bg-black/75 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             <Text className="text-content text-base font-black mb-4">Getränk bearbeiten</Text>
 
@@ -1077,7 +1077,7 @@ export default function AdminConsoleScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardSheet>
       </Modal>
     </View>
     </KeyboardSafe>

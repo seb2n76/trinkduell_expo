@@ -3977,7 +3977,25 @@ app.use((err, req, res, next) => {
 // ==========================================
 // Start Server
 // ==========================================
-app.listen(PORT, "0.0.0.0", async () => {
+//
+// Laufende Spielrunden VOR dem Zuhören zurückholen.
+//
+// Stand vorher: der Aufruf lag im listen-Rückruf, der Server nahm also schon
+// Anfragen entgegen, während die Räume noch geladen wurden. In diesem Fenster
+// antwortete ein laufender Raum mit 404 — der Client zeigt dann "Raum nicht
+// gefunden", obwohl die Runde gleich darauf wieder da gewesen wäre. Bei einem
+// Neustart durch auto-update.sh trifft das genau die Gruppe, die gerade
+// spielt. Ein paar Millisekunden späterer Start sind der Preis dafür.
+async function starteServer() {
+  try {
+    await gameRooms.restoreRooms();
+  } catch (err) {
+    console.error("[TrinkDuell] Spielräume konnten nicht wiederhergestellt werden:", err);
+  }
+  starteZuhoeren();
+}
+
+const starteZuhoeren = () => app.listen(PORT, "0.0.0.0", async () => {
   console.log(`[TrinkDuell Backend] Server läuft auf http://localhost:${PORT}`);
   try {
     // Hash any existing plaintext passwords (safe no-op if already hashed)
@@ -3988,12 +4006,7 @@ app.listen(PORT, "0.0.0.0", async () => {
     // den gerade gestarteten Server nicht sofort wieder umwerfen.
     console.error("[TrinkDuell] Passwort-Migration beim Start fehlgeschlagen:", err);
   }
-  try {
-    // Laufende Spielrunden zurückholen. Ohne diesen Schritt beendet jeder
-    // Neustart — und auto-update.sh baut den Container bei jedem Commit neu —
-    // sämtliche Sitzungen, die gerade gespielt werden.
-    await gameRooms.restoreRooms();
-  } catch (err) {
-    console.error("[TrinkDuell] Spielräume konnten nicht wiederhergestellt werden:", err);
-  }
 });
+
+// Erst laden, dann zuhören.
+starteServer();

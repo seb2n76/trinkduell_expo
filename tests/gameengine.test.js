@@ -52,6 +52,27 @@ async function naechstesKapitel(call, code, hostToken) {
 }
 
 /**
+ * Wartet, bis der Raum wirklich in der Wegwerf-Datenbank steht.
+ *
+ * Das Sichern läuft absichtlich nebenläufig (siehe persist() in
+ * server/gameRooms.js) — ein Test darf deshalb nicht raten, wie lange das
+ * dauert, sondern muss nachsehen.
+ */
+async function wartenBisRaumGespeichert(dbFile, code, maxMs = 5000) {
+  const ende = Date.now() + maxMs;
+  while (Date.now() < ende) {
+    try {
+      const inhalt = JSON.parse(fs.readFileSync(dbFile, "utf8"));
+      if ((inhalt.gameRooms || []).some((r) => r.code === code)) return;
+    } catch {
+      // Datei gerade nicht lesbar (wird geschrieben) — gleich nochmal.
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`Raum ${code} war nach ${maxMs} ms nicht in ${dbFile} gespeichert`);
+}
+
+/**
  * Schaltet so lange Phasen weiter, bis die gesuchte Phase erreicht ist.
  *
  * Beim Storylet-Format steht die Szenenzahl nicht fest — der Server zieht sie
@@ -407,9 +428,11 @@ test("Spielräume überleben einen Serverneustart (B2)", async (t) => {
     payload: { choiceId: "panic_run" },
   });
 
-  // Der Raum wird nebenläufig gesichert; kurz warten, sonst prüfen wir das
-  // Rennen statt die Persistenz.
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  // Der Raum wird nebenläufig gesichert. Auf die tatsächliche Bedingung
+  // warten statt auf eine geschätzte Zeitspanne: eine feste Wartezeit von
+  // 250 ms lief unter Last gelegentlich ab, bevor die Datei geschrieben war —
+  // der Test schlug dann fehl, obwohl die Persistenz funktionierte.
+  await wartenBisRaumGespeichert(dbFile, code);
   await ersterLauf.stop();
 
   const zweiterLauf = await startTestServer({ env: { TRINKDUELL_DB_FILE: dbFile } });
@@ -607,7 +630,15 @@ test("Tagesobergrenze für Spiel-XP (300 Punkte pro Kalendertag)", async (t) => 
     assert.equal(res.status, 200);
     assert.equal(res.json.awarded, true);
     assert.equal(res.json.points, 15, "Gekappt auf die verbleibenden 15 Punkte bis 300");
-    assert.equal(res.json.reason, "daily_cap_partial");
+
+    // Bewusst KEINE Prüfung auf reason === "daily_cap_partial": ob gekappt
+    // wurde, haengt vom Wert der Runde ab, und der schwankt, weil die Szenen
+    // zufaellig aus dem Pool gezogen werden. Ist die Runde zufaellig genau 15
+    // Punkte wert, wird nichts abgeschnitten und der Server meldet
+    // folgerichtig keinen Grund. Pruefbar ist die Eigenschaft, die immer gilt:
+    // ueber 300 kommt niemand.
+    const me = await call("GET", "/users/me", undefined, konto.token);
+    assert.equal(me.json.gamePoints, 300, "Genau auf der Tagesgrenze, nicht darueber");
   });
 
   await t.test("oberhalb der Grenze wird nichts mehr gutgeschrieben", async () => {
