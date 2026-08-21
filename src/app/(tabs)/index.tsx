@@ -28,7 +28,7 @@ import {
   type LocationMode,
   type Coordinates,
 } from "@/services/location";
-import { KeyboardSheet } from "@/components/KeyboardSafe";
+import { KeyboardSheet, SHEET_ANIMATION } from "@/components/KeyboardSafe";
 import { useThemeColors, useTheme, type ThemeColors } from "@/services/theme";
 // Lazy on purpose: the camera module is only needed once someone taps
 // "Scannen", and it has no business in the bundle everyone loads first.
@@ -277,9 +277,9 @@ export default function DashboardScreen() {
     }
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [currentUser, drinkList, myList, allLogs, duelsList, questsList, usersList] = await Promise.all([
+      const [currentUser, drinkList, myList, myLogs, duelsList, questsList, usersList] = await Promise.all([
         apiService.getCurrentUser(),
         apiService.getDrinks().catch(() => []),
         apiService.getMyDrinks().catch(() => []),
@@ -296,21 +296,28 @@ export default function DashboardScreen() {
       setGroupQuests(questsList);
       setAllUsers(usersList);
 
-      const userLogs = allLogs.filter((l) => l.userId === currentUser.id);
-      const sortedLogs = userLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setLogs(sortedLogs);
+      // `/logs` liefert seit dem 21.08.2026 nur noch die eigenen Einträge,
+      // bereits absteigend sortiert. Vorher kam die vollständige Tabelle
+      // aller Konten an und wurde hier auf die eigene Nutzer-ID gefiltert —
+      // die Ausgangslage dafür, dass fremde Trinkhistorien überhaupt auf
+      // fremden Geräten landeten.
+      setLogs(myLogs);
 
       // Der Modus steuert, ob unten der Check-in-Streifen erscheint.
       setLocationMode(await getLocationMode());
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     }
-  };
+    // updateUserContext stammt aus dem Auth-Kontext und wird bei jedem
+    // Rendern neu gebildet; als Abhängigkeit würde es diesen Rückruf bei
+    // jedem Rendern erneuern und den Fokus-Effekt in eine Schleife schicken.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [loadData])
   );
 
   // Getränkedetails aus dem geladenen Katalog. Hier stand bis 17.08.2026
@@ -1640,7 +1647,7 @@ export default function DashboardScreen() {
       <Modal
         visible={showPickerModal}
         transparent
-        animationType="slide"
+        animationType={SHEET_ANIMATION}
         onRequestClose={() => setShowPickerModal(false)}
       >
         <KeyboardSheet className="flex-1 bg-black/80 justify-end">
@@ -1759,7 +1766,7 @@ export default function DashboardScreen() {
       {/* ==========================================
           MODAL: CUSTOM DRINK CREATOR
           ========================================== */}
-      <Modal visible={showAddModal} transparent={true} animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+      <Modal visible={showAddModal} transparent={true} animationType={SHEET_ANIMATION} onRequestClose={() => setShowAddModal(false)}>
         <KeyboardSheet className="flex-1 bg-black/80 justify-end">
           <View className="bg-surface-alt border-t border-line rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-5">
@@ -1908,7 +1915,7 @@ export default function DashboardScreen() {
       <Modal
         visible={!!portionOptionsDrink}
         transparent
-        animationType="slide"
+        animationType={SHEET_ANIMATION}
         onRequestClose={() => setPortionOptionsDrink(null)}
       >
         <KeyboardSheet className="flex-1 bg-black/80 justify-end">

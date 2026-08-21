@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiService, UnreadSummary } from "@/services/api";
+import { usePolling } from "@/services/polling";
 
 /**
  * Ungelesene Nachrichten, einmal geladen für die ganze App.
@@ -63,9 +64,16 @@ export function UnreadProvider({
       return;
     }
     refresh();
-    const interval = setInterval(refresh, 15000);
-    return () => clearInterval(interval);
   }, [enabled, refresh]);
+
+  // Nur im Vordergrund nachfragen. Vorher lief dieser Takt in einem nackten
+  // useEffect weiter, auch wenn die App minimiert in der Tasche lag — auf
+  // einer Party bei allen Gaesten gleichzeitig, die ganze Nacht.
+  //
+  // Ein Fokus-Zustand kommt hier bewusst NICHT dazu: der Anbieter haengt
+  // ueber dem Stack, also ausserhalb jedes Screens, und useIsFocused() wuerde
+  // dort werfen.
+  usePolling(refresh, 15000, { enabled });
 
   /**
    * Der Zähler wird zusätzlich sofort lokal abgezogen — auf die Serverantwort

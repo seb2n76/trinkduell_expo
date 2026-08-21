@@ -5,15 +5,16 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
   Alert,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
 import { apiService } from "@/services/api";
+import { usePolling } from "@/services/polling";
 import { STORY_GAMES_LIST, getStoryGame } from "@/games/stories";
 import { StoryGameId } from "@/games/storyEngine/types";
 
@@ -67,9 +68,12 @@ export function MultiplayerLobbyModal({
   useEffect(() => {
     if (!visible || !roomCode) return;
     fetchRoomState();
-    const interval = setInterval(fetchRoomState, 2500);
-    return () => clearInterval(interval);
   }, [visible, roomCode, fetchRoomState]);
+
+  // 2,5 Sekunden ist der Takt einer laufenden Runde — aber nur, solange die
+  // App im Vordergrund ist. Im Hintergrund fragte er bisher unveraendert
+  // weiter, obwohl niemand hinsieht.
+  usePolling(fetchRoomState, 2500, { enabled: visible && !!roomCode });
 
   const handleStartGame = async () => {
     if (!isHost || !room) return;
@@ -249,7 +253,7 @@ export function MultiplayerLobbyModal({
                         <View className="flex-row items-center">
                           <View className="w-10 h-10 rounded-full bg-surface-alt border border-line items-center justify-center mr-3 overflow-hidden">
                             {player.avatar ? (
-                              <Image source={{ uri: player.avatar }} className="w-full h-full" />
+                              <Image source={{ uri: player.avatar }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
                             ) : (
                               <Ionicons name="person" size={18} color={c.contentFaint} />
                             )}

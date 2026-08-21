@@ -142,21 +142,40 @@ test("Autorisierung", async (t) => {
   await t.test("Standortdaten", async (t) => {
     await t.test("liefert über /logs keine Koordinaten aus", async () => {
       const a = await register("geoa");
-      const b = await register("geob");
 
       const drinks = await call("GET", "/drinks", undefined, a.token);
       await call(
         "POST",
         "/logs",
         { drinkId: drinks.json[0].id, latitude: 52.5163, longitude: 13.3777 },
-        b.token
+        a.token
       );
 
       const logs = await call("GET", "/logs", undefined, a.token);
       const withCoords = logs.json.filter((l) => l.latitude != null || l.longitude != null);
 
       assert.equal(withCoords.length, 0, "Koordinaten gehören nicht in die Log-Liste");
-      assert.ok(logs.json.length > 0, "Das Scoreboard braucht die Logs weiterhin");
+      assert.ok(logs.json.length > 0, "Die eigenen Einträge bleiben abrufbar");
+    });
+
+    await t.test("liefert über /logs nur die eigenen Einträge", async () => {
+      // Bis zum 21.08.2026 gab diese Route jedem angemeldeten Konto die
+      // Einträge ALLER Konten heraus — Nutzer-ID, Getränk und Zeitpunkt.
+      // Damit liess sich die Trinkhistorie Fremder minutengenau nachbauen.
+      const a = await register("nurselbsta");
+      const b = await register("nurselbstb");
+
+      const drinks = await call("GET", "/drinks", undefined, a.token);
+      await call("POST", "/logs", { drinkId: drinks.json[0].id }, a.token);
+      await call("POST", "/logs", { drinkId: drinks.json[0].id }, b.token);
+
+      const logs = await call("GET", "/logs", undefined, a.token);
+
+      assert.ok(logs.json.length > 0, "Die eigenen Einträge fehlen");
+      assert.ok(
+        logs.json.every((l) => l.userId === a.id),
+        "Fremde Einträge gehören nicht in die Antwort"
+      );
     });
 
     await t.test("zeigt fremde Kartenpunkte nicht", async () => {

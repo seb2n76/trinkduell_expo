@@ -76,13 +76,17 @@ async function startTestServer({ env: extraEnv } = {}) {
   // `ip` sets X-Forwarded-For, which is how the server identifies a client
   // (see clientIp in server/index.js). Tests use it to act as separate
   // machines where that is what a real run would look like.
-  async function call(method, routePath, body, token, ip) {
+  // `extraHeaders` und die zurückgegebenen `headers` sind für Prüfungen da,
+  // die nicht am Rumpf hängen — etwa das ETag der Spielraum-Abfrage, das aus
+  // einer unveränderten Antwort ein leeres 304 macht.
+  async function call(method, routePath, body, token, ip, extraHeaders) {
     const res = await fetch(base + routePath, {
       method,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(ip ? { "X-Forwarded-For": ip } : {}),
+        ...(extraHeaders || {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -92,7 +96,7 @@ async function startTestServer({ env: extraEnv } = {}) {
     } catch {
       // Some responses legitimately have no body.
     }
-    return { status: res.status, json };
+    return { status: res.status, json, headers: res.headers };
   }
 
   // Unique per call so tests never collide on usernames or emails.

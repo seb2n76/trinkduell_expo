@@ -445,64 +445,193 @@ async function saveDb() {
   await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
 }
 
+/**
+ * Eine Zeile aus `users` in die Form, die der Rest der Anwendung kennt.
+ *
+ * Stand bis zum 21.08.2026 zweimal wörtlich in getUsers() — einmal für
+ * Postgres, einmal für den JSON-Modus. Seit getUserById() dazugekommen ist,
+ * wären es vier Kopien gewesen, und genau so driften die beiden Zweige
+ * auseinander (siehe posts.image, das im Postgres-Zweig schlicht fehlte).
+ */
+function mapUserRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    avatar: row.avatar,
+    title: row.title,
+    rank: row.rank,
+    points: row.points,
+    alcoholGrams: Number(row.alcohol_grams),
+    achievements: Array.isArray(row.achievements)
+      ? row.achievements
+      : typeof row.achievements === "string"
+        ? JSON.parse(row.achievements)
+        : [],
+    email: row.email,
+    password: row.password,
+    selected_title: row.selected_title,
+    level: row.level !== undefined && row.level !== null ? row.level : 1,
+    active_quest: row.active_quest || null,
+    banned: Boolean(row.banned),
+    gamePoints: row.game_points || 0,
+    // Needed by authenticate() to reject tokens from before a password
+    // reset. Stripped again in enrichUserProgress before any response.
+    sessionValidAfter: row.session_valid_after
+      ? new Date(row.session_valid_after).toISOString()
+      : null,
+  };
+}
+
+/** Dasselbe für den JSON-Modus, wo die Felder schon so heißen. */
+function mapJsonUser(u) {
+  return {
+    id: u.id,
+    name: u.name,
+    avatar: u.avatar,
+    title: u.title,
+    rank: u.rank,
+    points: u.points,
+    alcoholGrams: u.alcoholGrams,
+    achievements: u.achievements,
+    email: u.email,
+    password: u.password,
+    selected_title: u.selected_title,
+    level: u.level || 1,
+    active_quest: u.active_quest || null,
+    banned: Boolean(u.banned),
+    gamePoints: u.gamePoints || 0,
+    sessionValidAfter: u.sessionValidAfter || null,
+  };
+}
+
+/** Eine Zeile aus `posts` in die Form des Clients. Auch für den JSON-Modus, wo
+ *  die Felder schon so heißen — dann bleibt nur die Zeit zu normalisieren. */
+function mapPostRow(row) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    text: row.text,
+    contextType: row.contextType,
+    contextId: row.contextId,
+    timestamp: row.timestamp && row.timestamp.toISOString
+      ? row.timestamp.toISOString()
+      : new Date(row.timestamp).toISOString(),
+    image: row.image || null,
+  };
+}
+
+/** Wie viele Nachrichten ein Chat-Abruf höchstens liefert. */
+const MESSAGE_PAGE_SIZE = 100;
+
+/** Eine Zeile aus `messages` samt Absenderdaten in die Form des Clients. */
+function mapMessageRow(r) {
+  return {
+    id: r.id,
+    sender_id: r.sender_id,
+    sender_name: r.sender_name,
+    sender_avatar: r.sender_avatar,
+    receiver_id: r.receiver_id,
+    group_id: r.group_id,
+    content: r.content,
+    timestamp: r.timestamp.toISOString ? r.timestamp.toISOString() : new Date(r.timestamp).toISOString(),
+  };
+}
+
 module.exports = {
+  MESSAGE_PAGE_SIZE,
   getUsers: async () => {
     await loadDb();
     if (pool) {
       const res = await pool.query("SELECT * FROM users");
-      return res.rows.map(row => ({
-        id: row.id,
-        name: row.name,
-        avatar: row.avatar,
-        title: row.title,
-        rank: row.rank,
-        points: row.points,
-        alcoholGrams: Number(row.alcohol_grams),
-        achievements: Array.isArray(row.achievements) ? row.achievements : (typeof row.achievements === 'string' ? JSON.parse(row.achievements) : []),
-        email: row.email,
-        password: row.password,
-        selected_title: row.selected_title,
-        level: row.level !== undefined && row.level !== null ? row.level : 1,
-        active_quest: row.active_quest || null,
-        banned: Boolean(row.banned),
-        gamePoints: row.game_points || 0,
-        // Needed by authenticate() to reject tokens from before a password
-        // reset. Stripped again in enrichUserProgress before any response.
-        sessionValidAfter: row.session_valid_after
-          ? new Date(row.session_valid_after).toISOString()
-          : null
-      }));
+      return res.rows.map(mapUserRow);
     }
     // Mirror the Postgres branch above: only return the intentional public
     // shape, never resetCode/resetCodeExpiresAt (those live only behind the
     // dedicated setPasswordResetCode/verifyPasswordResetCode functions).
-    return db.users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      avatar: u.avatar,
-      title: u.title,
-      rank: u.rank,
-      points: u.points,
-      alcoholGrams: u.alcoholGrams,
-      achievements: u.achievements,
-      email: u.email,
-      password: u.password,
-      selected_title: u.selected_title,
-      level: u.level || 1,
-      active_quest: u.active_quest || null,
-      banned: Boolean(u.banned),
-      gamePoints: u.gamePoints || 0,
-      sessionValidAfter: u.sessionValidAfter || null
-    }));
+    return db.users.map(mapJsonUser);
+  },
+  /**
+   * Ein einzelner Nutzer, ohne die ganze Tabelle zu laden.
+   *
+   * Dafür da, dass `authenticate()` in index.js nicht bei JEDEM Request
+   * `SELECT * FROM users` fährt — inklusive aller bcrypt-Hashes und aller
+   * Avatare, die als Base64-Data-URL mehrere Megabyte je Zeile haben können.
+   * Bei vier parallelen 15-Sekunden-Pollern pro Gerät war das die teuerste
+   * Abfrage im Projekt.
+   *
+   * Der Passwort-Hash fehlt hier bewusst: er wird an genau einer Stelle
+   * gebraucht (Passwort ändern) und holt sich dort über getPasswordHash()
+   * selbst ab. So reist er nicht mehr durch jeden Request-Kontext.
+   */
+  getUserById: async (userId) => {
+    await loadDb();
+    if (!userId) return null;
+    if (pool) {
+      const res = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+      if (res.rows.length === 0) return null;
+      const { password, ...rest } = mapUserRow(res.rows[0]);
+      return rest;
+    }
+    const found = (db.users || []).find((u) => u.id === userId);
+    if (!found) return null;
+    const { password, ...rest } = mapJsonUser(found);
+    return rest;
+  },
+  /**
+   * Der bcrypt-Hash eines Kontos — nur für den Passwortwechsel.
+   * Getrennt von getUserById(), damit der Hash nicht an jedem `req.user`
+   * hängt, das durch die Anwendung gereicht wird.
+   */
+  /**
+   * Ist dieser Username schon vergeben? `exceptUserId` klammert das eigene
+   * Konto aus, damit ein Umbenennen auf die eigene Schreibweise nicht an
+   * sich selbst scheitert.
+   *
+   * Vergleich in Kleinschreibung, weil Usernamen in der ganzen Anwendung so
+   * verglichen werden (Freundschaften hängen am Namen, nicht an der ID).
+   */
+  isUsernameTaken: async (name, exceptUserId = null) => {
+    await loadDb();
+    const needle = String(name || "").trim().toLowerCase();
+    if (!needle) return false;
+    if (pool) {
+      const res = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(name) = $1 AND ($2::text IS NULL OR id <> $2) LIMIT 1",
+        [needle, exceptUserId]
+      );
+      return res.rows.length > 0;
+    }
+    return (db.users || []).some(
+      (u) => u.id !== exceptUserId && String(u.name || "").toLowerCase() === needle
+    );
+  },
+  getPasswordHash: async (userId) => {
+    await loadDb();
+    if (!userId) return null;
+    if (pool) {
+      const res = await pool.query("SELECT password FROM users WHERE id = $1", [userId]);
+      return res.rows.length > 0 ? res.rows[0].password : null;
+    }
+    const found = (db.users || []).find((u) => u.id === userId);
+    return found ? found.password : null;
   },
   saveUser: async (user) => {
     await loadDb();
     if (pool) {
+      // `password = COALESCE($10, users.password)` statt `password = $10`:
+      // Seit getUserById() den Hash bewusst weglässt, gibt es Nutzerobjekte
+      // ohne dieses Feld. Ohne COALESCE würde ein Speichern daraus ein
+      // `password = NULL` machen — das Konto wäre dauerhaft ausgesperrt, und
+      // zwar still, denn der Request selbst liefe fehlerfrei durch.
+      //
+      // Der JSON-Zweig unten hat das Problem nicht: er verschmilzt mit dem
+      // Bestand, und ein Feld, das im übergebenen Objekt gar nicht vorkommt,
+      // überschreibt dort nichts.
       await pool.query(
         `INSERT INTO users (id, name, avatar, title, rank, points, alcohol_grams, achievements, email, password, selected_title, level, active_quest, banned)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (id) DO UPDATE SET
-           name = $2, avatar = $3, title = $4, rank = $5, points = $6, alcohol_grams = $7, achievements = $8, email = $9, password = $10, selected_title = $11, level = $12, active_quest = $13, banned = $14`,
+           name = $2, avatar = $3, title = $4, rank = $5, points = $6, alcohol_grams = $7, achievements = $8, email = $9, password = COALESCE($10, users.password), selected_title = $11, level = $12, active_quest = $13, banned = $14`,
         [user.id, user.name, user.avatar, user.title, user.rank, user.points, user.alcoholGrams, JSON.stringify(user.achievements), user.email, user.password, user.selected_title, user.level || 1, user.active_quest || null, Boolean(user.banned)]
       );
       return;
@@ -1002,6 +1131,164 @@ module.exports = {
     }
     return db.logs;
   },
+  /**
+   * Die Einträge EINES Kontos, neueste zuerst.
+   *
+   * Ersetzt den Weg, den Dashboard und Profil bis zum 21.08.2026 gingen: die
+   * komplette Tabelle über `GET /api/logs` holen und clientseitig auf die
+   * eigene Nutzer-ID filtern. Das war nicht nur teuer, es hat auch jedem
+   * angemeldeten Konto die Trinkhistorie aller anderen ausgeliefert.
+   */
+  getLogsForUser: async (userId, { limit = 500 } = {}) => {
+    await loadDb();
+    if (!userId) return [];
+    if (pool) {
+      const res = await pool.query(
+        `SELECT id, user_id AS "userId", drink_id AS "drinkId", timestamp, latitude, longitude
+           FROM drink_logs
+          WHERE user_id = $1
+          ORDER BY timestamp DESC
+          LIMIT $2`,
+        [userId, limit]
+      );
+      return res.rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        drinkId: row.drinkId,
+        timestamp: row.timestamp.toISOString ? row.timestamp.toISOString() : new Date(row.timestamp).toISOString(),
+        latitude: row.latitude ? Number(row.latitude) : null,
+        longitude: row.longitude ? Number(row.longitude) : null,
+      }));
+    }
+    return (db.logs || [])
+      .filter((l) => l.userId === userId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit);
+  },
+  /**
+   * Getrunkenes je Konto, aufsummiert — für die Rangliste.
+   *
+   * Die Rangliste hat diese Zahlen bisher im Client ausgerechnet und dafür
+   * ALLE Einträge ALLER Konten heruntergeladen. Die Summe ist genau das, was
+   * sie anzeigt; die einzelnen Einträge sind es nicht. Also entsteht sie
+   * dort, wo die Daten liegen.
+   *
+   * `since`/`until` sind ISO-Zeitpunkte oder null (= keine Grenze).
+   */
+  getDrinkStatsPerUser: async ({ since = null, until = null } = {}) => {
+    await loadDb();
+
+    /** Leeres Zählwerk in der Form, die die Rangliste erwartet. */
+    const emptyStats = () => ({
+      count: 0,
+      alcoholGrams: 0,
+      volume: 0,
+      calories: 0,
+      categoryTally: {
+        Bier: 0,
+        Wein: 0,
+        Sekt: 0,
+        Schnaps: 0,
+        "Mischgetränk": 0,
+        Alkoholfrei: 0,
+      },
+    });
+
+    const perUser = new Map();
+    const add = (userId, category, count, volume, calories, alcoholGrams) => {
+      if (!perUser.has(userId)) perUser.set(userId, emptyStats());
+      const entry = perUser.get(userId);
+      entry.count += count;
+      entry.volume += volume;
+      entry.calories += calories;
+      entry.alcoholGrams += alcoholGrams;
+      if (category in entry.categoryTally) entry.categoryTally[category] += count;
+    };
+
+    if (pool) {
+      const res = await pool.query(
+        `SELECT l.user_id AS "userId",
+                d.category AS category,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(d.volume), 0)::int AS volume,
+                COALESCE(SUM(d.calories), 0)::int AS calories,
+                COALESCE(SUM(d.volume * (d.abv / 100.0) * 0.789), 0) AS "alcoholGrams"
+           FROM drink_logs l
+           JOIN drinks d ON d.id = l.drink_id
+          WHERE ($1::timestamptz IS NULL OR l.timestamp >= $1)
+            AND ($2::timestamptz IS NULL OR l.timestamp < $2)
+          GROUP BY l.user_id, d.category`,
+        [since, until]
+      );
+      for (const row of res.rows) {
+        add(row.userId, row.category, row.count, row.volume, row.calories, Number(row.alcoholGrams));
+      }
+    } else {
+      const drinkById = new Map((db.drinks || []).map((d) => [d.id, d]));
+      const sinceMs = since ? new Date(since).getTime() : null;
+      const untilMs = until ? new Date(until).getTime() : null;
+      for (const log of db.logs || []) {
+        const t = new Date(log.timestamp).getTime();
+        if (sinceMs !== null && t < sinceMs) continue;
+        if (untilMs !== null && t >= untilMs) continue;
+        const drink = drinkById.get(log.drinkId);
+        if (!drink) continue;
+        add(
+          log.userId,
+          drink.category,
+          1,
+          drink.volume,
+          drink.calories || 0,
+          drink.volume * (drink.abv / 100) * 0.789
+        );
+      }
+    }
+
+    // Als einfaches Objekt zurück, damit der Aufrufer es direkt in JSON legen kann.
+    const out = {};
+    for (const [userId, stats] of perUser) {
+      out[userId] = { ...stats, alcoholGrams: Number(stats.alcoholGrams.toFixed(2)) };
+    }
+    return out;
+  },
+  /**
+   * Einträge mehrerer Konten, neueste zuerst — die Rohdaten des Feeds.
+   *
+   * Vorher lud der Feed `getLogs()`, also die vollständige Tabelle, und
+   * filterte sie in JavaScript. Bei einem Abruf alle 15 Sekunden je geöffnetem
+   * Feed war das der teuerste Dauerlauf der Anwendung.
+   */
+  getLogsForUsers: async (userIds, { limit = 50, before = null } = {}) => {
+    await loadDb();
+    const ids = Array.from(userIds || []);
+    if (ids.length === 0) return [];
+    if (pool) {
+      const res = await pool.query(
+        `SELECT id, user_id AS "userId", drink_id AS "drinkId", timestamp, latitude, longitude
+           FROM drink_logs
+          WHERE user_id = ANY($1::text[])
+            AND ($2::timestamptz IS NULL OR timestamp < $2)
+          ORDER BY timestamp DESC
+          LIMIT $3`,
+        [ids, before, limit]
+      );
+      return res.rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        drinkId: row.drinkId,
+        timestamp: row.timestamp.toISOString ? row.timestamp.toISOString() : new Date(row.timestamp).toISOString(),
+        latitude: row.latitude ? Number(row.latitude) : null,
+        longitude: row.longitude ? Number(row.longitude) : null,
+      }));
+    }
+    const idSet = new Set(ids);
+    const beforeMs = before ? new Date(before).getTime() : null;
+    return (db.logs || [])
+      .filter((l) => idSet.has(l.userId))
+      .filter((l) => beforeMs === null || new Date(l.timestamp).getTime() < beforeMs)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit);
+  },
   saveLog: async (log) => {
     await loadDb();
     if (pool) {
@@ -1243,6 +1530,64 @@ module.exports = {
     }
     return db.posts;
   },
+  /**
+   * Beiträge für den Freunde-Feed: von den genannten Konten, aber NICHT das,
+   * was an eine Gruppe gerichtet war — das gehört in den Gruppen-Feed und
+   * stand vorher doppelt.
+   *
+   * Systemmeldungen (Level-Up) tragen ebenfalls contextType „group", sind
+   * aber an alle gerichtet und bleiben deshalb drin.
+   */
+  getFriendFeedPosts: async (authorIds, { limit = 50, before = null } = {}) => {
+    await loadDb();
+    const ids = Array.from(authorIds || []);
+    if (pool) {
+      const res = await pool.query(
+        `SELECT id, user_id AS "userId", text, context_type AS "contextType", context_id AS "contextId", timestamp, image
+           FROM posts
+          WHERE (user_id = 'system' OR (user_id = ANY($1::text[]) AND context_type <> 'group'))
+            AND ($2::timestamptz IS NULL OR timestamp < $2)
+          ORDER BY timestamp DESC
+          LIMIT $3`,
+        [ids, before, limit]
+      );
+      return res.rows.map(mapPostRow);
+    }
+    const idSet = new Set(ids);
+    const beforeMs = before ? new Date(before).getTime() : null;
+    return (db.posts || [])
+      .filter((p) => p.userId === "system" || (idSet.has(p.userId) && p.contextType !== "group"))
+      .filter((p) => beforeMs === null || new Date(p.timestamp).getTime() < beforeMs)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+      .map(mapPostRow);
+  },
+  /** Beiträge, die an eine der genannten Gruppen gerichtet sind. */
+  getGroupFeedPosts: async (groupIds, { limit = 50, before = null } = {}) => {
+    await loadDb();
+    const ids = Array.from(groupIds || []);
+    if (ids.length === 0) return [];
+    if (pool) {
+      const res = await pool.query(
+        `SELECT id, user_id AS "userId", text, context_type AS "contextType", context_id AS "contextId", timestamp, image
+           FROM posts
+          WHERE context_type = 'group' AND context_id = ANY($1::text[])
+            AND ($2::timestamptz IS NULL OR timestamp < $2)
+          ORDER BY timestamp DESC
+          LIMIT $3`,
+        [ids, before, limit]
+      );
+      return res.rows.map(mapPostRow);
+    }
+    const idSet = new Set(ids);
+    const beforeMs = before ? new Date(before).getTime() : null;
+    return (db.posts || [])
+      .filter((p) => p.contextType === "group" && idSet.has(p.contextId))
+      .filter((p) => beforeMs === null || new Date(p.timestamp).getTime() < beforeMs)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+      .map(mapPostRow);
+  },
   savePost: async (post) => {
     await loadDb();
     if (pool) {
@@ -1274,6 +1619,38 @@ module.exports = {
       return reactions;
     }
     return db.reactions || {};
+  },
+  /**
+   * Reaktionen zu einer begrenzten Menge Feed-Einträge.
+   *
+   * `getFeedReactions()` daneben lädt die ganze Tabelle und wird von den
+   * Tests und dem JSON-Modus benutzt; für den Feed reichen die Einträge, die
+   * gerade angezeigt werden.
+   */
+  getFeedReactionsFor: async (targetIds) => {
+    await loadDb();
+    const ids = Array.from(targetIds || []);
+    const reactions = {};
+    if (ids.length === 0) return reactions;
+    const put = (targetId, emoji, userId) => {
+      if (!reactions[targetId]) reactions[targetId] = { cheers: [], fire: [], water: [] };
+      if (reactions[targetId][emoji]) reactions[targetId][emoji].push(userId);
+    };
+    if (pool) {
+      const res = await pool.query(
+        'SELECT target_id AS "targetId", user_id AS "userId", emoji FROM feed_reactions WHERE target_id = ANY($1::text[])',
+        [ids]
+      );
+      for (const row of res.rows) put(row.targetId, row.emoji, row.userId);
+      return reactions;
+    }
+    // Im JSON-Modus liegen die Reaktionen bereits als Objekt je Ziel vor —
+    // hier ist also nur auszuwählen, nicht umzubauen.
+    const alle = db.reactions || {};
+    for (const id of ids) {
+      if (alle[id]) reactions[id] = alle[id];
+    }
+    return reactions;
   },
   toggleFeedReaction: async (targetId, userId, emoji) => {
     await loadDb();
@@ -1776,34 +2153,42 @@ module.exports = {
     const users = db.users || [];
     return users.filter((u) => u.name && u.name.toLowerCase().includes(q)).slice(0, 20);
   },
-  getDirectMessages: async (user1Id, user2Id) => {
+  /**
+   * Ein Direktchat, standardmäßig nur das jüngste Stück davon.
+   *
+   * Bis zum 21.08.2026 stand hier `ORDER BY timestamp ASC` ohne Grenze: jedes
+   * Öffnen eines Chats holte die vollständige Historie, und die wächst nur.
+   * Geliefert werden jetzt die neuesten `limit` Nachrichten — aber weiterhin
+   * in aufsteigender Reihenfolge, denn so rendert der Chat sie.
+   *
+   * `before` (ISO-Zeitpunkt) blättert weiter nach hinten: es liefert die
+   * `limit` Nachrichten, die älter sind als der genannte Zeitpunkt.
+   */
+  getDirectMessages: async (user1Id, user2Id, { limit = MESSAGE_PAGE_SIZE, before = null } = {}) => {
     await loadDb();
     if (pool) {
       const res = await pool.query(
         `SELECT m.id, m.sender_id, m.receiver_id, m.group_id, m.content, m.timestamp, u.name AS sender_name, u.avatar AS sender_avatar
          FROM messages m
          JOIN users u ON m.sender_id = u.id
-         WHERE (m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1)
-         ORDER BY m.timestamp ASC`,
-        [user1Id, user2Id]
+         WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
+           AND ($3::timestamptz IS NULL OR m.timestamp < $3)
+         ORDER BY m.timestamp DESC
+         LIMIT $4`,
+        [user1Id, user2Id, before, limit]
       );
-      return res.rows.map(r => ({
-        id: r.id,
-        sender_id: r.sender_id,
-        sender_name: r.sender_name,
-        sender_avatar: r.sender_avatar,
-        receiver_id: r.receiver_id,
-        group_id: r.group_id,
-        content: r.content,
-        timestamp: r.timestamp.toISOString ? r.timestamp.toISOString() : new Date(r.timestamp).toISOString()
-      }));
+      return res.rows.map(mapMessageRow).reverse();
     }
 
     const messages = db.messages || [];
     const users = db.users || [];
+    const beforeMs = before ? new Date(before).getTime() : null;
     return messages
       .filter(m => (m.sender_id === user1Id && m.receiver_id === user2Id) || (m.sender_id === user2Id && m.receiver_id === user1Id))
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .filter(m => beforeMs === null || new Date(m.timestamp).getTime() < beforeMs)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+      .reverse()
       .map(m => {
         const u = users.find(usr => usr.id === m.sender_id);
         return {
@@ -1813,7 +2198,8 @@ module.exports = {
         };
       });
   },
-  getGroupMessages: async (groupId) => {
+  /** Wie getDirectMessages, nur für einen Gruppenchat. */
+  getGroupMessages: async (groupId, { limit = MESSAGE_PAGE_SIZE, before = null } = {}) => {
     await loadDb();
     if (pool) {
       const res = await pool.query(
@@ -1821,26 +2207,23 @@ module.exports = {
          FROM messages m
          JOIN users u ON m.sender_id = u.id
          WHERE m.group_id = $1
-         ORDER BY m.timestamp ASC`,
-        [groupId]
+           AND ($2::timestamptz IS NULL OR m.timestamp < $2)
+         ORDER BY m.timestamp DESC
+         LIMIT $3`,
+        [groupId, before, limit]
       );
-      return res.rows.map(r => ({
-        id: r.id,
-        sender_id: r.sender_id,
-        sender_name: r.sender_name,
-        sender_avatar: r.sender_avatar,
-        receiver_id: r.receiver_id,
-        group_id: r.group_id,
-        content: r.content,
-        timestamp: r.timestamp.toISOString ? r.timestamp.toISOString() : new Date(r.timestamp).toISOString()
-      }));
+      return res.rows.map(mapMessageRow).reverse();
     }
 
     const messages = db.messages || [];
     const users = db.users || [];
+    const beforeMs = before ? new Date(before).getTime() : null;
     return messages
       .filter(m => m.group_id === groupId)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .filter(m => beforeMs === null || new Date(m.timestamp).getTime() < beforeMs)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+      .reverse()
       .map(m => {
         const u = users.find(usr => usr.id === m.sender_id);
         return {

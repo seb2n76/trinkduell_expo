@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Text, View, ScrollView, TouchableOpacity, Image } from "react-native";
+import { Text, View, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
 import { User, Group } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
+import { Avatar } from "@/components/Avatar";
 import { useThemeColors } from "@/services/theme";
 
 interface RequestItem {
@@ -97,10 +98,10 @@ export default function NotificationsScreen() {
                   className="bg-surface border border-line rounded-2xl p-4 mb-3 flex-row items-center justify-between"
                 >
                   <View className="flex-row items-center space-x-3 flex-1 mr-2">
-                    <Image
-                      source={{ uri: item.user.avatar }}
-                      className="w-10 h-10 rounded-full border border-line"
-                    />
+                    {/* Avatar zeigt bei fehlendem Bild Initialen statt
+                        eines leeren Rahmens — vorher stand hier ein Image
+                        ohne jeden Rueckfall. */}
+                    <Avatar uri={item.user.avatar} name={item.user.name} size={40} className="border border-line" />
                     <View className="ml-2.5 flex-1">
                       <Text className="text-content text-xs font-bold" numberOfLines={1}>
                         {item.user.name}

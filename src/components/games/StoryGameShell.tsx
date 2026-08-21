@@ -5,13 +5,14 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/services/haptics";
 import { useThemeColors } from "@/services/theme";
 import { apiService } from "@/services/api";
+import { usePolling } from "@/services/polling";
 import { getStoryGame } from "@/games/stories";
 import { ChapterChoice, PhaseInfo, StoryGameId, StoryRoom } from "@/games/storyEngine/types";
 import { ProofPhotoButton } from "./ProofPhotoButton";
@@ -116,11 +117,8 @@ export function StoryGameShell({
     }
   }, [roomCode, myPlayerToken]);
 
-  useEffect(() => {
-    if (!visible || !roomCode) return;
-    const interval = setInterval(fetchRoomState, 2500);
-    return () => clearInterval(interval);
-  }, [visible, roomCode, fetchRoomState]);
+  // Siehe MultiplayerLobbyModal: derselbe Takt, dieselbe Vordergrund-Bremse.
+  usePolling(fetchRoomState, 2500, { enabled: visible && !!roomCode });
 
   // Punkte gutschreiben, sobald das Finale steht.
   useEffect(() => {
@@ -656,7 +654,8 @@ export function StoryGameShell({
                                 {candidate.avatar ? (
                                   <Image
                                     source={{ uri: candidate.avatar }}
-                                    className="w-full h-full"
+                                    style={{ width: "100%", height: "100%" }}
+                                    contentFit="cover"
                                   />
                                 ) : (
                                   <Ionicons name="person" size={14} color={c.contentFaint} />

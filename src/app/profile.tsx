@@ -50,18 +50,16 @@ export default function ProfileScreen() {
         console.warn("User not found on profile screen, aborting.");
         return;
       }
-      const [allLogs, allDrinks] = await Promise.all([
+      const [myLogs, allDrinks] = await Promise.all([
         apiService.getDrinkLogs(),
         apiService.getDrinks(),
       ]);
 
       setDbUser(currentUser);
       setEditedName(currentUser.name);
-      setLogs(
-        allLogs
-          .filter((l) => l.userId === currentUser.id)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      );
+      // Seit dem 21.08.2026 liefert /logs nur noch die eigenen Eintraege,
+      // bereits neueste zuerst — Filtern und Sortieren entfaellt hier.
+      setLogs(myLogs);
       setDrinks(allDrinks);
     } catch (e) {
       console.error("Failed to load profile data:", e);
@@ -194,15 +192,13 @@ export default function ProfileScreen() {
       await triggerHaptic("medium");
       await apiService.deleteDrinkLog(logId);
 
-      const currentUser = await apiService.getCurrentUser();
-      const allLogs = await apiService.getDrinkLogs();
+      const [currentUser, myLogs] = await Promise.all([
+        apiService.getCurrentUser(),
+        apiService.getDrinkLogs(),
+      ]);
       setDbUser(currentUser);
       updateUserContext(currentUser);
-      setLogs(
-        allLogs
-          .filter((l) => l.userId === currentUser.id)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      );
+      setLogs(myLogs);
     } catch (e) {
       console.error("Failed to delete log:", e);
     }

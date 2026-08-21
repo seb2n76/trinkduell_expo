@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, Image } from "react-native";
+import { View, Text } from "react-native";
+import { Image } from "expo-image";
 import { useThemeColors } from "@/services/theme";
 
 interface AvatarProps {
@@ -48,12 +49,28 @@ export function Avatar({ uri, name, size = 40, className = "" }: AvatarProps) {
   const displayName = (name || "").trim();
 
   if (uri) {
+    // Der Rahmen sitzt auf einem View, das Bild darin.
+    //
+    // Grund ist der Wechsel von `Image` aus react-native auf das aus
+    // expo-image: Letzteres bringt einen Speicher- UND Plattenzwischen-
+    // speicher mit, sonst wird jedes Profilbild bei jedem Scrollen neu
+    // geladen oder — bei den Base64-Avataren aus der Zeit vor R2 — neu
+    // dekodiert. Nativewind reicht `className` allerdings nicht an
+    // Fremdkomponenten weiter, deshalb die Hülle: so bleibt der Aufruf
+    // `<Avatar className="border-2 border-accent" />` überall unverändert.
     return (
-      <Image
-        source={{ uri }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
+      <View
+        style={{ width: size, height: size, borderRadius: size / 2, overflow: "hidden" }}
         className={className}
-      />
+      >
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          contentFit="cover"
+          transition={120}
+          accessibilityLabel={displayName ? `Profilbild von ${displayName}` : "Profilbild"}
+        />
+      </View>
     );
   }
 

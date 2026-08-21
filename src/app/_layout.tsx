@@ -15,6 +15,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { UnreadProvider } from "@/components/UnreadProvider";
 import { ThemeProvider, useThemeColors, type ThemeColors } from "@/services/theme";
 
+// expo-router legt eine aus einer Route exportierte ErrorBoundary um genau
+// diese Route. Hier an der Wurzel ist sie das letzte Netz: Ohne sie endete
+// jeder Renderfehler im weissen Bildschirm (Web) oder im Absturz (nativ).
+export { ErrorBoundary } from "@/components/ErrorScreen";
+
 const AGE_GATE_KEY = "trinkduell_age_18_confirmed";
 
 /**

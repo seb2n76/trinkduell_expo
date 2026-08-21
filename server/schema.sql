@@ -200,6 +200,16 @@ CREATE TABLE IF NOT EXISTS reports (
 
 -- Indices for performance
 CREATE INDEX IF NOT EXISTS idx_drink_logs_user_id ON drink_logs(user_id);
+-- Eigene Einträge, neueste zuerst (getLogsForUser). Der Index oben auf
+-- user_id allein reicht dafür nicht: sortiert und begrenzt wird nach Zeit,
+-- und ohne die zweite Spalte müsste Postgres alle Zeilen des Kontos erst
+-- einsammeln und dann sortieren.
+CREATE INDEX IF NOT EXISTS idx_drink_logs_user_time ON drink_logs(user_id, timestamp DESC);
+-- Die Rangliste rechnet je Zeitraum („dieser Monat", „letzter Monat"). Ohne
+-- diesen Index ist das jedes Mal ein Durchlauf über die ganze Tabelle.
+CREATE INDEX IF NOT EXISTS idx_drink_logs_time ON drink_logs(timestamp);
+-- Der Feed sortiert nach Zeit und nimmt nur den Kopf der Liste.
+CREATE INDEX IF NOT EXISTS idx_posts_time ON posts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_context ON posts(context_type, context_id);
 CREATE INDEX IF NOT EXISTS idx_duels_players ON duels(creator_id, opponent_id);
 CREATE INDEX IF NOT EXISTS idx_group_quests ON group_quests(group_id);

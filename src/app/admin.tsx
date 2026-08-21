@@ -25,7 +25,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useThemeColors } from "@/services/theme";
 import { Avatar } from "@/components/Avatar";
-import { KeyboardSafe, KeyboardSheet } from "@/components/KeyboardSafe";
+import { KeyboardSafe, KeyboardSheet, SHEET_ANIMATION } from "@/components/KeyboardSafe";
 
 type AdminTab = "dashboard" | "users" | "reports" | "drinks" | "broadcast";
 
@@ -977,7 +977,7 @@ export default function AdminConsoleScreen() {
       </ScrollView>
 
       {/* Drink Edit Modal */}
-      <Modal visible={!!selectedDrink} animationType="slide" transparent>
+      <Modal visible={!!selectedDrink} animationType={SHEET_ANIMATION} transparent>
         <KeyboardSheet className="flex-1 bg-black/75 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10 max-h-[85%]">
             <Text className="text-content text-base font-black mb-4">Getränk bearbeiten</Text>

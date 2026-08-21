@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -10,12 +10,17 @@ import {
   ScrollView,
 } from "react-native";
 import { apiService } from "@/services/api";
+import { usePolling } from "@/services/polling";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { triggerHaptic } from "@/services/haptics";
 import { User } from "@/services/mockData";
 import { Avatar } from "@/components/Avatar";
 import { useUnread } from "@/components/UnreadProvider";
 import { useThemeColors } from "@/services/theme";
+
+// Eigene Fehlergrenze je Reiter-Bereich: Stuerzt ein Reiter ab, bleibt die
+// Navigation stehen und nur dieser Bereich zeigt den Fehlerbildschirm.
+export { ErrorBoundary } from "@/components/ErrorScreen";
 
 const { width: screenWidth } = Dimensions.get("window");
 const drawerWidth = screenWidth < 800 ? Math.min(screenWidth * 0.8, 340) : screenWidth * 0.35;
@@ -94,24 +99,26 @@ export default function TabsLayout() {
 
   // Offene Beitrittsanfragen für die Glocke oben rechts. Die Glocke steht für
   // etwas anderes als der Punkt am Menü-Symbol (ungelesene Nachrichten).
-  useEffect(() => {
-    const loadNotificationCount = async () => {
-      try {
-        const userRes = await apiService.getCurrentUser();
-        const groupsRes = await apiService.getGroups();
-        const adminGroups = groupsRes.filter((g) => g.adminId === userRes.id);
-        setNotificationCount(
-          adminGroups.reduce((sum, g) => sum + (g.pendingUserIds?.length || 0), 0)
-        );
-      } catch (error) {
-        console.error("Failed to load notifications count in layout:", error);
-      }
-    };
-
-    loadNotificationCount();
-    const interval = setInterval(loadNotificationCount, 15000);
-    return () => clearInterval(interval);
+  const loadNotificationCount = useCallback(async () => {
+    try {
+      const userRes = await apiService.getCurrentUser();
+      const groupsRes = await apiService.getGroups();
+      const adminGroups = groupsRes.filter((g) => g.adminId === userRes.id);
+      setNotificationCount(
+        adminGroups.reduce((sum, g) => sum + (g.pendingUserIds?.length || 0), 0)
+      );
+    } catch (error) {
+      console.error("Failed to load notifications count in layout:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    loadNotificationCount();
+  }, [loadNotificationCount]);
+
+  // Nur im Vordergrund. Vorher lief dieser Takt auch dann weiter, wenn die
+  // App minimiert war — für ein Abzeichen, das niemand sieht.
+  usePolling(loadNotificationCount, 15000);
 
   const openDrawer = async () => {
     setIsDrawerOpen(true);

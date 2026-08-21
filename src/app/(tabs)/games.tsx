@@ -10,17 +10,14 @@ import {
   Modal,
   Animated as RNAnimated,
   Easing as RNEasing,
-  Image,
-  Dimensions,
   Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
-import { User, Duel, Group } from "@/services/mockData";
+import { User, Duel } from "@/services/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_URL } from "@/services/config";
 import { NeverHaveIEver } from "@/components/games/NeverHaveIEver";
 import { WhoWouldRather } from "@/components/games/WhoWouldRather";
 import { WordBomb } from "@/components/games/WordBomb";
@@ -34,8 +31,7 @@ import { ALL_TRUTHS, ALL_DARES } from "@/games/content";
 import { NightSessionProvider, useNightSession } from "@/games/session";
 import { SessionBar } from "@/components/games/SessionBar";
 import { SessionReport } from "@/components/games/SessionReport";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+import { SHEET_ANIMATION } from "@/components/KeyboardSafe";
 
 // Card deck helper for Higher or Lower & Skull
 export interface Card {
@@ -321,7 +317,6 @@ function GamesScreenContent() {
   const [friendsList, setFriendsList] = useState<User[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [duels, setDuels] = useState<Duel[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Lobby state
@@ -387,10 +382,10 @@ function GamesScreenContent() {
       spinAnim.stopAnimation();
       pulseScale.stopAnimation();
     };
-  }, []);
+  }, [spinAnim, pulseScale]);
 
   // Load preferences and game state on mount
-  const loadInitialData = async () => {
+  const loadInitialData = useCallback(async () => {
     // 1. Load Saved Game State first (fast and offline safe)
     try {
       const json = await AsyncStorage.getItem("trinkduell_party_game_state");
@@ -433,13 +428,24 @@ function GamesScreenContent() {
     } finally {
       setLoading(false);
     }
-
-    // 2. Fetch server-side data with null safety and fallbacks
+    // 2. Serverdaten nachladen.
+    //
+    // Lief bis zum 21.08.2026 in vier nacheinander abgewarteten Aufrufen —
+    // also vier volle Umläufe zum Server, bevor der Schirm etwas zeigte —
+    // und holte die Rangliste zusätzlich mit einem eigenen `fetch` an der
+    // API-Schicht vorbei, samt handgebautem Authorization-Header und einem
+    // Rückfall auf ein erfundenes „mock-jwt-token-…". Damit fehlten das
+    // Zeitlimit, die 401-Behandlung und die Fehlertexte des Servers.
     try {
-      const me = await apiService.getCurrentUser().catch(() => null);
-      const allUsers = await apiService.getUsers().catch(() => []);
-      const allDuels = await apiService.getDuels().catch(() => []);
-      const allGroups = await apiService.getGroups().catch(() => []);
+      const [me, allUsers, allDuels, scoreboardRows] = await Promise.all([
+        apiService.getCurrentUser().catch(() => null),
+        apiService.getUsers().catch(() => []),
+        apiService.getDuels().catch(() => []),
+        apiService.getScoreboard("all").catch((err) => {
+          console.warn("Rangliste im Spiele-Reiter nicht verfügbar:", err);
+          return [];
+        }),
+      ]);
 
       // Build safe fallback current user if me is null
       const currentUserObj: User = me || {
@@ -455,38 +461,11 @@ function GamesScreenContent() {
         achievements: [],
       };
 
-      // Fetch scoreboard to obtain dynamic level and title information
-      let scoreboardRows: ScoreboardRow[] = [];
-      try {
-        const token = await AsyncStorage.getItem("trinkduell_v2_jwt_token");
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        } else if (currentUserObj) {
-          headers["Authorization"] = `Bearer mock-jwt-token-${currentUserObj.id}`;
-        }
-
-        const scoreboardResponse = await fetch(`${API_URL}/api/scoreboard`, {
-          method: "GET",
-          headers,
-        });
-        if (scoreboardResponse.ok) {
-          const scoreboardData = await scoreboardResponse.json();
-          if (scoreboardData && Array.isArray(scoreboardData)) {
-            scoreboardRows = scoreboardData;
-          } else if (scoreboardData && Array.isArray(scoreboardData.rows)) {
-            scoreboardRows = scoreboardData.rows;
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch scoreboard in games screen, using offline fallbacks:", err);
-      }
-
       // Enrich users with levels and titles from scoreboard
+      const byId = new Map(scoreboardRows.map((row) => [row.id, row]));
+      const byName = new Map(scoreboardRows.map((row) => [row.username, row]));
       const enrichedUsers = allUsers.map((u) => {
-        const sbUser = scoreboardRows.find((su) => su.id === u.id || su.username === u.name);
+        const sbUser = byId.get(u.id) || byName.get(u.name);
         return {
           ...u,
           currentLevel: sbUser?.currentLevel || sbUser?.level || u.currentLevel || u.level || 1,
@@ -494,7 +473,7 @@ function GamesScreenContent() {
         };
       });
 
-      const meSbUser = scoreboardRows.find((su) => su.id === currentUserObj.id || su.username === currentUserObj.name);
+      const meSbUser = byId.get(currentUserObj.id) || byName.get(currentUserObj.name);
       const enrichedCurrentUser: User = {
         ...currentUserObj,
         currentLevel: meSbUser?.currentLevel || meSbUser?.level || currentUserObj.currentLevel || currentUserObj.level || 1,
@@ -504,21 +483,23 @@ function GamesScreenContent() {
       setCurrentUser(enrichedCurrentUser);
       setUsers(enrichedUsers.filter((u) => u.id !== currentUserObj.id));
       setDuels(allDuels);
-      setGroups(allGroups);
 
-      if (enrichedUsers.length > 0 && !selectedOpponentId) {
-        const firstOpponent = enrichedUsers.find((u) => u.id !== currentUserObj.id);
-        if (firstOpponent) setSelectedOpponentId(firstOpponent.id);
-      }
+      // Vorbelegung nur, solange noch nichts gewaehlt ist. Ueber den
+      // Aktualisierer statt ueber den gelesenen Wert: sonst haengt
+      // loadInitialData an selectedOpponentId, und der Fokus-Effekt wuerde
+      // bei jeder Gegnerauswahl neu laden.
+      const firstOpponent = enrichedUsers.find((u) => u.id !== currentUserObj.id);
+      if (firstOpponent) setSelectedOpponentId((prev) => prev || firstOpponent.id);
     } catch (error) {
       console.warn("Failed to load server-side data in games screen, using offline fallbacks:", error);
     }
-  };
+    // Nur stabile Setter im Rumpf, deshalb keine Abhaengigkeiten.
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadInitialData();
-    }, [])
+    }, [loadInitialData])
   );
 
   // Global State Persistence Auto-Save Effect
@@ -604,7 +585,7 @@ function GamesScreenContent() {
     return () => {
       anim?.stop();
     };
-  }, [selectedPlayer]);
+  }, [selectedPlayer, pulseScale]);
 
   // Platform-Safe Confirm Game Cancellation
   const performCancelGame = async () => {
@@ -793,7 +774,7 @@ function GamesScreenContent() {
       setShowCreateDuel(false);
       await loadInitialData();
       Alert.alert("Herausforderung gesendet!", "Dein Gegner muss das Duell jetzt annehmen.");
-    } catch (e) {
+    } catch {
       await triggerHaptic("error");
       Alert.alert("Fehler", "Duell konnte nicht gestartet werden.");
     }
@@ -804,7 +785,7 @@ function GamesScreenContent() {
       await triggerHaptic("success");
       await apiService.acceptDuel(duelId);
       await loadInitialData();
-    } catch (e) {
+    } catch {
       await triggerHaptic("error");
       Alert.alert("Fehler", "Konnte das Duell nicht annehmen.");
     }
@@ -1362,15 +1343,11 @@ function GamesScreenContent() {
                       className="bg-surface-alt/60 border border-line rounded-2xl p-3.5 flex-row justify-between items-center"
                     >
                       <View className="flex-row items-center space-x-3">
-                        {p.avatar ? (
-                          <Image source={{ uri: p.avatar }} className="w-8 h-8 rounded-full border border-line" />
-                        ) : (
-                          <View className="w-8 h-8 rounded-full bg-surface border border-line items-center justify-center">
-                            <Text className="text-content text-xs font-black">
-                              {p.name.substring(0, 2).toUpperCase()}
-                            </Text>
-                          </View>
-                        )}
+                        {/* Avatar statt eines eigenen Bild-mit-Rueckfall:
+                            dieselbe Darstellung, aber mit dem Zwischen-
+                            speicher von expo-image und den Initialen-Farben,
+                            die ueberall sonst in der App gelten. */}
+                        <Avatar uri={p.avatar} name={p.name} size={32} className="border border-line" />
                         <View>
                           <Text className="text-content text-xs font-black">{p.name}</Text>
                           <Text className="text-content-faint text-[7.5px] font-extrabold uppercase tracking-wider mt-0.5">
@@ -1406,7 +1383,7 @@ function GamesScreenContent() {
           </ScrollView>
 
           {/* Modal Friend Selector */}
-          <Modal visible={showFriendSelector} animationType="slide" transparent={true}>
+          <Modal visible={showFriendSelector} animationType={SHEET_ANIMATION} transparent={true}>
             <View className="flex-1 bg-black/85 justify-end">
               <View className="bg-surface border-t border-line rounded-t-3xl p-5 pb-8 max-h-[70%]">
                 <View className="flex-row justify-between items-center mb-5">
@@ -1440,15 +1417,7 @@ function GamesScreenContent() {
                           }`}
                         >
                           <View className="flex-row items-center space-x-3">
-                            {friend.avatar ? (
-                              <Image source={{ uri: friend.avatar }} className="w-8 h-8 rounded-full border border-line" />
-                            ) : (
-                              <View className="w-8 h-8 rounded-full bg-surface border border-line items-center justify-center">
-                                <Text className="text-content text-xs font-black">
-                                  {friend.name.substring(0, 2).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
+                            <Avatar uri={friend.avatar} name={friend.name} size={32} className="border border-line" />
                             <View>
                               <Text className="text-content text-xs font-black">{friend.name}</Text>
                               <Text className="text-accent-ink text-[8px] font-bold mt-0.5">

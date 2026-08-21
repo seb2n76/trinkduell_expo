@@ -40,6 +40,24 @@ export function KeyboardSafe({
 }
 
 /**
+ * Einblendart für transparente Blätter.
+ *
+ * react-native-web führt die Slide-Animation eines TRANSPARENTEN Modals nicht
+ * aus: Das Overlay bleibt bei `translateY(Bildschirmhöhe)` stehen und liegt
+ * damit vollständig unterhalb des sichtbaren Bereichs. Der Dialog ist im DOM,
+ * reagiert auf nichts und ist unsichtbar — in der Web-App liessen sich dadurch
+ * weder Getränke auswählen noch anlegen, und auch Gruppen, Events und
+ * Meldungen waren nicht erreichbar.
+ *
+ * Nachgemessen: derselbe Dialog mit "fade" erscheint normal, mit "slide" steht
+ * er bei translateY(812) auf einem 812 Pixel hohen Fenster. Vollbild-Modals
+ * (`transparent={false}`) sind nicht betroffen.
+ *
+ * Auf iOS und Android bleibt es beim Hochschieben — dort funktioniert es.
+ */
+export const SHEET_ANIMATION: "slide" | "fade" = Platform.OS === "web" ? "fade" : "slide";
+
+/**
  * Rahmen für Dialoge, die am unteren Bildschirmrand sitzen („Blätter").
  *
  * Warum nicht einfach KeyboardSafe darüber?

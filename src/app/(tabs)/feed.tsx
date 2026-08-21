@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   Text,
   View,
   ScrollView,
+  FlatList,
   TouchableOpacity,
-  Image,
   TextInput,
   ActivityIndicator,
   RefreshControl,
@@ -13,6 +13,7 @@ import {
   Platform,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { apiService } from "@/services/api";
 import { triggerHaptic } from "@/services/haptics";
@@ -28,8 +29,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "@/components/Avatar";
 import { FriendsRadarSkeleton, FeedItemSkeleton } from "@/components/Skeleton";
+import { useIsFocused } from "@react-navigation/native";
+import { usePolling } from "@/services/polling";
 import { useThemeColors, type ThemeColors } from "@/services/theme";
 import { uploadImage } from "@/services/upload";
+import { SHEET_ANIMATION } from "@/components/KeyboardSafe";
+
+/** Wie viele Eintraege je Abruf. Entspricht der Vorgabe des Servers. */
+const FEED_PAGE_SIZE = 30;
 
 // ─────────────────────────────────────────────
 // Freunde-Radar: wer ist gerade unterwegs?
@@ -279,8 +286,26 @@ export default function LivePulseFeed() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** Gibt es hinter dem zuletzt geladenen Eintrag noch etwas? */
+  const [hasMore, setHasMore] = useState(true);
+  /** Verhindert, dass zwei Nachlade-Laeufe gleichzeitig starten. */
+  const ladeAeltere = useRef(false);
+  const isFocused = useIsFocused();
 
-  const loadFeedData = async (activeScope: FeedScope, groupId: string | null = null) => {
+  /** Neueste zuerst und ohne Dubletten — die Reihenfolge, in der gerendert wird. */
+  const sortierenUndEntdoppeln = (items: FeedItem[]): FeedItem[] => {
+    const gesehen = new Set<string>();
+    return [...items]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .filter((item) => {
+        if (gesehen.has(item.id)) return false;
+        gesehen.add(item.id);
+        return true;
+      });
+  };
+
+  const loadFeedData = useCallback(async (activeScope: FeedScope, groupId: string | null = null) => {
     try {
       const me = await apiService.getCurrentUser();
       if (!me) {
@@ -296,7 +321,7 @@ export default function LivePulseFeed() {
           console.warn("Radar konnte nicht geladen werden:", e);
           return [] as RadarEntry[];
         }),
-        apiService.getFeed(activeScope, me.name, groupId).catch((e) => {
+        apiService.getFeed(activeScope, me.name, groupId, { limit: FEED_PAGE_SIZE }).catch((e) => {
           console.warn("Feed konnte nicht geladen werden:", e);
           return [] as FeedItem[];
         }),
@@ -306,36 +331,63 @@ export default function LivePulseFeed() {
       setRadarEntries(radar);
       setMyGroups(groups.filter((g) => (g.memberIds || []).includes(me.id)));
 
-      // Sort descending + deduplicate
-      const sorted = [...fetchedFeed].sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-      const seenItemIds = new Set<string>();
-      const uniqueSorted = sorted.filter((item) => {
-        if (seenItemIds.has(item.id)) return false;
-        seenItemIds.add(item.id);
-        return true;
-      });
-
-      setFeedItems(uniqueSorted);
+      const frisch = sortierenUndEntdoppeln(fetchedFeed);
+      setFeedItems(frisch);
+      // Weniger als eine volle Seite heisst: dahinter kommt nichts mehr.
+      setHasMore(frisch.length >= FEED_PAGE_SIZE);
     } catch (e) {
       console.error("Failed to load feed screen:", e);
     } finally {
       setLoading(false);
       setRadarLoading(false);
     }
-  };
+    // Nur stabile Setter im Rumpf — keine Abhaengigkeiten noetig.
+  }, []);
+
+  /**
+   * Aeltere Eintraege nachladen, wenn jemand ans Ende scrollt.
+   *
+   * Der Feed lieferte bis zum 21.08.2026 immer ALLES auf einmal. Das ging
+   * gut, solange die Beta klein war; mit jedem Monat Nutzung waere die
+   * Antwort gewachsen, und zwar bei jedem Abruf im 15-Sekunden-Takt.
+   */
+  const loadMore = useCallback(async () => {
+    if (ladeAeltere.current || !hasMore || loading) return;
+    const aeltester = feedItems[feedItems.length - 1];
+    if (!aeltester) return;
+
+    ladeAeltere.current = true;
+    setLoadingMore(true);
+    try {
+      const me = currentUser;
+      if (!me) return;
+      const nachschlag = await apiService.getFeed(scope, me.name, selectedGroupId, {
+        limit: FEED_PAGE_SIZE,
+        before: aeltester.timestamp,
+      });
+      setHasMore(nachschlag.length >= FEED_PAGE_SIZE);
+      if (nachschlag.length > 0) {
+        setFeedItems((vorher) => sortierenUndEntdoppeln([...vorher, ...nachschlag]));
+      }
+    } catch (e) {
+      console.warn("Aeltere Feed-Eintraege konnten nicht geladen werden:", e);
+    } finally {
+      ladeAeltere.current = false;
+      setLoadingMore(false);
+    }
+  }, [feedItems, hasMore, loading, currentUser, scope, selectedGroupId]);
 
   useFocusEffect(
     useCallback(() => {
       loadFeedData(scope, selectedGroupId);
-    }, [scope, selectedGroupId])
+    }, [loadFeedData, scope, selectedGroupId])
   );
 
-  useEffect(() => {
-    const interval = setInterval(() => loadFeedData(scope, selectedGroupId), 15000);
-    return () => clearInterval(interval);
-  }, [scope, selectedGroupId]);
+  // Nachfragen, solange der Reiter offen und die App im Vordergrund ist.
+  // Vorher lief dieser Timer in einem nackten useEffect — also weiter, wenn
+  // die App minimiert in der Tasche lag, die ganze Nacht, bei jedem Gast
+  // einer Party gleichzeitig.
+  usePolling(() => loadFeedData(scope, selectedGroupId), 15000, { enabled: isFocused });
 
   const handleOpenMap = async () => {
     await triggerHaptic("light");
@@ -357,7 +409,7 @@ export default function LivePulseFeed() {
     await triggerHaptic("light");
     await loadFeedData(scope, selectedGroupId);
     setRefreshing(false);
-  }, [scope, selectedGroupId]);
+  }, [loadFeedData, scope, selectedGroupId]);
 
   /**
    * Foto aus der Galerie wählen oder direkt aufnehmen.
@@ -557,183 +609,15 @@ export default function LivePulseFeed() {
     return scope === "groups" ? "[Gruppe]" : "[Freund]";
   };
 
-  return (
-    <View className="flex-1 bg-bg">
-      <ScrollView
-        className="flex-1 px-5 pt-3"
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={c.accent}
-            colors={[c.accent]}
-          />
-        }
-      >
-        {/* Freunde-Radar */}
-        <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
-
-        {/* Filterleiste: Freunde, alle Gruppen, oder eine einzelne Gruppe.
-            Vorher gab es nur zwei Knöpfe, und "Gruppen" warf sämtliche
-            Gruppen zusammen — bei mehr als einer war nicht mehr erkennbar,
-            was wozu gehört. Waagerecht scrollbar, damit auch acht Gruppen
-            hineinpassen. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="mb-5 -mx-1"
-          contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
-        >
-          {[
-            { key: "friends" as const, groupId: null, label: "Freunde", icon: "people" },
-            ...(myGroups.length > 0
-              ? [
-                  {
-                    key: "groups" as const,
-                    groupId: null,
-                    label: "Alle Gruppen",
-                    icon: "people-circle",
-                  },
-                ]
-              : []),
-            ...myGroups.map((g) => ({
-              key: "groups" as const,
-              groupId: g.id,
-              label: g.name,
-              icon: "people-circle-outline",
-            })),
-          ].map((tab) => {
-            const isActive = scope === tab.key && selectedGroupId === tab.groupId;
-            return (
-              <TouchableOpacity
-                key={`${tab.key}-${tab.groupId ?? "alle"}`}
-                onPress={() => handleFilterChange(tab.key, tab.groupId)}
-                className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
-                  isActive ? "bg-accent/10 border-accent/50" : "bg-surface border-line"
-                }`}
-              >
-                <Ionicons
-                  name={tab.icon as any}
-                  size={13}
-                  color={isActive ? c.accent : c.contentFaint}
-                />
-                <Text
-                  className={`text-xs font-black uppercase tracking-wider ml-1.5 ${
-                    isActive ? "text-accent-ink" : "text-content-faint"
-                  }`}
-                  numberOfLines={1}
-                >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Status Creator Box */}
-        {currentUser && (
-          <View className="bg-surface border border-line p-4 rounded-3xl mb-5 shadow-sm">
-            <View className="flex-row items-center justify-between mb-2">
-              {/* Sagt vor dem Tippen, wo der Beitrag landet. */}
-              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider flex-1 mr-2" numberOfLines={1}>
-                {selectedGroupId
-                  ? `An „${myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Gruppe"}“`
-                  : "An deine Freunde"}
-              </Text>
-              {selectedImage && (
-                <View className="bg-accent/20 px-2 py-0.5 rounded-full">
-                  <Text className="text-accent text-[8px] font-black uppercase">Foto angehängt</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Photo Thumbnail Preview (if picked) */}
-            {selectedImage && (
-              <View className="relative mb-3 self-start">
-                <Image
-                  source={{ uri: selectedImage }}
-                  className="w-20 h-20 rounded-2xl border border-accent/40 bg-surface-alt"
-                  resizeMode="cover"
-                />
-                <TouchableOpacity
-                  onPress={() => setSelectedImage(null)}
-                  className="absolute -top-1.5 -right-1.5 bg-rose-500 w-5 h-5 rounded-full items-center justify-center shadow"
-                >
-                  <Ionicons name="close" size={12} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View className="flex-row items-center space-x-2">
-              <Avatar
-                uri={currentUser.avatar}
-                name={currentUser.name}
-                size={36}
-                className="border border-line"
-              />
-              <TextInput
-                placeholder="Was geht ab bei dir?..."
-                placeholderTextColor={c.contentFaint}
-                value={inputText}
-                onChangeText={setInputText}
-                maxLength={100}
-                className="flex-1 bg-surface border border-line rounded-2xl px-4 py-2.5 text-content font-bold text-xs"
-              />
-
-              {/* Photo Button */}
-              <TouchableOpacity
-                onPress={handlePickImage}
-                className="bg-surface border border-line p-2.5 rounded-2xl active:scale-95 items-center justify-center"
-              >
-                <Ionicons
-                  name="camera-outline"
-                  size={18}
-                  color={selectedImage ? c.accent : c.contentFaint}
-                />
-              </TouchableOpacity>
-
-              {/* Submit Post Button */}
-              <TouchableOpacity
-                onPress={handleCreatePost}
-                disabled={isSubmitting || (!inputText.trim() && !selectedImage)}
-                className="bg-accent p-2.5 rounded-2xl active:scale-95 disabled:opacity-40"
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color={c.onAccent} />
-                ) : (
-                  <Ionicons name="send" size={16} color={c.onAccent} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Activities List Header */}
-        <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
-          Live-Aktivitäten
-        </Text>
-
-        {loading ? (
-          <View className="mb-6">
-            <FeedItemSkeleton />
-            <FeedItemSkeleton />
-            <FeedItemSkeleton />
-          </View>
-        ) : feedItems.length === 0 ? (
-          <View className="py-14 items-center justify-center bg-surface border border-line rounded-3xl p-6 mb-8">
-            <Ionicons name="chatbubbles-outline" size={36} color={c.contentFaint} style={{ marginBottom: 12 }} />
-            <Text className="text-content text-xs font-black uppercase tracking-wider text-center mb-1">
-              {scope === "groups" ? "Noch nichts aus deinen Gruppen" : "Noch keine Einträge vorhanden"}
-            </Text>
-            <Text className="text-content-muted text-[11px] font-medium text-center leading-relaxed">
-              {scope === "groups"
-                ? "Erstelle eine Gruppe oder tritt einer bei, um die Aktivität deiner Crew zu sehen!"
-                : "Teile deinen ersten Status mit deinen Freunden oder logge ein Getränk!"}
-            </Text>
-          </View>
-        ) : (
-          feedItems.map((item) => {
+  /**
+   * Ein Eintrag des Feeds.
+   *
+   * Stand bis zum 21.08.2026 als `feedItems.map()` mitten im JSX eines
+   * ScrollViews. Das rendert jeden Eintrag sofort und behaelt ihn — bei einer
+   * Liste, die Bilder zeigt, sich alle 15 Sekunden erneuert und unbegrenzt
+   * waechst, ist genau das der Fall, fuer den es FlatList gibt.
+   */
+  const renderFeedItem = ({ item }: { item: FeedItem }) => {
             const isMe = item.userId === currentUser?.id;
             const isHighlight =
               item.userId === "system" ||
@@ -797,12 +681,23 @@ export default function LivePulseFeed() {
                         Inhalt hier, den man wirklich ANSCHAUT — der Rest
                         wird gelesen. Ein Bild in Briefmarkengröße lädt
                         niemanden zum Hinsehen ein. */}
+                    {/* expo-image statt des Image aus react-native:
+                        Speicher- UND Plattenzwischenspeicher, sonst wird jedes
+                        Beweisfoto bei jedem Scrollen neu geladen. Die Masse
+                        kommt per style, weil nativewind className nicht an
+                        Fremdkomponenten weiterreicht. */}
                     {item.image && (
                       <Image
                         source={{ uri: item.image }}
-                        style={{ width: "100%", aspectRatio: 4 / 3 }}
-                        className="rounded-2xl mb-2.5 bg-surface-alt"
-                        resizeMode="cover"
+                        style={{
+                          width: "100%",
+                          aspectRatio: 4 / 3,
+                          borderRadius: 16,
+                          marginBottom: 10,
+                          backgroundColor: c.surfaceAlt,
+                        }}
+                        contentFit="cover"
+                        transition={150}
                         accessibilityLabel={`Foto von ${item.username}`}
                       />
                     )}
@@ -925,13 +820,221 @@ export default function LivePulseFeed() {
                 </View>
               </View>
             );
-          })
+  };
+
+  /** Alles oberhalb der Liste: Radar, Filterleiste, Verfassen-Feld. */
+  const renderHeader = () => (
+    <View>
+        {/* Freunde-Radar */}
+        <FriendsRadar entries={radarEntries} loading={radarLoading} onOpenMap={handleOpenMap} />
+
+        {/* Filterleiste: Freunde, alle Gruppen, oder eine einzelne Gruppe.
+            Vorher gab es nur zwei Knöpfe, und "Gruppen" warf sämtliche
+            Gruppen zusammen — bei mehr als einer war nicht mehr erkennbar,
+            was wozu gehört. Waagerecht scrollbar, damit auch acht Gruppen
+            hineinpassen. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="mb-5 -mx-1"
+          contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
+        >
+          {[
+            { key: "friends" as const, groupId: null, label: "Freunde", icon: "people" },
+            ...(myGroups.length > 0
+              ? [
+                  {
+                    key: "groups" as const,
+                    groupId: null,
+                    label: "Alle Gruppen",
+                    icon: "people-circle",
+                  },
+                ]
+              : []),
+            ...myGroups.map((g) => ({
+              key: "groups" as const,
+              groupId: g.id,
+              label: g.name,
+              icon: "people-circle-outline",
+            })),
+          ].map((tab) => {
+            const isActive = scope === tab.key && selectedGroupId === tab.groupId;
+            return (
+              <TouchableOpacity
+                key={`${tab.key}-${tab.groupId ?? "alle"}`}
+                onPress={() => handleFilterChange(tab.key, tab.groupId)}
+                className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
+                  isActive ? "bg-accent/10 border-accent/50" : "bg-surface border-line"
+                }`}
+              >
+                <Ionicons
+                  name={tab.icon as any}
+                  size={13}
+                  color={isActive ? c.accent : c.contentFaint}
+                />
+                <Text
+                  className={`text-xs font-black uppercase tracking-wider ml-1.5 ${
+                    isActive ? "text-accent-ink" : "text-content-faint"
+                  }`}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Status Creator Box */}
+        {currentUser && (
+          <View className="bg-surface border border-line p-4 rounded-3xl mb-5 shadow-sm">
+            <View className="flex-row items-center justify-between mb-2">
+              {/* Sagt vor dem Tippen, wo der Beitrag landet. */}
+              <Text className="text-content-faint text-[9px] font-black uppercase tracking-wider flex-1 mr-2" numberOfLines={1}>
+                {selectedGroupId
+                  ? `An „${myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Gruppe"}“`
+                  : "An deine Freunde"}
+              </Text>
+              {selectedImage && (
+                <View className="bg-accent/20 px-2 py-0.5 rounded-full">
+                  <Text className="text-accent text-[8px] font-black uppercase">Foto angehängt</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Photo Thumbnail Preview (if picked) */}
+            {selectedImage && (
+              <View className="relative mb-3 self-start">
+                <Image
+                  source={{ uri: selectedImage }}
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: c.accent,
+                    backgroundColor: c.surfaceAlt,
+                  }}
+                  contentFit="cover"
+                  accessibilityLabel="Angehängtes Foto"
+                />
+                <TouchableOpacity
+                  onPress={() => setSelectedImage(null)}
+                  className="absolute -top-1.5 -right-1.5 bg-rose-500 w-5 h-5 rounded-full items-center justify-center shadow"
+                >
+                  <Ionicons name="close" size={12} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View className="flex-row items-center space-x-2">
+              <Avatar
+                uri={currentUser.avatar}
+                name={currentUser.name}
+                size={36}
+                className="border border-line"
+              />
+              <TextInput
+                placeholder="Was geht ab bei dir?..."
+                placeholderTextColor={c.contentFaint}
+                value={inputText}
+                onChangeText={setInputText}
+                maxLength={100}
+                className="flex-1 bg-surface border border-line rounded-2xl px-4 py-2.5 text-content font-bold text-xs"
+              />
+
+              {/* Photo Button */}
+              <TouchableOpacity
+                onPress={handlePickImage}
+                className="bg-surface border border-line p-2.5 rounded-2xl active:scale-95 items-center justify-center"
+              >
+                <Ionicons
+                  name="camera-outline"
+                  size={18}
+                  color={selectedImage ? c.accent : c.contentFaint}
+                />
+              </TouchableOpacity>
+
+              {/* Submit Post Button */}
+              <TouchableOpacity
+                onPress={handleCreatePost}
+                disabled={isSubmitting || (!inputText.trim() && !selectedImage)}
+                className="bg-accent p-2.5 rounded-2xl active:scale-95 disabled:opacity-40"
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color={c.onAccent} />
+                ) : (
+                  <Ionicons name="send" size={16} color={c.onAccent} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
-        <View className="h-10" />
-      </ScrollView>
+
+        {/* Activities List Header */}
+        <Text className="text-content-faint text-[10px] font-black uppercase tracking-widest mb-3">
+          Live-Aktivitäten
+        </Text>
+    </View>
+  );
+
+  return (
+    <View className="flex-1 bg-bg">
+      <FlatList
+        className="flex-1 px-5 pt-3"
+        data={loading ? [] : feedItems}
+        keyExtractor={(item) => item.id}
+        renderItem={renderFeedItem}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={
+          loading ? (
+            <View className="mb-6">
+              <FeedItemSkeleton />
+              <FeedItemSkeleton />
+              <FeedItemSkeleton />
+            </View>
+          ) : (
+            <View className="py-14 items-center justify-center bg-surface border border-line rounded-3xl p-6 mb-8">
+              <Ionicons name="chatbubbles-outline" size={36} color={c.contentFaint} style={{ marginBottom: 12 }} />
+              <Text className="text-content text-xs font-black uppercase tracking-wider text-center mb-1">
+                {scope === "groups" ? "Noch nichts aus deinen Gruppen" : "Noch keine Einträge vorhanden"}
+              </Text>
+              <Text className="text-content-muted text-[11px] font-medium text-center leading-relaxed">
+                {scope === "groups"
+                  ? "Erstelle eine Gruppe oder tritt einer bei, um die Aktivität deiner Crew zu sehen!"
+                  : "Teile deinen ersten Status mit deinen Freunden oder logge ein Getränk!"}
+              </Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View className="py-6 items-center">
+              <ActivityIndicator size="small" color={c.accent} />
+            </View>
+          ) : (
+            <View className="h-10" />
+          )
+        }
+        showsVerticalScrollIndicator={false}
+        // Aeltere Eintraege erst holen, wenn jemand wirklich so weit unten
+        // ist. Der Server liefert je Abruf 30 Stueck; vorher kam immer alles.
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        removeClippedSubviews={false}
+        initialNumToRender={8}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={c.accent}
+            colors={[c.accent]}
+          />
+        }
+      />
 
       {/* Reporting Modal */}
-      <Modal visible={!!reportTarget} animationType="slide" transparent>
+      <Modal visible={!!reportTarget} animationType={SHEET_ANIMATION} transparent>
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
             <Text className="text-content text-base font-black mb-1">Beitrag melden</Text>

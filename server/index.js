@@ -540,8 +540,11 @@ async function authenticate(req, res, next) {
   }
 
   const userId = payload.sub;
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === userId);
+  // Gezielt EIN Konto statt der ganzen Tabelle. Das hier läuft vor jedem
+  // einzelnen Request; als `SELECT * FROM users` war es die teuerste Abfrage
+  // der Anwendung — sie zog auch sämtliche bcrypt-Hashes und alle Avatare
+  // mit, die als Base64-Data-URL megabyteschwer sein können.
+  const user = await db.getUserById(userId);
 
   if (!user) {
     return res.status(401).json({ error: "Benutzer nicht gefunden." });
@@ -924,7 +927,13 @@ app.post(
     // Ausrutscher von bcrypt oder der Datenbank wuerde sonst den ganzen Server
     // mitnehmen, nicht nur diesen einen Request.
     try {
-      const isCurrentValid = await bcrypt.compare(currentPassword, req.user.password);
+      // Der Hash hängt bewusst NICHT mehr an `req.user`: er wird an genau
+      // dieser einen Stelle gebraucht und dort gezielt geholt, statt bei
+      // jedem Request durch die halbe Anwendung gereicht zu werden.
+      const currentHash = await db.getPasswordHash(req.user.id);
+      const isCurrentValid = currentHash
+        ? await bcrypt.compare(currentPassword, currentHash)
+        : false;
       if (!isCurrentValid) {
         return res.status(401).json({ error: "Das aktuelle Passwort ist falsch." });
       }
@@ -971,8 +980,7 @@ app.get("/api/auth/session", async (req, res) => {
   }
 
   const userId = payload.sub;
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === userId);
+  const user = await db.getUserById(userId);
 
   if (!user || isTokenRevoked(payload, user)) {
     return res.json(null); // Also covers sessions ended by a password reset
@@ -1003,12 +1011,9 @@ app.get("/api/users", authenticate, async (req, res) => {
 // an offline-only concept and is never set for a normal online session, so
 // callers must never have to already know their own id to ask "who am I".
 app.get("/api/users/me", authenticate, async (req, res) => {
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === req.userId);
-  if (!user) {
-    return res.status(404).json({ error: "Benutzer nicht gefunden." });
-  }
-  res.json(enrichOwnProfile(user));
+  // `req.user` steht bereits aus authenticate() bereit — ein zweiter Abruf
+  // derselben Zeile wäre reine Doppelarbeit.
+  res.json(enrichOwnProfile(req.user));
 });
 
 // Search Users. MUST stay above /api/users/:id — Express matches routes in
@@ -1030,9 +1035,10 @@ app.get("/api/users/search", authenticate, async (req, res) => {
 
 // Get Specific User
 app.get("/api/users/:id", authenticate, async (req, res) => {
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === req.params.id);
-  const hidden = await getBlockedUserIds(req.userId);
+  const [user, hidden] = await Promise.all([
+    db.getUserById(req.params.id),
+    getBlockedUserIds(req.userId),
+  ]);
   // A blocked user reads as non-existent rather than "forbidden" — a 403
   // would confirm the account is there and that a block is in place.
   if (!user || hidden.has(user.id)) {
@@ -1048,8 +1054,7 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
     return res.status(403).json({ error: "Du kannst nur dein eigenes Profil ändern." });
   }
 
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === req.params.id);
+  const user = await db.getUserById(req.params.id);
   if (!user) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
@@ -1068,10 +1073,7 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
     if (!nameCheck.ok) return res.status(400).json({ error: nameCheck.error });
 
     if (nameCheck.value.toLowerCase() !== user.name.toLowerCase()) {
-      const taken = users.some(
-        (u) => u.id !== user.id && u.name.toLowerCase() === nameCheck.value.toLowerCase()
-      );
-      if (taken) {
+      if (await db.isUsernameTaken(nameCheck.value, user.id)) {
         return res.status(400).json({ error: "Dieser Username ist bereits vergeben!" });
       }
       // Friendships reference users by name, so a rename has to carry over or
@@ -1116,8 +1118,7 @@ app.post("/api/users/:id/avatar", authenticate, avatarUpload.single("avatar"), a
     return res.status(403).json({ error: "Du kannst nur dein eigenes Bild hochladen." });
   }
 
-  const users = await db.getUsers();
-  const user = users.find((u) => u.id === req.params.id);
+  const user = await db.getUserById(req.params.id);
   if (!user) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
@@ -1191,8 +1192,7 @@ app.post("/api/users/push-token", authenticate, async (req, res) => {
 // Level Up User
 app.post("/api/users/level-up", authenticate, async (req, res) => {
   try {
-    const users = await db.getUsers();
-    const user = users.find((u) => u.id === req.userId);
+    const user = await db.getUserById(req.userId);
     if (!user) {
       return res.status(404).json({ error: "Benutzer nicht gefunden." });
     }
@@ -1215,8 +1215,7 @@ app.post("/api/users/level-up", authenticate, async (req, res) => {
     await db.recalculateAllUsers();
 
     // Reload recalculated user
-    const refreshedUsers = await db.getUsers();
-    const refreshedUser = refreshedUsers.find((u) => u.id === req.userId);
+    const refreshedUser = await db.getUserById(req.userId);
 
     // Add feed notification
     const postText = `⭐ LEVEL UP! ${user.name} hat Level ${user.level} erreicht! (${user.title})`;
@@ -1290,6 +1289,11 @@ app.get("/api/users/me/drinks", authenticate, async (req, res) => {
 });
 
 const MAX_QUICK_PICKS = 12;
+
+// Wie viele eigene Einträge die App höchstens am Stück bekommt. Profil und
+// Dashboard zeigen eine Liste der letzten Getränke — niemand scrollt durch
+// tausende, aber ohne Grenze wächst die Antwort mit jedem Monat Nutzung.
+const LOG_HISTORY_LIMIT = 500;
 
 app.put("/api/users/me/drinks", authenticate, async (req, res) => {
   try {
@@ -1479,11 +1483,25 @@ app.delete("/api/drinks/:id", authenticate, async (req, res) => {
 // handed out every user's location history and made the access check on
 // /api/map pointless — the same data was one endpoint over. Nothing in the
 // app reads coordinates from this route; the map has its own, filtered one.
+// Die eigenen Getränke-Einträge — und ausschließlich die.
+//
+// Bis zum 21.08.2026 gab diese Route JEDEM angemeldeten Konto JEDEN Eintrag
+// ALLER Konten heraus: `userId`, `drinkId`, `timestamp`. Damit ließ sich die
+// vollständige Trinkhistorie beliebiger fremder Personen minutengenau
+// rekonstruieren — auch die von Leuten, die einen blockiert hatten.
+//
+// Das stand quer zum eigenen Sichtbarkeitsmodell: /api/feed, /api/radar und
+// /api/map filtern sorgfältig nach Freundschaft und Blocks, ausgerechnet die
+// Rohdaten taten es nicht. Und es stand quer zur Datenschutzerklärung, die
+// zusagt, dass Einträge nur Freunden und Gruppenmitgliedern sichtbar sind.
+//
+// Aufgerufen wurde sie ohnehin nur, um danach clientseitig auf die eigene
+// Nutzer-ID zu filtern (Dashboard, Profil). Die Rangliste brauchte fremde
+// Zahlen — die kommen jetzt als fertige Summe aus /api/scoreboard, nicht
+// mehr als Einzeleinträge.
 app.get("/api/logs", authenticate, async (req, res) => {
-  const logs = await db.getLogs();
-  res.json(
-    logs.map(({ latitude, longitude, ...log }) => log)
-  );
+  const logs = await db.getLogsForUser(req.userId, { limit: LOG_HISTORY_LIMIT });
+  res.json(logs.map(({ latitude, longitude, ...log }) => log));
 });
 
 // Log a Drink
@@ -1704,18 +1722,37 @@ app.get("/api/radar", authenticate, async (req, res) => {
 
 // Get Live Feed. scope=friends (default) -> confirmed friends + self,
 // scope=groups -> members of the groups I'm in, plus that group's posts.
+/** Wie viele Einträge ein Feed-Abruf höchstens liefert. */
+const FEED_PAGE_SIZE = 30;
+
+// Der Feed.
+//
+// Bis zum 21.08.2026 lud diese Route bei JEDEM Abruf die vollständigen
+// Tabellen `drink_logs`, `users`, `drinks`, `posts`, `friendships` und
+// `feed_reactions` in den Node-Prozess und filterte sie in JavaScript — mit
+// `users.find()` und `drinks.find()` INNERHALB der `.map()`, also quadratisch.
+// Abgerufen wird sie alle 15 Sekunden je geöffnetem Feed.
+//
+// Jetzt wird zuerst bestimmt, WESSEN Einträge sichtbar sind, und dann werden
+// nur die neuesten `limit` davon geholt. `before` blättert weiter zurück.
+//
+// `users` und `friendships` bleiben als Ganzes nötig: Freundschaften hängen
+// am Usernamen statt an der ID, also muss die Zuordnung Name→ID vorliegen,
+// bevor überhaupt feststeht, wessen Einträge gemeint sind.
 app.get("/api/feed", authenticate, async (req, res) => {
   try {
-    const logs = await db.getLogs();
-    const users = await db.getUsers();
-    const drinks = await db.getDrinks();
-    const posts = await db.getPosts();
-    const friendships = await db.getFriendships();
+    const [users, drinks, friendships] = await Promise.all([
+      db.getUsers(),
+      db.getDrinks(),
+      db.getFriendships(),
+    ]);
 
     const scope = req.query.scope === "groups" ? "groups" : "friends";
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || FEED_PAGE_SIZE, 1), 100);
+    const before = typeof req.query.before === "string" && req.query.before ? req.query.before : null;
 
     let visibleUserIds;
-    let visiblePostFilter;
+    let myGroupIds = null;
 
     if (scope === "groups") {
       const groups = await db.getGroups();
@@ -1735,25 +1772,12 @@ app.get("/api/feed", authenticate, async (req, res) => {
         }
       }
 
-      const myGroupIds = new Set(myGroups.map((g) => g.id));
+      myGroupIds = myGroups.map((g) => g.id);
 
       visibleUserIds = new Set();
       myGroups.forEach((g) => (g.memberIds || []).forEach((id) => visibleUserIds.add(id)));
-
-      // Only posts actually belonging to one of my groups.
-      visiblePostFilter = (p) => p.contextType === "group" && myGroupIds.has(p.contextId);
     } else {
       visibleUserIds = resolveFriendUserIds(req.user, users, friendships);
-      // Ein Beitrag AN EINE GRUPPE gehoert nicht in den Freunde-Feed. Vorher
-      // wurde hier nur nach Verfasser gefiltert, nie nach Adressat: was jemand
-      // in eine Gruppe schrieb, stand anschliessend auch bei allen seinen
-      // Freunden — und der Gruppen-Feed wirkte dadurch wie eine Dublette.
-      //
-      // Systemmeldungen (Level-Up) tragen ebenfalls contextType "group", sind
-      // aber an alle gerichtet und bleiben deshalb drin.
-      visiblePostFilter = (p) =>
-        p.userId === "system" ||
-        (p.contextType !== "group" && visibleUserIds.has(p.userId));
     }
 
     // Blocking wins over every other visibility rule. Removing the friendship
@@ -1762,16 +1786,31 @@ app.get("/api/feed", authenticate, async (req, res) => {
     const hidden = await getBlockedUserIds(req.userId);
     hidden.forEach((id) => visibleUserIds.delete(id));
 
-    const friendUserIds = visibleUserIds;
+    // Beides mit vollem `limit` holen und danach zusammenführen: die
+    // neuesten `limit` Einträge der Mischung stecken garantiert in den
+    // neuesten `limit` jeder einzelnen Quelle.
+    const [rawLogs, rawPosts] = await Promise.all([
+      db.getLogsForUsers(visibleUserIds, { limit, before }),
+      scope === "groups"
+        ? db.getGroupFeedPosts(myGroupIds, { limit, before })
+        : db.getFriendFeedPosts(visibleUserIds, { limit, before }),
+    ]);
 
-    const filteredLogs = logs.filter((l) => friendUserIds.has(l.userId));
-    const filteredPosts = posts.filter((p) => !hidden.has(p.userId) && visiblePostFilter(p));
+    // Blockierte können im Gruppen-Feed weiterhin Beiträge geschrieben haben.
+    const filteredPosts = rawPosts.filter((p) => !hidden.has(p.userId));
 
-    const allReactions = await db.getFeedReactions();
+    // Nachschlagen über Maps statt `find()` je Eintrag.
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const drinkById = new Map(drinks.map((d) => [d.id, d]));
 
-    const feedLogs = filteredLogs.map((log) => {
-      const user = users.find((u) => u.id === log.userId);
-      const drink = drinks.find((d) => d.id === log.drinkId);
+    const allReactions = await db.getFeedReactionsFor([
+      ...rawLogs.map((l) => l.id),
+      ...filteredPosts.map((p) => p.id),
+    ]);
+
+    const feedLogs = rawLogs.map((log) => {
+      const user = userById.get(log.userId);
+      const drink = drinkById.get(log.drinkId);
       return {
         id: log.id,
         userId: log.userId,
@@ -1790,7 +1829,7 @@ app.get("/api/feed", authenticate, async (req, res) => {
     });
 
     const feedPosts = filteredPosts.map((post) => {
-      const user = users.find((u) => u.id === post.userId);
+      const user = userById.get(post.userId);
       return {
         id: post.id,
         userId: post.userId,
@@ -1808,7 +1847,7 @@ app.get("/api/feed", authenticate, async (req, res) => {
 
     const combinedFeed = [...feedLogs, ...feedPosts];
     combinedFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    res.json(combinedFeed);
+    res.json(combinedFeed.slice(0, limit));
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
@@ -1861,9 +1900,49 @@ app.get("/api/map", authenticate, async (req, res) => {
 });
 
 // Get Scoreboard
+/**
+ * Grenzen eines Ranglisten-Zeitraums als ISO-Zeitpunkte.
+ *
+ * `null` heißt „keine Grenze". Gerechnet wird in der Zeitzone des Servers —
+ * dieselbe, in der die Einträge entstehen, und die App läuft in Deutschland.
+ */
+function scoreboardPeriodRange(period) {
+  const now = new Date();
+  if (period === "this_month") {
+    return {
+      since: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      until: null,
+    };
+  }
+  if (period === "last_month") {
+    return {
+      since: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
+      until: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    };
+  }
+  return { since: null, until: null };
+}
+
+const SCOREBOARD_PERIODS = ["all", "this_month", "last_month"];
+
+// Die Rangliste — samt der Zahlen, die sie anzeigt.
+//
+// Die Aufschlüsselung (Anzahl, Alkohol, Menge, Kalorien, Kategorien je
+// Zeitraum) hat der Client bis zum 21.08.2026 selbst gerechnet und dafür
+// ALLE Einträge ALLER Konten heruntergeladen. Angezeigt wird davon nur die
+// Summe — also entsteht sie jetzt dort, wo die Daten ohnehin liegen, mit
+// einer GROUP-BY-Abfrage statt einer verschachtelten Schleife im Client.
 app.get("/api/scoreboard", authenticate, async (req, res) => {
   try {
-    const [allUsers, hidden] = await Promise.all([db.getUsers(), getBlockedUserIds(req.userId)]);
+    const period = SCOREBOARD_PERIODS.includes(req.query.period) ? req.query.period : "all";
+    const { since, until } = scoreboardPeriodRange(period);
+
+    const [allUsers, hidden, stats] = await Promise.all([
+      db.getUsers(),
+      getBlockedUserIds(req.userId),
+      db.getDrinkStatsPerUser({ since, until }),
+    ]);
+
     // Blocked users drop out of the ranking too — "I don't want to see this
     // person" would ring hollow if they still sat next to you in the list.
     const users = allUsers.filter((u) => !hidden.has(u.id));
@@ -1872,6 +1951,7 @@ app.get("/api/scoreboard", authenticate, async (req, res) => {
     // Map to the requested fields username and points
     const rows = sortedUsers.map((u) => {
       const progress = db.getUserProgress(u.points, u.level);
+      const s = stats[u.id];
       return {
         id: u.id,
         username: u.name,
@@ -1883,9 +1963,19 @@ app.get("/api/scoreboard", authenticate, async (req, res) => {
         currentLevel: progress.currentLevel,
         xpForNextLevel: progress.xpForNextLevel,
         xpProgressInCurrentLevel: progress.xpProgressInCurrentLevel,
+        // Zahlen des gewählten Zeitraums. Wer im Zeitraum nichts eingetragen
+        // hat, taucht mit Nullen auf statt zu fehlen — die Rangliste zeigt
+        // alle Konten, nicht nur die aktiven.
+        periodCount: s ? s.count : 0,
+        periodAlcoholGrams: s ? s.alcoholGrams : 0,
+        periodVolume: s ? s.volume : 0,
+        periodCalories: s ? s.calories : 0,
+        categoryTally: s
+          ? s.categoryTally
+          : { Bier: 0, Wein: 0, Sekt: 0, Schnaps: 0, "Mischgetränk": 0, Alkoholfrei: 0 },
       };
     });
-    res.json({ rows });
+    res.json({ rows, period });
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
   }
@@ -1956,8 +2046,7 @@ app.post("/api/messages/read", authenticate, async (req, res) => {
       return res.status(403).json({ error: "Du bist kein Mitglied dieser Gruppe." });
     }
   } else {
-    const users = await db.getUsers();
-    if (!users.some((u) => u.id === receiverId)) {
+    if (!(await db.getUserById(receiverId))) {
       return res.status(404).json({ error: "Benutzer nicht gefunden." });
     }
   }
@@ -1973,9 +2062,27 @@ app.post("/api/messages/read", authenticate, async (req, res) => {
 // ==========================================
 
 // Get Direct Messages
+/**
+ * Blätter-Parameter eines Chat-Abrufs.
+ *
+ * `limit` ist gedeckelt, damit niemand über `?limit=999999` doch wieder die
+ * ganze Historie anfordert; `before` ist ein ISO-Zeitpunkt und liefert das
+ * Stück davor.
+ */
+function messagePageParams(req) {
+  const raw = parseInt(req.query.limit, 10);
+  const limit = Math.min(Math.max(Number.isFinite(raw) ? raw : db.MESSAGE_PAGE_SIZE, 1), db.MESSAGE_PAGE_SIZE);
+  const before = typeof req.query.before === "string" && req.query.before ? req.query.before : null;
+  return { limit, before };
+}
+
 app.get("/api/messages/direct/:otherUserId", authenticate, async (req, res) => {
   try {
-    const messages = await db.getDirectMessages(req.userId, req.params.otherUserId);
+    const messages = await db.getDirectMessages(
+      req.userId,
+      req.params.otherUserId,
+      messagePageParams(req)
+    );
     res.json(messages);
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
@@ -1997,7 +2104,7 @@ app.get("/api/messages/group/:groupId", authenticate, async (req, res) => {
     // diesen Filter läse man also weiter genau die Person mit, die man
     // loswerden wollte.
     const [messages, hidden] = await Promise.all([
-      db.getGroupMessages(req.params.groupId),
+      db.getGroupMessages(req.params.groupId, messagePageParams(req)),
       getBlockedUserIds(req.userId),
     ]);
 
@@ -2054,9 +2161,8 @@ app.post("/api/messages", authenticate, async (req, res) => {
 
     await db.saveMessage(newMessage);
 
-    const users = await db.getUsers();
-    const sender = users.find((u) => u.id === req.userId);
-    const senderName = sender ? sender.name : "Unbekannt";
+    // authenticate() hat den Absender bereits geladen.
+    const senderName = req.user ? req.user.name : "Unbekannt";
 
     // Chat war das einzige Ereignis ohne Benachrichtigung — Duelle,
     // Freundschaftsanfragen und Gruppenbeitritte hatten längst eine. Ein Chat,
@@ -2066,7 +2172,7 @@ app.post("/api/messages", authenticate, async (req, res) => {
     res.status(201).json({
       ...newMessage,
       sender_name: senderName,
-      sender_avatar: sender ? sender.avatar : null,
+      sender_avatar: req.user ? req.user.avatar : null,
     });
   } catch (err) {
     serverError(res, err, `${req.method} ${req.originalUrl}`);
@@ -2379,8 +2485,7 @@ app.post("/api/groups/:id/members", authenticate, async (req, res) => {
     return res.status(403).json({ error: "Nur Administratoren können Mitglieder hinzufügen." });
   }
 
-  const users = await db.getUsers();
-  const target = users.find((u) => u.id === userId);
+  const target = await db.getUserById(userId);
   if (!target) {
     return res.status(404).json({ error: "Benutzer nicht gefunden." });
   }
@@ -3287,8 +3392,7 @@ app.post("/api/blocks", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Du kannst dich nicht selbst blockieren." });
     }
 
-    const users = await db.getUsers();
-    const target = users.find((u) => u.id === userId);
+    const target = await db.getUserById(userId);
     if (!target) {
       return res.status(404).json({ error: "Benutzer nicht gefunden." });
     }
@@ -3814,7 +3918,29 @@ app.get("/api/game-rooms/:code", roomLookupLimit, async (req, res) => {
   // Treffer: Zaehler leeren. Die Clients fragen alle 2,5 s nach — ohne das
   // liefe schon eine normale Runde ins Limit.
   clearRateLimit(`roomlookup:ip:${clientIp(req)}`);
-  res.json({ success: true, room });
+
+  // Zwischen zwei Abfragen aendert sich der Raumzustand meistens NICHT: es
+  // wartet ja gerade jemand auf eine Eingabe. Trotzdem ging bisher jedes Mal
+  // der vollstaendige Zustand ueber die Leitung — bei 16 Spielern und alle
+  // 2,5 s ist das der groesste Datenstrom der App, fast ausschliesslich aus
+  // Wiederholungen.
+  //
+  // Ein ETag ueber den Antwortkoerper macht daraus ein leeres 304, sobald
+  // sich nichts getan hat. Der Client braucht dafuer nichts zu koennen:
+  // `fetch` und axios schicken `If-None-Match` von selbst mit, sobald sie
+  // einmal ein ETag gesehen haben.
+  const body = JSON.stringify({ success: true, room });
+  const etag = `W/"${crypto.createHash("sha1").update(body).digest("base64")}"`;
+  res.set("ETag", etag);
+  // Nicht zwischenspeichern, aber revalidieren: die Antwort ist nur so lange
+  // gueltig, bis jemand etwas tut.
+  res.set("Cache-Control", "no-cache");
+
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+
+  res.type("application/json").send(body);
 });
 
 // Spiel starten (Host)

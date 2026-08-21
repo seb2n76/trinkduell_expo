@@ -23,7 +23,7 @@ import { triggerHaptic } from "@/services/haptics";
 import { notify, confirmAction } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
 import { useThemeColors } from "@/services/theme";
-import { KeyboardSafe, KeyboardSheet } from "@/components/KeyboardSafe";
+import { KeyboardSafe, KeyboardSheet, SHEET_ANIMATION } from "@/components/KeyboardSafe";
 
 type TabKey = "friends" | "groups" | "events";
 
@@ -920,7 +920,7 @@ export default function FriendsScreen() {
       </Modal>
 
       {/* Melden */}
-      <Modal visible={!!reportTargetUser} animationType="slide" transparent>
+      <Modal visible={!!reportTargetUser} animationType={SHEET_ANIMATION} transparent>
         <KeyboardSheet className="flex-1 bg-black/70 justify-end">
           <View className="bg-surface border-t border-line rounded-t-3xl p-6 pb-10">
             <Text className="text-content text-base font-black mb-1">
@@ -993,7 +993,7 @@ export default function FriendsScreen() {
       <Modal
         visible={showCreateGroup}
         transparent
-        animationType="slide"
+        animationType={SHEET_ANIMATION}
         onRequestClose={() => setShowCreateGroup(false)}
       >
         <KeyboardSheet className="flex-1 bg-black/85 justify-end">
@@ -1077,7 +1077,7 @@ export default function FriendsScreen() {
       <Modal
         visible={showCreateEvent}
         transparent
-        animationType="slide"
+        animationType={SHEET_ANIMATION}
         onRequestClose={() => setShowCreateEvent(false)}
       >
         <KeyboardSheet className="flex-1 bg-black/85 justify-end">
@@ -1206,7 +1206,7 @@ export default function FriendsScreen() {
       <Modal
         visible={codeModalMode !== null}
         transparent
-        animationType="slide"
+        animationType={SHEET_ANIMATION}
         onRequestClose={() => setCodeModalMode(null)}
       >
         <KeyboardSheet className="flex-1 bg-black/85 justify-end">

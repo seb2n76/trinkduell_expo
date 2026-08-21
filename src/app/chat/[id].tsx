@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   ActivityIndicator,
   Platform,
 } from "react-native";
@@ -17,7 +17,11 @@ import { Avatar } from "@/components/Avatar";
 import { triggerHaptic } from "@/services/haptics";
 import { notify } from "@/services/dialogs";
 import { useUnread } from "@/components/UnreadProvider";
+import { usePolling } from "@/services/polling";
 import { useThemeColors } from "@/services/theme";
+
+/** Wie viele Nachrichten je Abruf. Entspricht der Vorgabe des Servers. */
+const CHAT_PAGE_SIZE = 50;
 
 /**
  * Direktnachrichten und Gruppenchat.
@@ -39,6 +43,65 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
   const [partnerAvatar, setPartnerAvatar] = useState<string | undefined>(undefined);
+  /** Gibt es vor der ältesten geladenen Nachricht noch etwas? */
+  const [hasMore, setHasMore] = useState(true);
+  /** Verhindert zwei gleichzeitige Nachlade-Läufe. */
+  const ladeAeltere = useRef(false);
+
+  /** Die neuesten Nachrichten dieser Unterhaltung, seitenweise. */
+  const holeNachrichten = useCallback(
+    (page?: { limit?: number; before?: string | null }) =>
+      isGroup
+        ? apiService.getGroupMessages(id, page)
+        : apiService.getDirectMessages(id, page),
+    [id, isGroup]
+  );
+
+  /**
+   * Zwei Listen ohne Dubletten zusammenführen, aufsteigend nach Zeit.
+   *
+   * Nötig, weil dieselbe Nachricht aus zwei Richtungen kommen kann: einmal
+   * beim optimistischen Anhängen nach dem Senden, einmal beim nächsten
+   * Abruf. Verglichen wird über die Id.
+   */
+  const verschmelzen = (a: DirectMessage[], b: DirectMessage[]): DirectMessage[] => {
+    const nachId = new Map<string, DirectMessage>();
+    for (const m of [...a, ...b]) nachId.set(m.id, m);
+    return [...nachId.values()].sort(
+      (x, y) => new Date(x.timestamp).getTime() - new Date(y.timestamp).getTime()
+    );
+  };
+
+  /**
+   * Nachsehen, ob etwas Neues da ist.
+   *
+   * Der Chat hat bis zum 21.08.2026 GAR NICHT aktualisiert: Er lud einmal
+   * beim Öffnen und hängte danach nur noch die eigenen gesendeten
+   * Nachrichten an. Eingehende erschienen nie, solange der Chat offen war —
+   * erst beim Verlassen und erneuten Öffnen. Der Ungelesen-Zähler oben
+   * aktualisierte sich derweil alle 15 Sekunden, meldete also „neue
+   * Nachricht", während der offene Chat sie nicht zeigte.
+   */
+  const aktualisieren = useCallback(async () => {
+    try {
+      const neueste = await holeNachrichten({ limit: CHAT_PAGE_SIZE });
+      setMessages((vorher) => {
+        const zusammen = verschmelzen(vorher, neueste);
+        // Nur als gelesen melden, wenn wirklich etwas dazugekommen ist —
+        // sonst schriebe jeder Takt einen Lesestand ohne Anlass.
+        if (zusammen.length !== vorher.length) {
+          markRead(isGroup ? { groupId: id } : { receiverId: id });
+        }
+        return zusammen;
+      });
+    } catch (e) {
+      // Ein Aussetzer im Takt ist kein Grund für eine Meldung; der nächste
+      // Versuch kommt in fünf Sekunden.
+      console.warn("Chat konnte nicht aktualisiert werden:", e);
+    }
+    // markRead ist stabil genug; die Unterhaltung ist die Abhängigkeit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holeNachrichten, id, isGroup]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,10 +110,14 @@ export default function ChatScreen() {
       setMeId(me.id);
 
       if (isGroup) {
-        setMessages(await apiService.getGroupMessages(id));
+        const erste = await holeNachrichten({ limit: CHAT_PAGE_SIZE });
+        setMessages(erste);
+        setHasMore(erste.length >= CHAT_PAGE_SIZE);
         markRead({ groupId: id });
       } else {
-        setMessages(await apiService.getDirectMessages(id));
+        const erste = await holeNachrichten({ limit: CHAT_PAGE_SIZE });
+        setMessages(erste);
+        setHasMore(erste.length >= CHAT_PAGE_SIZE);
         markRead({ receiverId: id });
 
         // Das Profilbild kommt nicht über die Route — eine Base64-Grafik in
@@ -77,11 +144,37 @@ export default function ChatScreen() {
     }
     // markRead und router sind stabil genug; die Abhängigkeit ist die Konversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isGroup]);
+  }, [id, isGroup, holeNachrichten]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fünf Sekunden statt der fünfzehn der übrigen Anzeigen: Ein Chat, in dem
+  // die Antwort eine Viertelminute braucht, fühlt sich kaputt an. Nur
+  // solange die App im Vordergrund ist — im Hintergrund übernimmt Push.
+  usePolling(aktualisieren, 5000, { enabled: !loading });
+
+  /** Ältere Nachrichten nachladen, wenn jemand nach oben scrollt. */
+  const loadEarlier = useCallback(async () => {
+    if (ladeAeltere.current || !hasMore || loading || messages.length === 0) return;
+    ladeAeltere.current = true;
+    try {
+      const aeltere = await holeNachrichten({
+        limit: CHAT_PAGE_SIZE,
+        before: messages[0].timestamp,
+      });
+      setHasMore(aeltere.length >= CHAT_PAGE_SIZE);
+      if (aeltere.length > 0) setMessages((vorher) => verschmelzen(aeltere, vorher));
+    } catch (e) {
+      console.warn("Ältere Nachrichten konnten nicht geladen werden:", e);
+    } finally {
+      ladeAeltere.current = false;
+    }
+  }, [hasMore, loading, messages, holeNachrichten]);
+
+  /** Für die umgedrehte Liste: jüngste Nachricht zuerst. */
+  const umgekehrteNachrichten = useMemo(() => [...messages].reverse(), [messages]);
 
   const handleSend = async () => {
     const content = inputText.trim();
@@ -136,17 +229,19 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      <ScrollView
-        className="flex-1 px-5 pt-4"
-        contentContainerClassName="pb-4"
-        showsVerticalScrollIndicator={false}
-      >
-        {loading ? (
-          <View className="py-16 items-center justify-center">
-            <ActivityIndicator size="large" color={c.accent} />
-          </View>
-        ) : messages.length === 0 ? (
-          <View className="py-16 items-center justify-center bg-surface border border-line rounded-3xl p-6 my-4">
+      {/* Umgedrehte Liste.
+          Zwei Fliegen: Sie startet unten bei der jüngsten Nachricht (der
+          bisherige ScrollView öffnete sich ganz oben bei der ÄLTESTEN, man
+          musste erst durch die halbe Historie scrollen), und `onEndReached`
+          zeigt dabei nach OBEN — also genau dorthin, wo das Nachladen
+          älterer Nachrichten hingehört. */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={c.accent} />
+        </View>
+      ) : messages.length === 0 ? (
+        <View className="flex-1 items-center justify-center px-5">
+          <View className="w-full items-center justify-center bg-surface border border-line rounded-3xl p-6">
             <Ionicons name="chatbubbles-outline" size={36} color={c.contentFaint} />
             <Text className="text-content text-xs font-black uppercase text-center mt-2">
               Noch keine Nachrichten
@@ -155,11 +250,21 @@ export default function ChatScreen() {
               Schreibe die erste Nachricht!
             </Text>
           </View>
-        ) : (
-          messages.map((msg) => {
+        </View>
+      ) : (
+        <FlatList
+          className="flex-1 px-5"
+          data={umgekehrteNachrichten}
+          keyExtractor={(msg) => msg.id}
+          inverted
+          contentContainerStyle={{ paddingVertical: 16 }}
+          showsVerticalScrollIndicator={false}
+          onEndReached={loadEarlier}
+          onEndReachedThreshold={0.4}
+          renderItem={({ item: msg }) => {
             const isMe = msg.sender_id === meId;
             return (
-              <View key={msg.id} className={`mb-3 flex-row ${isMe ? "justify-end" : "justify-start"}`}>
+              <View className={`mb-3 flex-row ${isMe ? "justify-end" : "justify-start"}`}>
                 <View
                   className={`max-w-[78%] px-4 py-2.5 rounded-2xl ${
                     isMe
@@ -186,9 +291,9 @@ export default function ChatScreen() {
                 </View>
               </View>
             );
-          })
-        )}
-      </ScrollView>
+          }}
+        />
+      )}
 
       <View
         className="flex-row items-center px-5 py-3 border-t border-line bg-surface-alt"

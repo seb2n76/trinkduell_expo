@@ -258,6 +258,119 @@ async function executeApiCall<T>(
   }
 }
 
+/** Zeitraum, über den die Rangliste rechnet. */
+export type ScoreboardPeriod = "all" | "this_month" | "last_month";
+
+/** Zählwerk je Getränkekategorie, wie die Rangliste es aufklappt. */
+export interface CategoryTally {
+  Bier: number;
+  Wein: number;
+  Sekt: number;
+  Schnaps: number;
+  "Mischgetränk": number;
+  Alkoholfrei: number;
+}
+
+/** Eine Zeile der Rangliste, so wie GET /scoreboard sie liefert. */
+export interface ScoreboardRow {
+  id: string;
+  username: string;
+  points: number;
+  avatar?: string | null;
+  title?: string | null;
+  rank?: string | null;
+  level: number;
+  currentLevel: number;
+  xpForNextLevel: number;
+  xpProgressInCurrentLevel: number;
+  /** Zahlen des abgefragten Zeitraums. */
+  periodCount: number;
+  periodAlcoholGrams: number;
+  periodVolume: number;
+  periodCalories: number;
+  categoryTally: CategoryTally;
+}
+
+const LEERE_KATEGORIEN = (): CategoryTally => ({
+  Bier: 0,
+  Wein: 0,
+  Sekt: 0,
+  Schnaps: 0,
+  "Mischgetränk": 0,
+  Alkoholfrei: 0,
+});
+
+/**
+ * Grenzen eines Zeitraums, in derselben Auslegung wie auf dem Server:
+ * „dieser Monat" ab dem Ersten, „letzter Monat" der Monat davor.
+ */
+function periodRange(period: ScoreboardPeriod): { since: number | null; until: number | null } {
+  const now = new Date();
+  if (period === "this_month") {
+    return { since: new Date(now.getFullYear(), now.getMonth(), 1).getTime(), until: null };
+  }
+  if (period === "last_month") {
+    return {
+      since: new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(),
+      until: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+    };
+  }
+  return { since: null, until: null };
+}
+
+/** Dieselbe Rangliste aus den lokal gespiegelten Daten — für den Offline-Fall. */
+async function buildLocalScoreboard(period: ScoreboardPeriod): Promise<ScoreboardRow[]> {
+  const [users, logs, drinks] = await Promise.all([
+    db.getUsers(),
+    db.getDrinkLogs(),
+    db.getDrinks(),
+  ]);
+  const { since, until } = periodRange(period);
+  const drinkById = new Map(drinks.map((d) => [d.id, d]));
+
+  return users
+    .map((u) => {
+      const tally = LEERE_KATEGORIEN();
+      let count = 0;
+      let alcoholGrams = 0;
+      let volume = 0;
+      let calories = 0;
+
+      for (const log of logs) {
+        if (log.userId !== u.id) continue;
+        const t = new Date(log.timestamp).getTime();
+        if (since !== null && t < since) continue;
+        if (until !== null && t >= until) continue;
+        const drink = drinkById.get(log.drinkId);
+        if (!drink) continue;
+        count += 1;
+        alcoholGrams += drink.volume * (drink.abv / 100) * 0.789;
+        volume += drink.volume;
+        calories += drink.calories || 0;
+        if (drink.category in tally) tally[drink.category as keyof CategoryTally] += 1;
+      }
+
+      return {
+        id: u.id,
+        username: u.name,
+        points: u.points,
+        avatar: u.avatar ?? null,
+        title: u.title ?? null,
+        rank: u.rank ?? null,
+        level: u.level || 1,
+        currentLevel: u.currentLevel || u.level || 1,
+        xpForNextLevel: u.xpForNextLevel || 0,
+        xpProgressInCurrentLevel: u.xpProgressInCurrentLevel || 0,
+        periodCount: count,
+        periodAlcoholGrams: Number(alcoholGrams.toFixed(2)),
+        periodVolume: volume,
+        periodCalories: calories,
+        categoryTally: tally,
+      };
+    })
+    .sort((a, b) => b.points - a.points);
+}
+
 export const apiService = {
   // Users
   getUsers: (): Promise<db.User[]> =>
@@ -1020,13 +1133,43 @@ export const apiService = {
    * Angabe kommen alle eigenen Gruppen zusammen — was bei mehr als einer
    * Gruppe unübersichtlich wird und der Grund für den Filter war.
    */
-  getFeed: (scope: db.FeedScope, username: string, groupId?: string | null): Promise<db.FeedItem[]> =>
-    executeApiCall(
-      () =>
-        axiosInstance.get<db.FeedItem[]>(
-          `/feed?scope=${scope}${groupId ? `&groupId=${encodeURIComponent(groupId)}` : ""}`
-        ),
+  getFeed: (
+    scope: db.FeedScope,
+    username: string,
+    groupId?: string | null,
+    /** `before` ist der Zeitstempel des ältesten bereits geladenen Eintrags. */
+    page?: { limit?: number; before?: string | null }
+  ): Promise<db.FeedItem[]> => {
+    const params = new URLSearchParams({ scope });
+    if (groupId) params.set("groupId", groupId);
+    if (page?.limit) params.set("limit", String(page.limit));
+    if (page?.before) params.set("before", page.before);
+    return executeApiCall(
+      () => axiosInstance.get<db.FeedItem[]>(`/feed?${params.toString()}`),
       () => db.getFeedLocal(scope, username)
+    );
+  },
+
+  /**
+   * Die Rangliste — samt der Zahlen des gewählten Zeitraums.
+   *
+   * Diese Zahlen hat der Client bis zum 21.08.2026 selbst gerechnet und dafür
+   * über `/logs` sämtliche Einträge sämtlicher Konten geholt. Das war nicht
+   * nur teuer, es war auch der Weg, auf dem fremde Trinkhistorien im Gerät
+   * jedes Beliebigen landeten. Jetzt kommt die fertige Summe.
+   *
+   * Der Offline-Rückfall rechnet dasselbe aus den lokal gespiegelten Daten —
+   * dort liegen ohnehin nur die eigenen.
+   */
+  getScoreboard: (period: ScoreboardPeriod = "all"): Promise<ScoreboardRow[]> =>
+    executeApiCall(
+      async () => {
+        const res = await axiosInstance.get<{ rows: ScoreboardRow[] }>(
+          `/scoreboard?period=${period}`
+        );
+        return { data: res.data?.rows ?? [] };
+      },
+      () => buildLocalScoreboard(period)
     ),
 
   toggleReaction: (
@@ -1058,17 +1201,44 @@ export const apiService = {
       () => db.searchUsers(query)
     ),
 
-  getDirectMessages: (otherUserId: string): Promise<db.DirectMessage[]> =>
-    executeApiCall(
-      () => axiosInstance.get<db.DirectMessage[]>(`/messages/direct/${otherUserId}`),
+  /**
+   * Ein Direktchat. Der Server liefert die neuesten `limit` Nachrichten in
+   * aufsteigender Reihenfolge; `before` holt das Stück davor.
+   */
+  getDirectMessages: (
+    otherUserId: string,
+    page?: { limit?: number; before?: string | null }
+  ): Promise<db.DirectMessage[]> => {
+    const params = new URLSearchParams();
+    if (page?.limit) params.set("limit", String(page.limit));
+    if (page?.before) params.set("before", page.before);
+    const query = params.toString();
+    return executeApiCall(
+      () =>
+        axiosInstance.get<db.DirectMessage[]>(
+          `/messages/direct/${otherUserId}${query ? `?${query}` : ""}`
+        ),
       () => Promise.resolve([])
-    ),
+    );
+  },
 
-  getGroupMessages: (groupId: string): Promise<db.DirectMessage[]> =>
-    executeApiCall(
-      () => axiosInstance.get<db.DirectMessage[]>(`/messages/group/${groupId}`),
+  /** Wie getDirectMessages, nur für einen Gruppenchat. */
+  getGroupMessages: (
+    groupId: string,
+    page?: { limit?: number; before?: string | null }
+  ): Promise<db.DirectMessage[]> => {
+    const params = new URLSearchParams();
+    if (page?.limit) params.set("limit", String(page.limit));
+    if (page?.before) params.set("before", page.before);
+    const query = params.toString();
+    return executeApiCall(
+      () =>
+        axiosInstance.get<db.DirectMessage[]>(
+          `/messages/group/${groupId}${query ? `?${query}` : ""}`
+        ),
       () => Promise.resolve([])
-    ),
+    );
+  },
 
   sendMessage: (data: { receiverId?: string; groupId?: string; content: string }): Promise<db.DirectMessage> =>
     executeApiCall(
